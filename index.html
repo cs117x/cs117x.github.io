@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>HFE Lab</title>
+<meta name="description" content="Human factors engineering: notes and tools.">
+<meta name="robots" content="noindex, nofollow">
+<style>
+/* Layout: two-column holding page. Text and one tool card left, slowly turning wireframe manikin right. */
+:root{
+  --bg:#ffffff; --ink:#1c2530; --muted:#5b6672; --faint:#8a949e; --rule:#e1e5ea; --accent:#1f5a8a; --card:#f6f8fa; --wire:#5a7691; --floor:#dfe4e9;
+  --f:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Roboto,Arial,sans-serif;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f);-webkit-font-smoothing:antialiased}
+body{padding-left:max(20px,env(safe-area-inset-left,0px));padding-right:max(20px,env(safe-area-inset-right,0px))}
+.wrap{max-width:1120px;margin:0 auto;min-height:calc(100vh - 56px);display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:56px;align-items:center;padding-block:48px}
+@media (max-width:860px){.wrap{grid-template-columns:minmax(0,1fr);gap:20px;padding-block:28px 16px;min-height:0}}
+.mark{font-weight:700;color:var(--accent);font-size:15px;margin-bottom:28px}
+h1{font-size:clamp(26px,3.4vw,38px);line-height:1.15;font-weight:600;margin:0 0 14px;text-wrap:balance;max-width:17ch}
+.lede{color:var(--muted);font-size:16px;line-height:1.55;max-width:46ch;margin:0 0 32px}
+.card{display:block;text-decoration:none;color:inherit;border:1px solid var(--rule);border-radius:6px;padding:16px 18px;background:var(--card);max-width:520px;transition:border-color .15s}
+.card:hover{border-color:var(--accent)}
+.card:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.k{display:block;font-size:12px;color:var(--faint);margin-bottom:6px}
+.t{display:block;font-size:17px;font-weight:600;margin-bottom:6px}
+.d{display:block;font-size:14px;line-height:1.55;color:var(--muted)}
+.go{display:block;margin-top:12px;font-size:13.5px;font-weight:600;color:var(--accent)}
+.figure{margin:0;display:flex;flex-direction:column;gap:10px;min-width:0}
+canvas{width:100%;height:min(76vh,700px);display:block;cursor:grab;touch-action:pan-y}
+canvas.dragging{cursor:grabbing}
+@media (max-width:860px){canvas{height:min(70vh,520px)}}
+figcaption{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 16px;font-size:12px;color:var(--faint);font-variant-numeric:tabular-nums;border-top:1px solid var(--rule);padding-top:8px}
+.foot{max-width:1120px;margin:0 auto;padding-block:0 24px;font-size:12px;color:var(--faint)}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <section class="intro">
+    <div class="mark">HFE Lab</div>
+    <h1>Human factors engineering: notes and tools.</h1>
+    <p class="lede">Small, careful tools for fitting equipment and workplaces to the people who use them.</p>
+    <a class="card" href="/workstation-fit-model/">
+      <span class="k">Tool</span>
+      <span class="t">Seated Workstation Fit</span>
+      <span class="d">An interactive 3D assessment of a seated workstation. A link-segment manikin is built from individual anthropometric records, its posture is solved from the chair, desk, screens and desk objects, and the result is checked against editable limits: viewing distances and angles, joint angles, clearances and reach zones.</span>
+      <span class="go">Open the tool →</span>
+    </a>
+  </section>
+  <figure class="figure">
+    <canvas id="c" role="img" aria-label="Slowly turning wireframe model of a seated person"></canvas>
+    <figcaption><span id="cap"></span><span>Built from one person's measurements. Drag to turn.</span></figcaption>
+  </figure>
+</main>
+<footer class="foot">hfe-lab.dev</footer>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script>
+<script type="module">
+import * as THREE from 'three';
+const SUBJ = {"id":13684,"dims":["stature","sittingheight","eyeheightsitting","shoulderheightsitting","cervicaleheightsitting","elbowrestheight","shoulderelbowlength","radialestylionlength","handlength","poplitealheight","kneeheightsitting","buttockkneelength","buttockpopliteallength","thighclearance","lateralmalleolusheight","footlength","footbreadthhorizontal","biacromialbreadth","bideltoidbreadth","hipbreadthsitting","buttockdepth","chestdepth","abdominalextensiondepthsitting","headlength","headbreadth","tragiontopofhead","weightkg"],"v":[1754.0,917.0,808.0,600.0,692.0,235.0,368.0,271.0,190.0,402.0,560.0,615.0,474.0,190.0,74.0,274.0,114.0,443.0,553.0,435.0,253.0,282.0,280.0,205.0,156.0,130.0,101.4]};
+/* ---------------- manikin body (shared with the landing page) ---------------- */
+const BODY = (() => {
+  const V = THREE.Vector3, X = new V(1, 0, 0), Yv = new V(0, 1, 0), Zv = new V(0, 0, 1);
+  const sp = (c, p) => Math.sign(c) * Math.pow(Math.abs(c), 2 / p);
+  const rot2 = (v, a) => { const c = Math.cos(a), s = Math.sin(a); return { x: v.x * c - v.y * s, y: v.x * s + v.y * c }; };
+  const CR = (p0, p1, p2, p3, t) => 0.5 * ((2 * p1) + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t + (-p0 + 3 * p1 - 3 * p2 + p3) * t * t * t);
+  function resample(secs, per) {
+    if (secs.length < 3 || per < 2) return secs;
+    const out = [], keys = ['x', 'y', 'a', 'b'].concat('z' in secs[0] ? ['z'] : []);
+    for (let i = 0; i < secs.length - 1; i++) {
+      const p0 = secs[Math.max(i - 1, 0)], p1 = secs[i], p2 = secs[i + 1], p3 = secs[Math.min(i + 2, secs.length - 1)];
+      for (let k = 0; k < per; k++) {
+        const t = k / per, o = {};
+        for (const q of keys) o[q] = CR(p0[q], p1[q], p2[q], p3[q], t);
+        o.a = Math.max(o.a, 0.3); o.b = Math.max(o.b, 0.3); out.push(o);
+      }
+    }
+    out.push({ ...secs[secs.length - 1] }); return out;
+  }
+  function skin(rings, e = 2, seg = 32, meridians = 12) {
+    const pos = [], idx = [], n = rings.length;
+    for (const r of rings) for (let j = 0; j < seg; j++) {
+      const t = j / seg * Math.PI * 2, ca = sp(Math.cos(t), e) * r.a, sb = sp(Math.sin(t), e) * r.b;
+      pos.push(r.c.x + r.u.x * ca + r.v.x * sb, r.c.y + r.u.y * ca + r.v.y * sb, r.c.z + r.u.z * ca + r.v.z * sb);
+    }
+    const axis = new V().subVectors(rings[n - 1].c, rings[0].c);
+    const flip = axis.dot(new V().crossVectors(rings[0].u, rings[0].v)) < 0;
+    const tri = (a, b, c) => flip ? idx.push(a, c, b) : idx.push(a, b, c);
+    for (let i = 0; i < n - 1; i++) for (let j = 0; j < seg; j++) {
+      const a = i * seg + j, b = i * seg + (j + 1) % seg, c = (i + 1) * seg + j, d = (i + 1) * seg + (j + 1) % seg; tri(a, b, c); tri(b, d, c);
+    }
+    const cb = pos.length / 3; pos.push(rings[0].c.x, rings[0].c.y, rings[0].c.z);
+    const ct = pos.length / 3; pos.push(rings[n - 1].c.x, rings[n - 1].c.y, rings[n - 1].c.z);
+    for (let j = 0; j < seg; j++) { tri(cb, (j + 1) % seg, j); tri(ct, (n - 1) * seg + j, (n - 1) * seg + (j + 1) % seg); }
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setIndex(idx); geo.computeVertexNormals();
+    const lp = [], P = k => [pos[k * 3], pos[k * 3 + 1], pos[k * 3 + 2]];
+    const ringStep = Math.max(1, Math.round(n / 12));
+    for (let i = 0; i < n; i += ringStep) for (let j = 0; j < seg; j++) lp.push(...P(i * seg + j), ...P(i * seg + (j + 1) % seg));
+    const mstep = Math.max(1, Math.round(seg / meridians));
+    for (let j = 0; j < seg; j += mstep) for (let i = 0; i < n - 1; i++) lp.push(...P(i * seg + j), ...P((i + 1) * seg + j));
+    const lgeo = new THREE.BufferGeometry(); lgeo.setAttribute('position', new THREE.Float32BufferAttribute(lp, 3));
+    return { geo, lgeo };
+  }
+  function frame(a, b) {
+    const d = new V().subVectors(b, a), L = d.length(), q = new THREE.Quaternion().setFromUnitVectors(X, d.clone().normalize());
+    return { L, q, ax: X.clone().applyQuaternion(q), u: Yv.clone().applyQuaternion(q), v: Zv.clone().applyQuaternion(q) };
+  }
+  function tube(a, b, prof, e = 2, per = 4) {
+    const f = frame(a, b);
+    const secs = resample(prof.map(([t, cy, A, B, cz = 0]) => ({ x: t * f.L, y: cy, a: A, b: B, z: cz })), per);
+    return skin(secs.map(s => ({ c: a.clone().addScaledVector(f.ax, s.x).addScaledVector(f.u, s.y).addScaledVector(f.v, s.z || 0), u: f.u, v: f.v, a: s.a, b: s.b })), e);
+  }
+  function ellip(c, rx, ry, rz, rotZ = 0, n = 14, mer = 12) {
+    const u = new V(Math.cos(rotZ), Math.sin(rotZ), 0), up = new V(-Math.sin(rotZ), Math.cos(rotZ), 0), rings = [];
+    for (let i = 0; i <= n; i++) { const t = -1 + 2 * i / n, s = Math.sqrt(Math.max(1 - t * t, 0)); rings.push({ c: c.clone().addScaledVector(up, t * ry), u, v: Zv, a: Math.max(rx * s, 0.2), b: Math.max(rz * s, 0.2) }); }
+    return skin(rings, 2, 28, mer);
+  }
+  function loftRings(list, u, e, per = 3) {
+    const secs = resample(list, per);
+    return skin(secs.map(s => ({ c: new V(s.x, s.y, 0), u, v: Zv, a: s.a, b: s.b })), e);
+  }
+  const L3 = (p, z = 0) => new V(p.x, p.y, z);
+  const rad_ = d => d * Math.PI / 180;
+  // MCP, PIP, DIP flexion and thumb flexion, degrees
+  const POSES = { keyboard: [24, 48, 24, 14], mouse: [14, 30, 16, 8], tbThumb: [18, 38, 20, 22], tbFinger: [10, 36, 22, 10], phone: [52, 68, 38, 30], doc: [6, 12, 6, 6], rest: [14, 28, 14, 10] };
+  function handParts(a, s, HL, pose, add) {
+    const W0 = a.W, tip = a.hand.tip, tilt = a.hand.tilt || 0;
+    const F0 = new V(tip.x - W0.x, 0, tip.z - W0.z); if (F0.lengthSq() < 1) F0.set(1, 0, 0); F0.normalize();
+    const F = F0.clone().multiplyScalar(Math.cos(tilt)).addScaledVector(Yv, Math.sin(tilt)).normalize();
+    const Lz = new V().crossVectors(F, Yv).normalize(), U = new V().crossVectors(Lz, F).normalize(), med = Lz.clone().multiplyScalar(-s);
+    const P = (x, y) => W0.clone().addScaledVector(F, x).addScaledVector(U, y);
+    const palmL = 0.5 * HL;
+    add(tube(P(-0.1 * HL, 0), P(palmL + 0.03 * HL, -0.012 * HL), [[0, 0, 0.098, 0.15], [0.14, 0.002, 0.1, 0.158], [0.3, 0.005, 0.088, 0.19], [0.55, 0.006, 0.08, 0.212], [0.82, 0, 0.068, 0.226], [1.0, -0.004, 0.052, 0.214]].map(([t, c, A, B]) => [t, c * HL, A * HL, B * HL]), 2.6, 3));
+    const [mcp, pip, dip, thf] = POSES[pose] || POSES.rest, FL = 0.46 * HL;
+    for (const [lat, lf, rf, kx] of [[0.155, 0.92, 1.0, -0.02], [0.055, 1.0, 1.03, 0], [-0.045, 0.95, 0.97, -0.012], [-0.14, 0.78, 0.86, -0.048]]) {
+      let p = P(palmL + kx * HL, -0.012 * HL).addScaledVector(med, lat * HL);
+      const base = F.clone().addScaledVector(med, lat * 0.22).normalize();
+      let r = 0.047 * HL * rf, cum = 0; const segs = [0.48, 0.3, 0.22], angs = [mcp, pip, dip];
+      for (let k = 0; k < 3; k++) {
+        cum += angs[k] * (1 + (0.5 - lf) * 0.1);
+        const d = base.clone().multiplyScalar(Math.cos(rad_(cum))).addScaledVector(U, -Math.sin(rad_(cum))).normalize();
+        const q = p.clone().addScaledVector(d, segs[k] * FL * lf), r2 = r * (k === 2 ? 0.8 : 0.9), end = k === 2 ? 0.55 : 0.96;
+        add(tube(p, q, [[-0.14, 0, r * 0.9, r * 1.02], [0.5, 0, r * 0.82, r * 0.94], [1.0, 0, r2 * 0.92, r2], [1.12, 0, r2 * end * 0.9, r2 * end]], 2, 2), 'finger');
+        p = q; r = r2;
+      }
+    }
+    let tp = P(0.2 * HL, -0.035 * HL).addScaledVector(med, 0.15 * HL);
+    let td = F.clone().multiplyScalar(0.72).addScaledVector(med, 0.5).addScaledVector(U, -0.4).normalize();
+    const ts = [0.25, 0.17, 0.14], tr = [0.074, 0.058, 0.05];
+    for (let k = 0; k < 3; k++) {
+      const q = tp.clone().addScaledVector(td, ts[k] * HL), r = tr[k] * HL, end = k === 2 ? 0.55 : 0.88;
+      add(tube(tp, q, [[-0.15, 0, r, r * 1.05], [0.6, 0, r * 0.93, r], [1.1, 0, r * end, r * end * 1.05]], 2, 2), 'finger');
+      tp = q; td = td.clone().addScaledVector(F, 0.22).addScaledVector(med, -0.3 * thf / 25).addScaledVector(U, -0.1).normalize();
+    }
+  }
+
+  function build(M, G, mode, mats) {
+    const g = new THREE.Group(), parts = [];
+    let reg = 'man.trunk';
+    const add = (part, kind = 'skin') => parts.push({ ...part, kind, reg });
+    const T = G.T, U2 = rot2({ x: 1, y: 0 }, G.dR), U = new V(U2.x, U2.y, 0);
+    const s0y = G.S0.y, hipU = G.hipU, SEL = G.SEL;
+    const BD = M.buttockdepth, AD = M.abdominalextensiondepthsitting, CD = M.chestdepth, HB = M.hipbreadthsitting, BA = M.biacromialbreadth;
+    const yy = f => hipU + f * (s0y - hipU);
+    const ring = (cx, cy, a, b) => { const p = T({ x: cx, y: cy }); return { x: p.x, y: p.y, a, b }; };
+    // pelvis and torso
+    add(ellip(new V(G.base.x + 0.5 * BD, G.seatY + hipU, 0), 0.5 * BD, hipU, 0.5 * HB * 0.97));
+    add(loftRings([
+      ring(0.5 * BD, hipU * 1.15, 0.48 * BD, 0.45 * HB),
+      ring(0.5 * AD, yy(0.2), 0.5 * AD, 0.4 * HB),
+      ring(0.25 * (AD + CD), yy(0.42), 0.25 * (AD + CD), 0.41 * BA),
+      ring(0.5 * CD, yy(0.66), 0.5 * CD, 0.45 * BA),
+      ring(0.49 * CD, yy(0.86), 0.47 * CD, 0.47 * BA),
+      ring(0.46 * CD, s0y + 0.03 * SEL, 0.4 * CD, 0.45 * BA),
+      ring(0.4 * CD, s0y + 0.1 * SEL, 0.28 * CD, 0.27 * BA),
+      ring(0.37 * CD, s0y + 0.15 * SEL, 0.2 * CD, 0.16 * BA)
+    ], U, 2.3, 3));
+    // head and neck
+    reg = 'man.head';
+    const Lh = M.headlength, Bh = M.headbreadth, topY = M.sittingheight, eyeY = M.eyeheightsitting;
+    const Hh = 1.95 * (topY - eyeY), cx0 = G.Hc0.x, face = cx0 + Lh / 2;
+    const hr = G.dR - G.phi, Uh2 = rot2({ x: 1, y: 0 }, hr), Uh = new V(Uh2.x, Uh2.y, 0);
+    const HP = (x, y) => G.Hd({ x, y }, G.phi);
+    const hring = (f, dx, a, b) => { const p = HP(cx0 + dx * Lh, topY - f * Hh); return { x: p.x, y: p.y, a: a * Lh, b: b * Bh }; };
+    add(loftRings([
+      hring(0.004, -0.04, 0.12, 0.12), hring(0.06, -0.01, 0.36, 0.38), hring(0.16, 0, 0.46, 0.47), hring(0.3, 0, 0.5, 0.5),
+      hring(0.47, 0, 0.5, 0.49), hring(0.6, 0.015, 0.47, 0.46), hring(0.73, 0.06, 0.41, 0.41), hring(0.86, 0.11, 0.32, 0.34),
+      hring(0.96, 0.17, 0.19, 0.21), hring(1.0, 0.18, 0.07, 0.08)
+    ], Uh, 2.1, 3));
+    const ec = topY - eyeY;
+    const noseC = HP(face - 2, eyeY - 0.38 * ec);
+    add(ellip(L3(noseC), 0.07 * Lh, 0.2 * ec, 0.055 * Bh, hr, 6, 6), 'detail');
+    for (const s of [-1, 1]) { const ear = HP(cx0 - 0.08 * Lh, eyeY - 0.12 * ec); add(ellip(L3(ear, s * 0.49 * Bh), 0.1 * Lh, 0.26 * ec, 0.035 * Bh, hr, 6, 6), 'detail'); }
+    const neckBase = T({ x: 0.36 * CD, y: s0y + 0.1 * SEL }), neckTop = HP(cx0 - 0.02 * Lh, eyeY - 0.75 * ec);
+    add(tube(L3(neckBase), L3(neckTop), [[-0.1, 0, 0.38 * Bh, 0.36 * Bh], [0.25, 0, 0.31 * Bh, 0.3 * Bh], [0.75, 0, 0.29 * Bh, 0.28 * Bh], [1.05, 0, 0.3 * Bh, 0.3 * Bh]]));
+    // arms
+    for (const s of [-1, 1]) {
+      const a = G.arms[s]; reg = s < 0 ? 'man.armL' : 'man.armR';
+      add(ellip(a.S.clone().add(new V(0, 0.02 * SEL, s * 0.03 * BA)), 0.15 * SEL, 0.16 * SEL, 0.14 * SEL, 0, 10, 8));
+      add(tube(a.S, a.E, [[-0.05, 0, 0.14, 0.15], [0.15, 0, 0.145, 0.15], [0.45, 0, 0.125, 0.13], [0.8, 0, 0.11, 0.115], [1.0, 0, 0.1, 0.11], [1.06, 0, 0.09, 0.1]].map(([t, c, A, B]) => [t, c, A * SEL, B * SEL])));
+      add(ellip(a.E, 0.1 * SEL, 0.1 * SEL, 0.105 * SEL, 0, 10), 'joint');
+      add(tube(a.E, a.W, [[-0.04, 0, 0.1, 0.11], [0.2, 0, 0.115, 0.13], [0.55, 0, 0.09, 0.11], [0.85, 0, 0.068, 0.097], [1.0, 0, 0.06, 0.09], [1.03, 0, 0.055, 0.085]].map(([t, c, A, B]) => [t, c, A * SEL, B * SEL])));
+      reg = s < 0 ? 'man.handL' : 'man.handR';
+      handParts(a, s, M.handlength, a.pose || 'rest', add);
+    }
+    // legs
+    const dk = G.dk, Hm = M.lateralmalleolusheight;
+    for (const s of [-1, 1]) {
+      const z = s * G.legZ, Hh3 = L3(G.H, z), Kk = L3(G.K, z), Aa = L3(G.A, z); reg = s < 0 ? 'man.legL' : 'man.legR';
+      add(tube(Hh3, Kk, [[-0.06, 0, 0.85 * hipU, 0.85 * hipU], [0.02, 0, 0.94 * hipU, 0.98 * hipU], [0.3, 0, 0.9 * hipU, 0.98 * hipU], [0.68, 0, 0.74 * hipU, 0.8 * hipU], [0.95, 0, dk, 1.05 * dk], [1.06, 0, 0.88 * dk, 0.92 * dk]]));
+      add(ellip(Kk, 0.95 * dk, 0.95 * dk, 0.95 * dk, 0, 10), 'joint');
+      add(tube(Kk, Aa, [[-0.04, 0, 0.92 * dk, 0.92 * dk], [0.1, 0, 0.84 * dk, 0.84 * dk], [0.3, -0.16 * dk, 0.92 * dk, 0.82 * dk], [0.6, -0.06 * dk, 0.68 * dk, 0.63 * dk], [0.9, 0, 0.47 * Hm, 0.5 * Hm], [1.02, 0, 0.45 * Hm, 0.48 * Hm]]));
+      reg = s < 0 ? 'man.footL' : 'man.footR';
+      const sh = G.shoe || 0, L = M.footlength + (sh > 0 ? 26 : 0), B = M.footbreadthhorizontal + (sh > 0 ? 12 : 0);
+      const heel = G.A.x - 0.24 * M.footlength - (sh > 0 ? 13 : 0), y0 = G.A.y - Hm - sh, solT = sh * 0.75;
+      const up = [[-0.012, 0.36, 0.16, 0, 0], [0.04, 0.8, 0.3, 0, 0], [0.15, 1.1, 0.33, 0, 0], [0.27, 1.24, 0.35, -0.01, 0], [0.43, 0.98, 0.41, 0.005, 0], [0.6, 0.74, 0.47, 0.025, 0], [0.76, 0.58, 0.47, 0.045, 1], [0.88, 0.45, 0.41, 0.07, 3], [0.96, 0.33, 0.3, 0.09, 5], [1.0, 0.18, 0.15, 0.09, 6]]
+        .map(([fx, fh, fb, fm, lift]) => { const h = fh * Hm + sh - solT * 0.7; return [fx, lift + solT * 0.7 + h / 2, h / 2, fb * B, -s * fm * B]; });
+      add(tube(new V(heel, y0, z), new V(heel + L, y0, z), up, 2.6, 3), sh > 0 ? 'shoe' : 'skin');
+      if (sh > 0) {
+        const so = [[-0.014, 0.17, 0], [0.05, 0.32, 0], [0.28, 0.35, -0.01], [0.6, 0.5, 0.025], [0.88, 0.43, 0.07], [0.985, 0.2, 0.09], [1.006, 0.08, 0.09]]
+          .map(([fx, fb, fm], i, arr) => { const lift = fx > 0.75 ? (fx - 0.75) * 24 : 0; return [fx, lift + solT / 2, solT / 2, fb * B + 3, -s * fm * B]; });
+        add(tube(new V(heel, y0, z), new V(heel + L, y0, z), so, 4, 3), 'sole');
+      }
+    }
+    // render by mode
+    for (const p of parts) {
+      if (mode === 'wire') { if (p.kind === 'joint') { p.geo.dispose(); p.lgeo.dispose(); continue; } const l = new THREE.LineSegments(p.lgeo, mats.wire); l.userData.node = p.reg; g.add(l); p.geo.dispose(); }
+      else { const m = new THREE.Mesh(p.geo, mode === 'links' ? mats.ghost : (p.kind === 'shoe' ? mats.shoe : p.kind === 'sole' ? (mats.kb || mats.shoe) : mats.mk)); m.userData.part = p.kind; m.userData.node = p.reg; g.add(m); p.lgeo.dispose(); }
+    }
+    if (mode === 'links') {
+      const joint = (p, r = 11) => { const m = new THREE.Mesh(new THREE.SphereGeometry(r, 16, 12), mats.link); m.position.copy(p); m.renderOrder = 5; m.userData.node = 'man.links'; g.add(m); };
+      const link = (a, b, r = 5) => { const d = new V().subVectors(b, a), L = d.length(); if (L < 1) return; const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, L, 10), mats.link); m.position.copy(a).addScaledVector(d, 0.5); m.quaternion.setFromUnitVectors(Yv, d.normalize()); m.renderOrder = 5; m.userData.node = 'man.links'; g.add(m); };
+      const C7 = L3(G.C), hipMid = L3(G.H), eye = L3(G.E), shMid = L3(G.Sh);
+      link(L3(G.H, -G.legZ), L3(G.H, G.legZ)); link(hipMid, shMid); link(shMid, C7); link(C7, eye);
+      for (const s of [-1, 1]) {
+        const a = G.arms[s], z = s * G.legZ;
+        link(shMid, a.S); link(a.S, a.E); link(a.E, a.W); link(a.W, a.hand.tip, 4);
+        link(L3(G.H, z), L3(G.K, z)); link(L3(G.K, z), L3(G.A, z));
+        [a.S, a.E, a.W, L3(G.H, z), L3(G.K, z), L3(G.A, z)].forEach(p => joint(p));
+      }
+      joint(C7); joint(hipMid, 9); joint(eye, 9);
+    }
+    return g;
+  }
+  return { build };
+})();
+
+const V3 = THREE.Vector3, rad = d => d * Math.PI / 180;
+const rot = (v, a) => { const c = Math.cos(a), s = Math.sin(a); return { x: v.x * c - v.y * s, y: v.x * s + v.y * c }; };
+const add2 = (a, b) => ({ x: a.x + b.x, y: a.y + b.y }), sub2 = (a, b) => ({ x: a.x - b.x, y: a.y - b.y });
+function ik2(S, T, L1, L2, pole) {
+  const d = new V3().subVectors(T, S), dir = d.clone().normalize();
+  let dist = Math.min(d.length(), L1 + L2 - 0.5); dist = Math.max(dist, Math.abs(L1 - L2) + 0.5);
+  const a = (L1 * L1 - L2 * L2 + dist * dist) / (2 * dist), h = Math.sqrt(Math.max(L1 * L1 - a * a, 0));
+  const pp = pole.clone().sub(dir.clone().multiplyScalar(pole.dot(dir))).normalize();
+  return { E: S.clone().addScaledVector(dir, a).addScaledVector(pp, h), W: S.clone().addScaledVector(dir, dist) };
+}
+function pose(M) {
+  const SEL = M.shoulderelbowlength, HL = M.handlength, shoe = 25;
+  const hipF = 0.5 * M.buttockdepth, hipU = 0.5 * M.thighclearance;
+  const kneeXref = 0.5 * (M.buttockpopliteallength + M.buttockkneelength), dk = 0.5 * (M.kneeheightsitting - M.poplitealheight);
+  const Lthigh = Math.hypot(kneeXref - hipF, hipU - dk), Lshank = M.poplitealheight + dk - M.lateralmalleolusheight;
+  const GHoff = 0.11 * SEL, Lu = 0.82 * SEL, Lf = M.radialestylionlength;
+  const H0 = { x: hipF, y: hipU }, S0 = { x: 0.3 * M.chestdepth, y: M.shoulderheightsitting - GHoff }, C0 = { x: 0.25 * M.chestdepth, y: M.cervicaleheightsitting - 15 };
+  const eyeF = C0.x + 0.57 * M.headlength, E0 = { x: eyeF, y: M.eyeheightsitting }, headRy = 0.5 * (M.tragiontopofhead + 105);
+  const Hc0 = { x: eyeF + 15 - M.headlength / 2, y: M.sittingheight - headRy };
+  const dR = rad(2), seatY = M.poplitealheight + shoe, base = { x: -hipF, y: seatY };
+  const H = add2(base, H0), T = q => add2(H, rot(sub2(q, H0), dR));
+  const Sh = T(S0), C = T(C0), phi = dR + rad(5);
+  const Hd = (q, ph) => add2(C, rot(sub2(q, C0), dR - ph)), E = Hd(E0, phi);
+  const psi = rad(3), kneeY = seatY + dk, dy = kneeY - H.y;
+  const K = { x: H.x + Math.sqrt(Lthigh * Lthigh - dy * dy), y: kneeY };
+  const A = { x: K.x + Lshank * Math.sin(psi), y: K.y - Lshank * Math.cos(psi) };
+  const legZ = Math.max(0.5 * M.hipbreadthsitting - hipU * 0.92, hipU * 0.7), ghZ = 0.415 * M.biacromialbreadth;
+  const arms = {};
+  for (const s of [-1, 1]) {
+    const Sv = new V3(Sh.x, Sh.y, s * ghZ), tdir = new V3(K.x - H.x, K.y - H.y, 0).normalize();
+    const Wt = new V3(H.x, H.y, 0).lerp(new V3(K.x, K.y, 0), 0.6); Wt.y += hipU * 0.95 + 22; Wt.z = s * (legZ + 10);
+    const ik = ik2(Sv, Wt, Lu, Lf, new V3(-0.4, -1, 0.55 * s).normalize());
+    const tip = ik.W.clone().addScaledVector(tdir, 0.78 * HL); tip.y -= 14;
+    arms[s] = { S: Sv, E: ik.E, W: ik.W, hand: { tip } };
+  }
+  return { T, H, H0, Sh, C, C0, Hc0, Hd, phi, dR, S0, base, seatY, hipU, dk, SEL, K, A, legZ, arms, E, shoe, ghZ, floorY: A.y - M.lateralmalleolusheight - shoe };
+}
+
+const M = Object.fromEntries(SUBJ.dims.map((k, i) => [k, SUBJ.v[i]]));
+document.getElementById('cap').textContent = `ANSUR II subject ${SUBJ.id} · 50th percentile male stature · ${Math.round(M.stature)} mm`;
+const G = pose(M);
+const tok = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const mats = { wire: new THREE.LineBasicMaterial({ color: tok('--wire'), transparent: true, opacity: 0.78 }) };
+const model = new THREE.Group();
+model.add(BODY.build(M, G, 'wire', mats));
+// stool, drawn as lines
+const stool = new THREE.Group(), lm = new THREE.LineBasicMaterial({ color: tok('--wire'), transparent: true, opacity: 0.45 });
+const sx = G.H.x + 20, top = G.seatY, r = 210;
+const circle = (y, rr, n = 64) => { const p = []; for (let i = 0; i <= n; i++) { const t = i / n * Math.PI * 2; p.push(new V3(sx + rr * Math.cos(t), y, rr * Math.sin(t))); } return new THREE.Line(new THREE.BufferGeometry().setFromPoints(p), lm); };
+stool.add(circle(top, r), circle(top - 40, r));
+const legs = [];
+for (let i = 0; i < 4; i++) { const t = (i + 0.5) / 4 * Math.PI * 2; legs.push(new V3(sx + (r - 30) * Math.cos(t), top - 40, (r - 30) * Math.sin(t)), new V3(sx + (r + 40) * Math.cos(t), G.floorY, (r + 40) * Math.sin(t))); }
+stool.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(legs), lm));
+model.add(stool);
+const box = new THREE.Box3().setFromObject(model), ctr = box.getCenter(new V3());
+model.position.set(-ctr.x, -G.floorY, -ctr.z);
+const turn = new THREE.Group(); turn.add(model);
+// floor rings
+const floor = new THREE.Group(), fm = new THREE.LineBasicMaterial({ color: tok('--floor') });
+for (const rr of [350, 600, 850]) { const p = []; for (let i = 0; i <= 96; i++) { const t = i / 96 * Math.PI * 2; p.push(new V3(rr * Math.cos(t), 0, rr * Math.sin(t))); } floor.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(p), fm)); }
+const spokes = []; for (let i = 0; i < 12; i++) { const t = i / 12 * Math.PI * 2; spokes.push(new V3(350 * Math.cos(t), 0, 350 * Math.sin(t)), new V3(850 * Math.cos(t), 0, 850 * Math.sin(t))); }
+floor.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(spokes), fm));
+turn.add(floor);
+
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+const scene = new THREE.Scene(); scene.add(turn);
+const cam = new THREE.PerspectiveCamera(26, 1, 10, 20000);
+const height = box.max.y - G.floorY;
+function size() {
+  const w = canvas.clientWidth, h = canvas.clientHeight; if (!w || !h) return;
+  renderer.setSize(w, h, false); cam.aspect = w / h;
+  const fitH = height * 1.18, fitW = 1500, vfov = rad(cam.fov);
+  const dist = Math.max(fitH / 2 / Math.tan(vfov / 2), fitW / 2 / (Math.tan(vfov / 2) * cam.aspect));
+  const ty = height * 0.48;
+  cam.position.set(0, ty + dist * 0.22, dist); cam.lookAt(0, ty, 0); cam.updateProjectionMatrix(); draw();
+}
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+let angle = -0.65, drag = null, last = performance.now();
+function draw() { turn.rotation.y = angle; renderer.render(scene, cam); }
+function loop(now) { const dt = Math.min(now - last, 50); last = now; if (!drag && !reduce) angle += dt * 0.00016; draw(); requestAnimationFrame(loop); }
+canvas.addEventListener('pointerdown', e => { drag = { x: e.clientX }; canvas.setPointerCapture(e.pointerId); canvas.classList.add('dragging'); });
+canvas.addEventListener('pointermove', e => { if (!drag) return; angle += (e.clientX - drag.x) * 0.008; drag.x = e.clientX; draw(); });
+const end = () => { drag = null; canvas.classList.remove('dragging'); };
+canvas.addEventListener('pointerup', end); canvas.addEventListener('pointercancel', end);
+new ResizeObserver(size).observe(canvas); size();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
