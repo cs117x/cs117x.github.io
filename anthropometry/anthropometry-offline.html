@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><!-- Offline build. Bundles three.js 0.160.0 (MIT, three.js authors), jsPDF 2.5.1 (MIT, James Hall and contributors) and svg2pdf.js 2.2.3 (MIT, yWorks GmbH). --><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style></head><body><title>Anthropometry Modelling Tool</title>
+<!doctype html><html lang="en"><head><!-- Offline build. Bundles three.js 0.160.0 (MIT, three.js authors), jsPDF 2.5.1 (MIT, James Hall and contributors) and svg2pdf.js 2.2.3 (MIT, yWorks GmbH). --><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style></head><body><title>Workspace Visualisation</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
 /* Layout: Blender-style workspace. Top bar with menus; 3D viewport (header, tool strip, object browser overlay, view cube) centre;
@@ -11,7 +11,7 @@
   --ok-bg:#e7f3ea; --warn-bg:#fbf0de; --bad-bg:#fae6e4; --info-bg:#eef1f4;
   --scene-bg:#f7f8fa; --grid-a:#d8dde3; --grid-b:#e9ecf0;
   --mk:#b7c1ca; --mk-joint:#a3aeb9; --shoe:#3b434c; --chair:#4a545e; --desk:#ddd8cf; --metal:#939da7; --screen:#1e242a; --frame:#2f363d; --kb:#3a424a; --device:#454d56; --ball:#8a2f2f; --paper:#fbfbf8; --panel-glass:#aebccb;
-  --zone-n:#2b7a43; --zone-m:#9f6000; --wire:#53708c; --env-wall:#d6dbe0; --env-floor:#d3d8dd; --env-edge:#9aa5b0; --env-door:#c3cad1;
+  --zone-n:#2b7a43; --zone-m:#9f6000; --wire:#53708c; --env-wall:#d6dbe0; --env-floor:#d3d8dd; --env-edge:#9aa5b0; --env-door:#c3cad1; --env-console:#d8cfb9; --env-rack:#8f8a7e; --env-glow:#2d5a7a;
   --cube-face:#f1f4f7; --cube-hover:#d5e3f0; --cube-edge:#98a3af; --cube-text:#36424f;
   --overlay:rgba(20,28,36,.36); --float:rgba(255,255,255,.94); --shadow:0 6px 22px rgba(0,0,0,.12);
   --f-sans:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Roboto,Arial,sans-serif;
@@ -25,7 +25,7 @@
   --ok-bg:rgba(63,208,126,.13); --warn-bg:rgba(255,178,46,.13); --bad-bg:rgba(255,92,80,.15); --info-bg:#141414;
   --scene-bg:#000000; --grid-a:#2a2a2a; --grid-b:#141414;
   --mk:#a2acb6; --mk-joint:#8a95a0; --shoe:#33373b; --chair:#4c5258; --desk:#5b564e; --metal:#80878e; --screen:#11161c; --frame:#41464c; --kb:#31353a; --device:#3b4045; --ball:#c0504a; --paper:#d2d2d2; --panel-glass:#3a4652;
-  --zone-n:#3fd07e; --zone-m:#ffb22e; --wire:#6fa8ff; --env-wall:#16191c; --env-floor:#202428; --env-edge:#4a525a; --env-door:#2a3036;
+  --zone-n:#3fd07e; --zone-m:#ffb22e; --wire:#6fa8ff; --env-wall:#16191c; --env-floor:#202428; --env-edge:#4a525a; --env-door:#2a3036; --env-console:#4a463e; --env-rack:#2c2b28; --env-glow:#1d3d57;
   --cube-face:#121212; --cube-hover:#1b3352; --cube-edge:#4d4d4d; --cube-text:#dcdcdc;
   --overlay:rgba(0,0,0,.66); --float:rgba(8,8,8,.92); --shadow:0 6px 24px rgba(0,0,0,.7);
   color-scheme:dark;
@@ -297,7 +297,13 @@ textarea{width:100%;min-height:90px;font-size:11px;border:1px solid var(--rule);
 .env-btn{border:0;border-left:1px solid var(--rule-strong);background:transparent;cursor:pointer;font:inherit;padding:2px 8px 2px 10px;border-radius:0}
 .env-btn:hover b{text-decoration:underline}
 .env-btn b{color:var(--ink);font-weight:600}
-.envlib-card{width:min(1040px,100%)}
+.envlib-card{width:min(1100px,100%)}
+/* start screen: the library is the first thing shown, on an opaque page, before any model is shown */
+#envlib.start{background:var(--bg)}
+#envlib.start #envlib-close,#envlib.start .envlib-norm{display:none}
+#envlib.start .modal-card{box-shadow:none}
+.envlib-intro{display:none}
+#envlib.start .envlib-intro{display:block}
 .envlib-body{padding:12px 16px 18px;overflow:auto}
 .envlib-body>p{margin:0 0 10px;color:var(--muted);max-width:80ch}
 .envlib-dom{font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;margin:14px 0 6px}
@@ -435,7 +441,7 @@ textarea{width:100%;min-height:90px;font-size:11px;border:1px solid var(--rule);
         <button role="menuitem" data-act="keys">Mouse and keys</button>
       </div>
     </div>
-    <button class="app-title env-btn" id="env-btn" title="Change environment">Anthropometry Modelling Tool · <b id="env-name">Seated desk workstation</b></button>
+    <button class="app-title env-btn" id="env-btn" title="Change environment">Workspace Visualisation · <b id="env-name">Seated desk workstation</b></button>
     <span class="tb-spacer"></span>
     <div class="who" id="who"></div>
     <div class="seg" role="group" aria-label="Theme"><button id="th-light" aria-pressed="true">Light</button><button id="th-dark" aria-pressed="false">Dark</button></div>
@@ -627,7 +633,7 @@ textarea{width:100%;min-height:90px;font-size:11px;border:1px solid var(--rule);
 
 <div class="modal" id="envlib" hidden>
   <div class="modal-card envlib-card" role="dialog" aria-modal="true" aria-labelledby="envlib-h">
-    <div class="modal-head"><h2 id="envlib-h">Environment library</h2><span class="tb-spacer"></span><button class="icon-btn" id="envlib-close" aria-label="Close">×</button></div>
+    <div class="modal-head"><h2 id="envlib-h"><span class="envlib-intro">Workspace Visualisation: choose an environment</span><span class="envlib-norm">Environment library</span></h2><span class="tb-spacer"></span><button class="icon-btn" id="envlib-close" aria-label="Close">×</button></div>
     <div class="envlib-body">
       <p>Choose where to put the manikin. Each environment is a template: geometry, seated roles, workstation defaults and the checks that apply. Loading one replaces the current workstation layout; the manikin and limits stay as they are.</p>
       <div id="envlib-list"></div>
@@ -790,7 +796,11 @@ const OBJ = {
   tbThumb: { label: 'Trackball (thumb)', d: 134, w: 100, h: 46 },
   tbFinger: { label: 'Trackball (finger)', d: 130, w: 118, h: 58 },
   phone: { label: 'Desk phone', d: 200, w: 215, h: 90 },
-  doc: { label: 'A4 document', d: 297, w: 210, h: 2 }
+  doc: { label: 'A4 document', d: 297, w: 210, h: 2 },
+  // hand controllers: the grip is gripped about 120 mm (stick) or 90 mm (throttle) above the base. base: optional height of the
+  // mounting surface above the floor, for controls on a side console rather than the desk (e.g. a cockpit)
+  stick: { label: 'Joystick', d: 110, w: 110, h: 190, grip: 120 },
+  throttle: { label: 'Throttle', d: 150, w: 90, h: 140, grip: 90 }
 };
 const CHAIRS = {
   task: { label: 'Task chair', back: 640, head: false, range: [410, 540] },
@@ -798,6 +808,9 @@ const CHAIRS = {
   highback: { label: 'High-back chair', back: 800, head: false, range: [430, 530] },
   drafting: { label: 'Draughting chair with foot ring', back: 600, head: false, range: [550, 800], ring: true },
   stool: { label: 'Saddle stool (no backrest)', back: 0, head: false, range: [520, 780], saddle: true },
+  // operator seats for the environment library: indicative, not products
+  operator: { label: 'Operator seat, reclining, with headrest', group: 'Operator and aircrew seats', back: 820, head: true, range: [420, 540], src: 'Indicative operator seat (environment library)' },
+  ejection: { label: 'Ejection seat (indicative)', group: 'Operator and aircrew seats', back: 900, head: true, range: [300, 450], noArms: true, src: 'Indicative ejection seat (environment library)' },
   // BS EN 1335-1:2020 Table 2 envelopes for a three-lever typist chair (gas lift, back height, back angle; fixed seat depth, no armrests).
   // Fixed seat depth is only permitted for Types B and C. A seat depth max of 9999 means "no maximum".
   typistB: { label: 'Typist chair, Type B', group: 'BS EN 1335-1', std: 'BS EN 1335-1 Type B', typist: true, noArms: true, back: 460, head: false, range: [420, 510], depth: [425, 485], lumbar: [170, 300], src: 'BS EN 1335-1:2020, Table 2, Type B' },
@@ -813,103 +826,270 @@ const CHAIRS = {
 };
 const chairOpts = () => Object.entries(CHAIRS).map(([k, v]) => [k, v.label, v.group || v.brand || 'Generic']);
 const DESK_SIZES = [['1200x600', '1200 × 600'], ['1200x800', '1200 × 800'], ['1400x700', '1400 × 700'], ['1400x800', '1400 × 800'], ['1600x800', '1600 × 800'], ['1800x800', '1800 × 800'], ['1800x900', '1800 × 900'], ['2000x1000', '2000 × 1000'], ['custom', 'Custom']];
-const ASPECTS = { '16:9': [16, 9], '16:10': [16, 10], '21:9': [21, 9], '32:9': [32, 9], '3:2': [3, 2] };
-const SIZES = [21.5, 23.8, 24, 27, 31.5, 32, 34, 38, 43, 49];
+const ASPECTS = { '16:9': [16, 9], '16:10': [16, 10], '21:9': [21, 9], '32:9': [32, 9], '3:2': [3, 2], '4:3': [4, 3], '5:4': [5, 4] };
+const SIZES = [6, 8.4, 10.4, 12.1, 15, 19, 20.1, 21.3, 21.5, 23.8, 24, 27, 31.5, 32, 34, 38, 43, 49, 55];
 const CURVES = [[0, 'Flat'], [3800, '3800R'], [3000, '3000R'], [2300, '2300R'], [1800, '1800R'], [1500, '1500R'], [1000, '1000R']];
 function screenDims(sc) { const [a, b] = ASPECTS[sc.aspect] || [16, 9]; const k = sc.size * 25.4 / Math.hypot(a, b); let w = a * k, h = b * k; if (sc.orient === 'portrait') [w, h] = [h, w]; return { w, h }; }
 function objDims(o) { return o.type === 'keyboard' ? { d: KB[o.kb].d, w: KB[o.kb].w, h: 30 } : OBJ[o.type]; }
 
 /* ---------------- environment library (ENV-07, ENV-08) ----------------
-   Each environment is a template held as data: geometry, roles, defaults for the workstation model, and the checks
-   that apply now or are planned. The tool loads a template by id (?env=<id> in the URL, the Environment tab, or the
-   library dialog). New templates are added here, not in the tool's code. See docs/ENVIRONMENTS_AND_KIT.md section 3.
+   Each environment is a template held as data: an enclosure (shell), seated roles, fixtures, defaults for the
+   workstation model, and the checks that apply now or are planned. The tool loads a template by id (?env=<id> in the
+   URL, the Environment tab, or the library shown before any model loads). New templates are added here, not in the
+   tool's code. See docs/ENVIRONMENTS_AND_KIT.md section 3.
 
-   Frame: Y up, +X forward (towards the console), +Z to the operator's right. The origin is the seat front edge of the
-   active role's seat, at floor level. All lengths in mm, angles in degrees.
+   Every dimension here is INDICATIVE: generic, illustrative geometry built from public, approximate figures, so that
+   layouts can be explored. None of it is the geometry of a real platform. Real platform geometry is project data and is
+   never added to this file (docs/ENVIRONMENTS_AND_KIT.md section 7).
 
-   Public builds carry generic, illustrative templates built from public dimensions only. Real platform geometry is
-   project data and is never added to this file (docs/ENVIRONMENTS_AND_KIT.md section 7).
+   Frames. All lengths in mm, angles in degrees.
+     Shell frame: origin on the floor at the centre of the enclosure; Y up; +X towards the front wall (the wall the
+       consoles face); Z along the enclosure's length.
+     Role frame: the tool's world frame for the role being assessed: origin at that seat's front edge on the floor, +X
+       forward, +Z to the operator's right. Roles marked mirror: true are left-right mirror images of the template's
+       console (its ws), for example the right-hand seat of a pair.
 
    Fields
      id, name, family (domain and sub-domain), domain (office | air | land | maritime | submarine)
      status       available | preview | planned (planned templates are listed but cannot be loaded)
      summary      one or two sentences for the library card
-     roles        [{ id, name, z }]: each seated position, z = its centreline relative to the shell centre
-     shell        optional enclosure: { kind: 'box', internal: { length, width, height }, frontGap, door }
-                  length runs along Z, width along X; frontGap is from the desk's far edge to the front wall
+     roles        [{ id, name, z, dx, mirror }]: z = the seat's centreline along the shell; each console's far edge sits
+                  frontGap from the front wall, then dx (negative = further back, for rows)
+     shell        optional enclosure:
+                    { kind: 'box', internal: { length, width, height }, ceiling, frontGap, door }
+                    { kind: 'tube', internal: { length, diameter, axis }, frontAt, frontGap, door }
+                  box: length along Z, width along X. tube: a fuselage or hull along Z, axis = height of its centreline
+                  above the floor, frontAt = height at which the curved wall is taken as the front.
+     fixtures     shared items in the shell frame; x may be given as front: distance back from the front wall
+     roleFixtures items repeated at every role, in that role's frame (mirrored with the role)
+                    { k: 'box', x, y, z, d (along X), h, w (along Z), mat, yaw }    centre position
+                    { k: 'disp', x, y, z, w, h, yaw, tilt } or { k: 'disp', size, aspect, ... }   a display, facing -X at yaw 0
+                    { k: 'cyl', x, z, y0, y1, r, mat }  { k: 'dome', x, y, z, rx, ry, rz, mat }   mat: console | rack | dark | metal | glass | wall
      stations     'mirror': every other role gets a copy of the active console, screens and seat
      params       user-adjustable geometry: [{ key, label, path, min, max, step }] (path into the template)
      ws           partial workstation settings merged over the tool's defaults when the template loads
      checks       { now: [check groups that apply], planned: [plain-language checks still to come] }
-     sources      standards and public references behind the geometry
+     sources      public references behind the indicative geometry
      reqs         requirement IDs the template serves */
 const HFE_ENV = (() => {
+  const ALL_NOW = ['Vision', 'Head and neck', 'Upper limb', 'Trunk and seat', 'Lower limb', 'Furniture', 'Joint range of motion', 'Clearance'];
+  // a display given by diagonal (inches) and aspect ratio
+  const disp = (size, aspect, o) => { const [a, b] = aspect.split(':').map(Number), k = size * 25.4 / Math.hypot(a, b); return { k: 'disp', w: a * k, h: b * k, ...o }; };
+  const scr = (size, aspect, x, z, yaw, dy, tilt = null) => ({ size, aspect, orient: 'landscape', curve: 0, tilt, dy, x, z, yaw });
+  const room = (L, W, H, extra) => ({ length: { key: 'length', label: L, path: ['shell', 'internal', 'length'], min: 2000, max: 30000, step: 10 },
+    width: { key: 'width', label: W, path: ['shell', 'internal', 'width'], min: 1200, max: 20000, step: 10 },
+    height: { key: 'height', label: H, path: ['shell', 'internal', 'height'], min: 1500, max: 6000, step: 10 }, ...extra });
+
   const T = [
     {
       id: 'desk-workstation', name: 'Seated desk workstation', family: 'Office and general', domain: 'office', status: 'available',
       summary: 'An office or control-room desk with a chair, one to four screens and desk items. The original Seated Workstation Fit model.',
       roles: [{ id: 'user', name: 'Desk user', z: 0 }],
       ws: {},
-      checks: { now: ['Vision', 'Head and neck', 'Upper limb', 'Trunk and seat', 'Lower limb', 'Furniture', 'Joint range of motion', 'Clearance'], planned: [] },
+      checks: { now: ALL_NOW, planned: [] },
       sources: ['ISO 9241-5', 'BS EN 1335-1:2020', 'MIL-STD-1472', 'ANSUR II'],
       reqs: ['ENV-02', 'ENV-03', 'ENV-05']
     },
     {
-      id: 'gcs-container', name: 'Containerised ground control station', family: 'Air: remotely piloted', domain: 'air', status: 'preview',
-      summary: 'A generic, illustrative ISO-container shelter with two side-by-side operator consoles (pilot and sensor operator), each with a display array. Built for MQ-9B class display placement and display creep studies. Not the real GCS geometry.',
-      roles: [{ id: 'pilot', name: 'Pilot (left console)', z: -750 }, { id: 'sensor', name: 'Sensor operator (right console)', z: 750 }],
-      // ISO 668 series 1 20 ft container, typical internal dimensions; the console sits against the front long wall
-      shell: { kind: 'box', internal: { length: 5898, width: 2352, height: 2393 }, frontGap: 60, door: { side: 'rear', z: 2300, width: 900, height: 2000 } },
+      id: 'gcs-container', name: 'Ground control station (RPAS)', family: 'Air: remotely piloted', domain: 'air', status: 'preview',
+      summary: 'Two reclining operator seats side by side in a shipping-container shelter, a radio and phone pedestal between them, and each operator facing a keyboard, joystick, small console screens and a two-tier wall of large displays. Laid out after public photographs of MQ-9 class stations; indicative dimensions only.',
+      roles: [{ id: 'pilot', name: 'Pilot (left seat)', z: -720 }, { id: 'sensor', name: 'Sensor operator (right seat)', z: 720, mirror: true }],
+      // typical internal dimensions of an ISO 668 20 ft container; consoles against the front long wall
+      shell: { kind: 'box', internal: { length: 5898, width: 2352, height: 2393 }, frontGap: 260, door: { side: 'rear', z: 2300, width: 900, height: 2000 } },
       stations: 'mirror',
-      params: [
-        { key: 'length', label: 'Shelter internal length', path: ['shell', 'internal', 'length'], min: 3000, max: 12000, step: 10 },
-        { key: 'width', label: 'Shelter internal width', path: ['shell', 'internal', 'width'], min: 1600, max: 3500, step: 10 },
-        { key: 'height', label: 'Shelter internal height', path: ['shell', 'internal', 'height'], min: 1800, max: 3000, step: 10 }
-      ],
+      params: Object.values(room('Shelter internal length', 'Shelter internal width', 'Shelter internal height')),
       ws: {
-        chair: 'task', armrests: true, footrest: 0,
-        deskSize: '1400x800', deskWidth: 1400, deskDepth: 800, legroom: 600,
+        chair: 'operator', armrests: true, armH: 230, recline: 12, footrest: 0,
+        deskSize: 'custom', deskWidth: 900, deskDepth: 620, deskH: 740, deskT: 40, legroom: 430, deskStyle: 'console',
         screens: {
-          count: 4, layout: 'custom', bottom: 60, tilt: 5,
-          // primary flight display centre, two side displays, one situational-awareness display above
-          list: [
-            { size: 24, aspect: '16:10', orient: 'landscape', curve: 0, tilt: null, dy: 0, x: 560, z: 0, yaw: 0 },
-            { size: 24, aspect: '16:10', orient: 'landscape', curve: 0, tilt: null, dy: 0, x: 520, z: -500, yaw: 32 },
-            { size: 24, aspect: '16:10', orient: 'landscape', curve: 0, tilt: null, dy: 0, x: 520, z: 500, yaw: -32 },
-            { size: 24, aspect: '16:10', orient: 'landscape', curve: 0, tilt: -8, dy: 345, x: 600, z: 0, yaw: 0 }
-          ]
-        }
+          count: 4, layout: 'custom', bottom: 250, tilt: 0,
+          // main tactical display, the display above it, and two small console screens on the desk
+          list: [scr(20.1, '4:3', 560, 0, 0, 0), scr(20.1, '4:3', 580, 0, 0, 335, -10), scr(10.4, '4:3', 330, -125, 0, -235, 18), scr(10.4, '4:3', 330, 125, 0, -235, 18)]
+        },
+        objects: [
+          { id: 'o1', type: 'keyboard', kb: 'full', x: 150, z: -40, yaw: 0, homeRowH: 30, tilt: 4, use: 'frequent' },
+          { id: 'o2', type: 'stick', x: 170, z: 300, yaw: 0, use: 'frequent' },
+          { id: 'o3', type: 'throttle', x: 170, z: -340, yaw: 0, use: 'frequent' }
+        ],
+        hands: { L: 'o3', R: 'o2' }
       },
+      roleFixtures: [
+        // outboard stack of large displays, turned towards the seat
+        disp(20.1, '4:3', { x: 470, y: 1180, z: -720, yaw: 38, tilt: 0 }),
+        disp(20.1, '4:3', { x: 520, y: 1530, z: -760, yaw: 38, tilt: -10 }),
+        // equipment rack behind the displays
+        { k: 'box', x: 760, y: 1100, z: -120, d: 240, h: 2200, w: 1500, mat: 'rack' }
+      ],
+      fixtures: [
+        // pedestal between the seats: radios, phone, papers
+        { k: 'box', front: 600, y: 520, z: 0, d: 560, h: 1040, w: 420, mat: 'console' },
+        { k: 'box', front: 640, y: 1080, z: 0, d: 200, h: 80, w: 210, mat: 'dark' },
+        // shared displays above the pedestal
+        disp(20.1, '4:3', { front: 300, y: 1230, z: 0, yaw: 0, tilt: 0 }),
+        disp(20.1, '4:3', { front: 300, y: 1580, z: 0, yaw: 0, tilt: -10 })
+      ],
       checks: {
-        now: ['Vision', 'Head and neck', 'Upper limb', 'Trunk and seat', 'Lower limb', 'Furniture', 'Joint range of motion', 'Clearance'],
+        now: ALL_NOW,
         planned: [
           'Every display checked for every operator: viewing distance, legibility, gaze and head rotation, off-axis angle (ENV-11)',
           'Display priority and frequency of use, so a high-priority display outside the primary zone fails (ENV-11)',
+          'The outboard and shared displays are drawn but not yet assessed; the four nearest displays are',
           'Occlusion of one display by another, by the console or by the operator’s arms (ENV-11)',
-          'Chair push-back and rotation clearance to the rear wall, shared passage, door ingress and egress',
-          'Baseline against “with new displays” comparison for display creep (PRJ-02)',
-          'More than four displays per console'
+          'Seat recline and push-back clearance to the rear wall, shared passage, door ingress and egress',
+          'Baseline against “with new displays” comparison for display creep (PRJ-02)'
         ]
       },
-      sources: ['Typical internal dimensions of an ISO 668 20 ft container', 'Def Stan 00-250, MIL-STD-1472 and BS EN ISO 9241 for the planned display checks (values to be entered with source records)'],
+      sources: ['Typical internal dimensions of an ISO 668 20 ft container', 'Layout after public photographs of MQ-9 class ground control stations (US Air Force imagery); no measured dimensions',
+        'Def Stan 00-250, MIL-STD-1472 and BS EN ISO 9241 for the planned display checks'],
       reqs: ['ENV-07', 'ENV-08', 'ENV-11']
+    },
+    {
+      id: 'control-centre', name: 'Busy control centre', family: 'Land and joint: operations centre', domain: 'land', status: 'preview',
+      summary: 'Two rows of four operator consoles facing a wall of large displays, with a supervisor desk behind. For sightlines to the video wall over the front row, console spacing and display layout.',
+      roles: [
+        { id: 'r1p2', name: 'Front row, seat 2', z: -950 }, { id: 'r1p1', name: 'Front row, seat 1', z: -2850 }, { id: 'r1p3', name: 'Front row, seat 3', z: 950 }, { id: 'r1p4', name: 'Front row, seat 4', z: 2850 },
+        { id: 'r2p2', name: 'Back row, seat 2', z: -950, dx: -2300 }, { id: 'r2p1', name: 'Back row, seat 1', z: -2850, dx: -2300 }, { id: 'r2p3', name: 'Back row, seat 3', z: 950, dx: -2300 }, { id: 'r2p4', name: 'Back row, seat 4', z: 2850, dx: -2300 }
+      ],
+      shell: { kind: 'box', internal: { length: 13000, width: 10000, height: 3300 }, frontGap: 3600, door: { side: 'rear', z: 5200, width: 1000, height: 2100 } },
+      stations: 'mirror',
+      params: Object.values(room('Room length (side to side)', 'Room depth (front to back)', 'Room height')),
+      ws: {
+        chair: 'taskHead', armrests: true,
+        deskSize: '1800x900', deskWidth: 1800, deskDepth: 900, deskH: 720, legroom: 650, deskStyle: 'console',
+        screens: { count: 3, layout: 'row', wrap: 25, gap: 10, dist: 620, bottom: 90, tilt: 5, list: [scr(27, '16:9', 450, 0, 0, 0), scr(27, '16:9', 450, 0, 0, 0), scr(27, '16:9', 450, 0, 0, 0), scr(27, '16:9', 450, 0, 0, 0)] }
+      },
+      fixtures: [
+        // video wall: 6 x 2 tiles of 55 inch 16:9, bottom edge 1000 mm above the floor
+        ...[0, 1].flatMap(r => [-2.5, -1.5, -0.5, 0.5, 1.5, 2.5].map(c => disp(55, '16:9', { front: 60, y: 1000 + 685 / 2 + r * 690, z: c * 1222, yaw: 0, tilt: 0 }))),
+        // supervisor desk at the back
+        { k: 'box', front: 8300, y: 370, z: 0, d: 900, h: 740, w: 3000, mat: 'console' }
+      ],
+      checks: { now: ALL_NOW, planned: ['Sightline from each seat to the video wall over the front row and its displays (ISO 11064-3)', 'Viewing distance and character size for the video wall', 'Console spacing and circulation routes', 'Supervisor sightlines to every operator'] },
+      sources: ['ISO 11064-3 (control room layout) and ISO 11064-4 (workstation layout) for the planned checks', 'Indicative dimensions; 55 inch tiles at their nominal size'],
+      reqs: ['ENV-07', 'ENV-08']
+    },
+    {
+      id: 'mission-crew', name: 'Airborne mission crew cabin', family: 'Air: airborne surveillance (E-3 class)', domain: 'air', status: 'preview',
+      summary: 'Mission consoles along the side of a narrow-body fuselage, as in E-3 class airborne early-warning aircraft: seated operators facing the cabin wall, each with two large displays, in a tube with a curved wall and low headroom.',
+      roles: [{ id: 'c2', name: 'Console 2', z: 0 }, { id: 'c1', name: 'Console 1', z: -1150 }, { id: 'c3', name: 'Console 3', z: 1150 }],
+      // narrow-body fuselage: Boeing 707 class, about 3.76 m outside diameter; floor below the centreline
+      shell: { kind: 'tube', internal: { length: 7000, diameter: 3550, axis: 620 }, frontAt: 1300, frontGap: 120 },
+      stations: 'mirror',
+      params: [
+        { key: 'diameter', label: 'Cabin internal diameter', path: ['shell', 'internal', 'diameter'], min: 2500, max: 6000, step: 10 },
+        { key: 'axis', label: 'Fuselage centreline above the floor', path: ['shell', 'internal', 'axis'], min: 0, max: 1500, step: 10 },
+        { key: 'length', label: 'Cabin length shown', path: ['shell', 'internal', 'length'], min: 3000, max: 30000, step: 10 }
+      ],
+      ws: {
+        chair: 'operator', armrests: true, recline: 8,
+        deskSize: 'custom', deskWidth: 1000, deskDepth: 520, deskH: 720, deskT: 40, legroom: 420, deskStyle: 'console',
+        screens: { count: 2, layout: 'custom', bottom: 70, tilt: 8, list: [scr(21.3, '4:3', 470, -245, 8, 0), scr(21.3, '4:3', 470, 245, -8, 0), scr(24, '16:10', 450, 0, 0, 0), scr(24, '16:10', 450, 0, 0, 0)] },
+        objects: [
+          { id: 'o1', type: 'keyboard', kb: 'full', x: 150, z: 60, yaw: 0, homeRowH: 30, tilt: 4, use: 'frequent' },
+          { id: 'o2', type: 'tbThumb', x: 170, z: 380, yaw: 0, use: 'frequent' }
+        ],
+        hands: { L: 'o1', R: 'o2' }
+      },
+      fixtures: [
+        // overhead stowage along the far wall
+        { k: 'box', front: 640, y: 1850, z: 0, d: 300, h: 200, w: 6800, mat: 'wall' }
+      ],
+      checks: { now: ALL_NOW, planned: ['Head clearance to the curved cabin wall and overhead stowage', 'Aisle width behind the seats with seats rotated, and egress', 'Seat track and harness reach constraints', 'Restraint of loose equipment and turbulence (later)'] },
+      sources: ['Boeing 707-320 fuselage, about 3.76 m outside diameter (public type data); cabin diameter, floor height and console sizes are indicative', 'MIL-STD-1472 and Def Stan 00-250 for the planned checks'],
+      reqs: ['ENV-07', 'ENV-08']
+    },
+    {
+      id: 'submarine-control', name: 'Submarine control room', family: 'Maritime: submarine', domain: 'submarine', status: 'preview',
+      summary: 'A cramped control room: operator consoles along the side, low deckhead with pipe runs, and the periscope well in the middle. For head clearance, reach in restricted headroom and console layout.',
+      roles: [{ id: 'c2', name: 'Console 2', z: 0 }, { id: 'c1', name: 'Console 1', z: -1000 }, { id: 'c3', name: 'Console 3', z: 1000 }],
+      shell: { kind: 'box', internal: { length: 7000, width: 4200, height: 2150 }, frontGap: 80, door: { side: 'rear', z: -2900, width: 650, height: 1500 } },
+      stations: 'mirror',
+      params: Object.values(room('Compartment length', 'Compartment width', 'Deckhead height')),
+      ws: {
+        chair: 'operator', armrests: true, recline: 6,
+        deskSize: 'custom', deskWidth: 900, deskDepth: 520, deskH: 720, deskT: 40, legroom: 400, deskStyle: 'console',
+        screens: { count: 2, layout: 'custom', bottom: 60, tilt: 10, list: [scr(19, '4:3', 430, 0, 0, 0), scr(15, '4:3', 470, 0, 0, 330, -15), scr(24, '16:10', 450, 0, 0, 0), scr(24, '16:10', 450, 0, 0, 0)] },
+        objects: [
+          { id: 'o1', type: 'keyboard', kb: 'tkl', x: 150, z: 40, yaw: 0, homeRowH: 30, tilt: 4, use: 'frequent' },
+          { id: 'o2', type: 'tbThumb', x: 170, z: 330, yaw: 0, use: 'frequent' }
+        ],
+        hands: { L: 'o1', R: 'o2' }
+      },
+      fixtures: [
+        // periscope well and the pipe runs under the deckhead
+        { k: 'cyl', front: 2600, z: 600, y0: 0, y1: 2150, r: 260, mat: 'metal' },
+        { k: 'cyl', front: 2600, z: 600, y0: 1250, y1: 1700, r: 330, mat: 'dark' },
+        ...[-200, 400, 1000].map(x => ({ k: 'cyl', axis: 'z', x, y: 2060, z: 0, len: 7000, r: 40, mat: 'metal' })),
+        { k: 'box', front: 300, y: 1850, z: 0, d: 600, h: 300, w: 6800, mat: 'rack' }
+      ],
+      checks: { now: ALL_NOW, planned: ['Head clearance to the deckhead and pipe runs, with and without a helmet', 'Passage width between consoles and the periscope well', 'Watertight door and hatch transit', 'Reach in restricted headroom when standing'] },
+      sources: ['Illustrative only: not any class of submarine', 'Def Stan 00-250 and MIL-STD-1472 for the planned clearance checks'],
+      reqs: ['ENV-07', 'ENV-08']
+    },
+    {
+      id: 'fast-jet', name: 'Fast-jet cockpit', family: 'Air: fixed wing', domain: 'air', status: 'preview',
+      summary: 'A single-seat cockpit with a reclined ejection seat, side-stick and throttle on the side consoles, an instrument panel with multifunction displays, and a canopy. For panel reach, knee clearance to the panel and sightlines to the displays.',
+      roles: [{ id: 'pilot', name: 'Pilot', z: 0 }],
+      shell: { kind: 'box', internal: { length: 1050, width: 2400, height: 1150 }, ceiling: false, frontGap: 40 },
+      params: [{ key: 'length', label: 'Cockpit width between sills', path: ['shell', 'internal', 'length'], min: 800, max: 1600, step: 10 }],
+      ws: {
+        chair: 'ejection', armrests: false, recline: 17, seatH: 380, seatMin: 300, seatMax: 450, seatDepth: 420, seatWidth: 460, seatGap: 330, footFwd: 34, footrest: 0,
+        deskSize: 'custom', deskWidth: 900, deskDepth: 260, deskH: 900, deskT: 230, legroom: 300, deskStyle: 'panel',
+        screens: { count: 3, layout: 'custom', bottom: -205, tilt: 10, list: [scr(8.4, '4:3', -6, -125, 0, 0), scr(8.4, '4:3', -6, 125, 0, 0), scr(6, '4:3', -6, 0, 0, 160, 12), scr(24, '16:10', 450, 0, 0, 0)] },
+        objects: [
+          { id: 'o1', type: 'stick', x: -230, z: 330, yaw: 0, base: 600, use: 'frequent' },
+          { id: 'o2', type: 'throttle', x: -260, z: -330, yaw: 0, base: 600, use: 'frequent' }
+        ],
+        hands: { L: 'o2', R: 'o1' }
+      },
+      roleFixtures: [
+        // side consoles carrying the stick and throttle
+        { k: 'box', x: -330, y: 300, z: 400, d: 700, h: 600, w: 200, mat: 'dark' },
+        { k: 'box', x: -330, y: 300, z: -400, d: 700, h: 600, w: 200, mat: 'dark' },
+        // head-up display combiner and the canopy
+        { k: 'box', x: 70, y: 1080, z: 0, d: 10, h: 180, w: 160, mat: 'glass', tilt: 30 },
+        { k: 'dome', x: -250, y: 1150, z: 0, rx: 1300, ry: 520, rz: 525, mat: 'glass' }
+      ],
+      checks: { now: ALL_NOW, planned: ['Design eye point and over-the-nose vision (MIL-STD-1333)', 'Ejection clearance lines for knees and helmet', 'Reach to panel controls with harness locked', 'Stick and throttle motion envelopes'] },
+      sources: ['MIL-STD-1333 (aircrew station geometry) for the planned checks', 'Seat back angle, panel and console positions are indicative'],
+      reqs: ['ENV-07', 'ENV-08']
+    },
+    {
+      id: 'ship-ops-room', name: 'Ship’s operations room', family: 'Maritime: surface', domain: 'maritime', status: 'preview',
+      summary: 'A low, dim operations room with a line of multi-display consoles against the bulkhead and a command position behind. For display layout and passage behind the seats in a tight space.',
+      roles: [{ id: 'c2', name: 'Console 2', z: -600 }, { id: 'c1', name: 'Console 1', z: -1800 }, { id: 'c3', name: 'Console 3', z: 600 }, { id: 'c4', name: 'Console 4', z: 1800 }],
+      shell: { kind: 'box', internal: { length: 8000, width: 5200, height: 2250 }, frontGap: 100, door: { side: 'rear', z: 3300, width: 750, height: 1800 } },
+      stations: 'mirror',
+      params: Object.values(room('Compartment length', 'Compartment width', 'Deckhead height')),
+      ws: {
+        chair: 'operator', armrests: true, recline: 6,
+        deskSize: 'custom', deskWidth: 1150, deskDepth: 600, deskH: 720, legroom: 450, deskStyle: 'console',
+        screens: { count: 3, layout: 'custom', bottom: 60, tilt: 8, list: [scr(24, '16:10', 480, 0, 0, 0), scr(24, '16:10', 520, 0, 0, 355, -12), scr(12.1, '4:3', 260, 360, -30, -40, 30), scr(24, '16:10', 450, 0, 0, 0)] },
+        objects: [
+          { id: 'o1', type: 'keyboard', kb: 'tkl', x: 150, z: 0, yaw: 0, homeRowH: 30, tilt: 4, use: 'frequent' },
+          { id: 'o2', type: 'tbThumb', x: 170, z: -300, yaw: 0, use: 'frequent' }
+        ],
+        hands: { L: 'o2', R: 'o1' }
+      },
+      fixtures: [{ k: 'box', front: 3900, y: 450, z: 0, d: 900, h: 900, w: 2200, mat: 'console' }],
+      checks: { now: ALL_NOW, planned: ['Passage width behind occupied seats', 'Head clearance to deckhead fittings', 'Static deck inclination (ENV-10)', 'Display legibility in low lighting'] },
+      sources: ['Illustrative only: not any class of ship', 'Def Stan 00-250 and BS EN ISO 11064 for the planned checks'],
+      reqs: ['ENV-07', 'ENV-08', 'ENV-10']
     },
     // planned templates (ENV-08): listed so users can see the roadmap; they cannot be loaded yet
     { id: 'vehicle-commander', name: 'Vehicle commander station with roof hatch', family: 'Land: vehicle', domain: 'land', status: 'planned',
-      summary: 'Commander and gunner stations under a roof hatch: head and helmet clearance, hatch transit with kit, vision blocks and sights. The kit-heavy second slice.',
+      summary: 'Commander and gunner stations under a roof hatch: head and helmet clearance, hatch transit with kit, vision blocks and sights. Needs the kit model and standing postures.',
       checks: { planned: ['Head and helmet clearance', 'Hatch transit with kit', 'Vision block and periscope sightlines', 'Reach to controls'] } },
     { id: 'vehicle-driver', name: 'Vehicle driver station', family: 'Land: vehicle', domain: 'land', status: 'planned',
       summary: 'Driver seat, pedals, steering and vision blocks, head-out and closed-down.', checks: { planned: ['Pedal and control reach', 'Knee clearance', 'Vision blocks'] } },
     { id: 'dismounted', name: 'Doorways, steps and firing positions', family: 'Land: dismounted', domain: 'land', status: 'planned',
       summary: 'Apertures, step heights, trench and firing-step profiles, kneeling and prone positions.', checks: { planned: ['Aperture transit', 'Step heights', 'Weapon sight alignment'] } },
-    { id: 'fast-jet', name: 'Fast-jet cockpit', family: 'Air: fixed wing', domain: 'air', status: 'planned',
-      summary: 'Seat reference point, design eye point, canopy line and harness constraint.', checks: { planned: ['Design eye point accommodation', 'External vision envelope', 'Canopy and helmet clearance'] } },
-    { id: 'rotary-cabin', name: 'Rotary-wing cabin and door', family: 'Air: rotary', domain: 'air', status: 'planned',
-      summary: 'Pilot station, troop seats, door and ramp, with cabin headroom.', checks: { planned: ['Cabin headroom', 'Door transit with kit'] } },
-    { id: 'ship-bridge', name: 'Ship’s bridge and operations console', family: 'Maritime: surface', domain: 'maritime', status: 'planned',
-      summary: 'Standing and seated consoles, passageways, ladders, watertight doors and hatches.', checks: { planned: ['Console reach and vision', 'Ladder geometry', 'Hatch transit'] } },
-    { id: 'submarine-control', name: 'Submarine control room', family: 'Maritime: submarine', domain: 'submarine', status: 'planned',
-      summary: 'Control room station, passageway, bunk space and hatch in restricted headroom.', checks: { planned: ['Clearance in restricted headroom', 'Hatch transit', 'Bunk access'] } }
+    { id: 'rotary-cabin', name: 'Rotary-wing cockpit and cabin', family: 'Air: rotary', domain: 'air', status: 'planned',
+      summary: 'Pilot stations with cyclic and collective, troop seats, door and ramp, with cabin headroom.', checks: { planned: ['Cyclic and collective reach', 'Cabin headroom', 'Door transit with kit'] } },
+    { id: 'ship-bridge', name: 'Ship’s bridge', family: 'Maritime: surface', domain: 'maritime', status: 'planned',
+      summary: 'Standing and seated bridge consoles, bridge windows and sightlines over the bow, bridge wings.', checks: { planned: ['Sightlines over the console to the horizon', 'Standing console reach', 'Window and mullion obscuration'] } },
+    { id: 'atc-tower', name: 'Air traffic control tower cab', family: 'Air: ground', domain: 'air', status: 'planned',
+      summary: 'Controller positions in a glazed tower cab: sightlines to the runway thresholds over the consoles, and glare.', checks: { planned: ['Sightlines to the airfield over the consoles', 'Glazing mullion obscuration'] } }
   ];
   const BY = Object.fromEntries(T.map(e => [e.id, e]));
   const DEFAULT = 'desk-workstation';
@@ -927,7 +1107,15 @@ const HFE_ENV = (() => {
     return e;
   }
   const paramValue = (e, p) => getPath(e, p.path);
-  return { list: T, get, resolve, paramValue, loadable, DEFAULT };
+  // left-right mirror image of a workstation (for the right-hand seat of a mirrored pair)
+  function mirrorWs(ws) {
+    const w = structuredClone(ws);
+    if (w.screens && w.screens.list) w.screens.list.forEach(s => { s.z = -(+s.z || 0); s.yaw = -(+s.yaw || 0); });
+    if (w.objects) w.objects.forEach(o => { o.z = -o.z; o.yaw = -(o.yaw || 0); });
+    if (w.hands) w.hands = { L: w.hands.R, R: w.hands.L };
+    return w;
+  }
+  return { list: T, get, resolve, paramValue, loadable, mirrorWs, DEFAULT };
 })();
 
 
@@ -937,7 +1125,7 @@ const WS_DEFAULT = {
   chair: 'task', seatMin: 410, seatMax: 540, headH: 720, depthMin: null, depthMax: null, armMin: null, armMax: null, lumbarH: 220,
   seatH: 450, seatDepth: 450, seatWidth: 480, seatGap: -100, recline: 8, footFwd: 5, footrest: 0, shoe: 25, armrests: false, armH: 220,
   deskSize: '1600x800', deskType: 'fixed', deskMin: 620, deskMax: 1270,
-  deskH: 720, deskT: 25, deskDepth: 800, deskWidth: 1600, legroom: 650,
+  deskH: 720, deskT: 25, deskDepth: 800, deskWidth: 1600, legroom: 650, deskStyle: 'desk',
   headMode: 'auto', eyeDep: 15, neckFlex: 10, solver: 'classic',
   screens: { count: 1, layout: 'row', centreOn: 'array', wrap: 20, gap: 10, align: 'bottom', dist: 450, bottom: 110, tilt: 8, stackGap: 15, stackTilt: -12, list: [SCREEN_DEFAULT(), SCREEN_DEFAULT(), SCREEN_DEFAULT(), SCREEN_DEFAULT()] },
   objects: [
@@ -1094,7 +1282,7 @@ function objName(o, all) {
 }
 function objWorld(o, deskY, HL, reachH) {
   const yaw = rad(o.yaw || 0), dims = objDims(o);
-  const T = (x, y, z) => new V3(x, y, z).applyAxisAngle(YAX, yaw).add(new V3(o.x, deskY, o.z));
+  const T = (x, y, z) => new V3(x, y, z).applyAxisAngle(YAX, yaw).add(new V3(o.x, o.base != null ? o.base : deskY, o.z));
   const r = { o, dims, yaw, T };
   if (o.type === 'keyboard') {
     const kb = KB[o.kb], tau = rad(o.tilt || 0), hx = -kb.d / 2 + Math.min(63, kb.d * 0.47);
@@ -1110,6 +1298,10 @@ function objWorld(o, deskY, HL, reachH) {
   } else if (o.type === 'tbFinger') {
     r.reachPt = T(0, 30, 0);
     r.hand = () => ({ Wt: T(-0.62 * HL, 44, 0), tip: T(0.12 * HL, 64, 0), tilt: 0 });
+  } else if (o.type === 'stick' || o.type === 'throttle') {
+    // power grip round a near-vertical handle: wrist behind and below the grip, fingers wrapped round it
+    const gy = dims.grip; r.reachPt = T(0, gy, 0);
+    r.hand = () => ({ Wt: T(-0.42 * HL, gy - 0.12 * HL, 0), tip: T(0.12 * HL, gy + 0.05 * HL, 0), tilt: rad(20) });
   } else if (o.type === 'phone') {
     const hs = T(-10, 70, -0.32 * dims.w); r.reachPt = T(-10, 30, -0.32 * dims.w);
     r.hand = () => ({ Wt: T(-10 - 0.42 * HL, 98, -0.32 * dims.w), tip: T(-10 + 0.3 * HL, 88, -0.32 * dims.w), tilt: 0 });
@@ -1908,6 +2100,10 @@ function makeMats() {
     // environment shells: single-sided walls facing inwards, so the walls nearest the camera drop out and the room reads as a cutaway
     envWall: std('--env-wall', { roughness: 0.9, emissive: col('--env-wall'), emissiveIntensity: 0.4 }), envFloor: std('--env-floor', { roughness: 0.95 }),
     envDoor: std('--env-door', { roughness: 0.8, emissive: col('--env-door'), emissiveIntensity: 0.4 }),
+    envWallBack: std('--env-wall', { roughness: 0.9, emissive: col('--env-wall'), emissiveIntensity: 0.4, side: THREE.BackSide }),
+    envWall2: std('--env-wall', { roughness: 0.9 }), envConsole: std('--env-console', { roughness: 0.7 }), envRack: std('--env-rack', { roughness: 0.6 }),
+    envDisplay: std('--screen', { roughness: 0.25, emissive: col('--env-glow'), emissiveIntensity: 0.35 }),
+    envGlass: std('--panel-glass', { transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide, roughness: 0.1 }),
     envEdge: new THREE.LineBasicMaterial({ color: col('--env-edge') })
   };
   ['ok', 'warn', 'bad', 'info'].forEach(s => MATS['arc_' + s] = new THREE.LineBasicMaterial({ color: col(s === 'info' ? '--dim' : '--' + s), depthTest: false, transparent: true }));
@@ -2702,7 +2898,7 @@ function buildStand(g, s, deskY, x0) {
   g.add(box(210, 10, 240, MATS.metal, px + 25, deskY + 5, s.cz));
 }
 function buildObject(g, ob, deskY) {
-  const o = ob.o, d = ob.dims, grp = new THREE.Group(); grp.position.set(o.x, deskY, o.z); grp.rotation.y = ob.yaw;
+  const o = ob.o, d = ob.dims, grp = new THREE.Group(); grp.position.set(o.x, o.base != null ? o.base : deskY, o.z); grp.rotation.y = ob.yaw;
   if (o.type === 'keyboard') {
     const kb = KB[o.kb], tau = rad(o.tilt || 0), hx = Math.min(63, kb.d * 0.47);
     const topY = x => Math.max(8, o.homeRowH + (x - hx) * Math.tan(tau));
@@ -2725,6 +2921,11 @@ function buildObject(g, ob, deskY) {
     const bm = sweep(secs, MATS.device, 2.6); bm.position.x = -d.d / 2; grp.add(bm);
     const ball = new THREE.Mesh(new THREE.SphereGeometry(thumb ? 17 : 28, 28, 18), MATS.ball);
     ball.position.set(thumb ? 12 : 8, thumb ? 30 : 46, thumb ? -34 : 0); grp.add(ball);
+  } else if (o.type === 'stick' || o.type === 'throttle') {
+    const stick = o.type === 'stick';
+    grp.add(rbox(d.d, 26, d.w, 8, MATS.device, 0, 13, 0));
+    grp.add(limb(new V3(0, 20, 0), new V3(stick ? 6 : -10, d.grip - 40, 0), 9, 9, MATS.metal));
+    grp.add(limb(new V3(stick ? 6 : -10, d.grip - 50, 0), new V3(stick ? 14 : -4, d.h - 10, 0), stick ? 17 : 22, stick ? 15 : 20, MATS.kb));
   } else if (o.type === 'phone') {
     const shp = new THREE.Shape(); shp.moveTo(0, 0); shp.lineTo(d.d, 0); shp.lineTo(d.d, 88); shp.lineTo(0, 34); shp.closePath();
     const pm = new THREE.Mesh(new THREE.ExtrudeGeometry(shp, { depth: d.w, bevelEnabled: true, bevelThickness: 3, bevelSize: 3, bevelSegments: 2 }), MATS.device);
@@ -2741,10 +2942,17 @@ function buildWorkstation(M, G, W) {
   const g = groups.ws; clearGroup(g); if (!S.showWs) return;
   let i0 = 0; const mark = () => { i0 = g.children.length; }, node = id => { for (let i = i0; i < g.children.length; i++) if (!g.children[i].userData.node) g.children[i].userData.node = id; i0 = g.children.length; };
   g.add(box(W.deskDepth, W.deskT, W.deskWidth, MATS.desk, W.deskDepth / 2, W.deskH - W.deskT / 2, 0)); node('ws.desk.top');
-  for (const x of [35, W.deskDepth - 35]) for (const z of [-1, 1]) g.add(box(50, W.deskH - W.deskT, 50, MATS.metal, x, (W.deskH - W.deskT) / 2, z * (W.deskWidth / 2 - 35)));
-  node('ws.desk.legs');
-  const panelH = Math.min(380, W.deskH - W.deskT - 80);
-  g.add(box(10, panelH, W.deskWidth - 120, MATS.glass, W.legroom, W.deskH - W.deskT - panelH / 2, 0)); node('ws.desk.panel');
+  if (W.deskStyle === 'console') {
+    // operator console: the space behind the legroom line is a closed cabinet down to the floor
+    const cd = W.deskDepth - W.legroom;
+    if (cd > 20) g.add(box(cd, W.deskH - W.deskT, W.deskWidth, MATS.envConsole, W.legroom + cd / 2, (W.deskH - W.deskT) / 2, 0));
+    node('ws.desk.legs');
+  } else if (W.deskStyle !== 'panel') {
+    for (const x of [35, W.deskDepth - 35]) for (const z of [-1, 1]) g.add(box(50, W.deskH - W.deskT, 50, MATS.metal, x, (W.deskH - W.deskT) / 2, z * (W.deskWidth / 2 - 35)));
+    node('ws.desk.legs');
+    const panelH = Math.min(380, W.deskH - W.deskT - 80);
+    g.add(box(10, panelH, W.deskWidth - 120, MATS.glass, W.legroom, W.deskH - W.deskT - panelH / 2, 0)); node('ws.desk.panel');
+  }
   tagNew(g, 'DESK');
   // screens
   const list = G.scr.list;
@@ -3331,7 +3539,8 @@ function addObject(type) {
   const pos = {
     keyboard: { x: 170, z: W.objects.some(o => o.type === 'keyboard') ? leftEdge - 40 - w / 2 : 84 },
     mouse: { x: 175, z: rightEdge + 30 + w / 2 }, tbThumb: { x: 180, z: rightEdge + 30 + w / 2 }, tbFinger: { x: 180, z: rightEdge + 30 + w / 2 },
-    phone: { x: 300, z: leftEdge - 40 - w / 2 }, doc: { x: 330, z: leftEdge - 40 - w / 2 }
+    phone: { x: 300, z: leftEdge - 40 - w / 2 }, doc: { x: 330, z: leftEdge - 40 - w / 2 },
+    stick: { x: 180, z: rightEdge + 30 + w / 2 }, throttle: { x: 180, z: leftEdge - 40 - w / 2 }
   }[type];
   pos.z = clamp(pos.z, -W.deskWidth / 2 + w / 2, W.deskWidth / 2 - w / 2);
   const o = { id, type, x: pos.x, z: pos.z, yaw: 0, use: type === 'phone' || type === 'doc' ? 'occasional' : 'frequent' };
@@ -4080,7 +4289,7 @@ async function drwPDF() {
     const el = holder.querySelector('svg');
     if (doc.svg) await doc.svg(el, { x: 0, y: 0, width: 420, height: 297 }); else await window.svg2pdf.svg2pdf(el, doc, { x: 0, y: 0, width: 420, height: 297 });
     holder.remove();
-    doc.setProperties({ title: DRW.title || 'Seated workstation fit', subject: 'Seated workstation drawing', creator: 'HFE Lab · Anthropometry Modelling Tool' });
+    doc.setProperties({ title: DRW.title || 'Seated workstation fit', subject: 'Seated workstation drawing', creator: 'HFE Lab · Workspace Visualisation' });
     await saveFile(`${(DRW.dwg || defaultDwg())}.pdf`, doc.output('blob'));
     $('#drw-status').textContent = `A3 landscape, scale 1:${drwLast.den}.`;
   } catch (e) { $('#drw-status').textContent = 'Could not make the PDF: ' + e.message; }
@@ -4866,7 +5075,7 @@ function renderPopa() {
 function popaCsv(R) {
   const q = s => `"${String(s ?? '').replace(/"/g, '""')}"`, L = [], row = a => L.push(a.map(q).join(','));
   const G = R.groups, cnt = c => !!R.settings.pol.groups[c.group];
-  row(['HFE Lab, Anthropometry Modelling Tool: population accommodation']); row(['Environment', envNow().name + (envNow().roles.length > 1 ? ', ' + envRole(envNow()).name : '')]); row(['Run', R.when.toISOString()]);
+  row(['HFE Lab, Workspace Visualisation: population accommodation']); row(['Environment', envNow().name + (envNow().roles.length > 1 ? ', ' + envRole(envNow()).name : '')]); row(['Run', R.when.toISOString()]);
   row(['Validation status', 'Not validated. Posture from geometric rules, not a validated posture-prediction model. Confidence intervals (Wilson score, 95 %) cover sampling only.']);
   for (const g of G) row(['Dataset', `${g.label}, n = ${g.n}`, g.file ? `${g.file} sha256 ${g.sha256}` : 'records loaded in this session']);
   row(['Settings digest (sha256 of workstation, limits and run settings)', R.digest || 'unavailable in this browser']);
@@ -5058,7 +5267,7 @@ async function onJson(e) {
 
 /* ---------------- environments (ENV-07): templates from core/environments.js ---------------- */
 const ENV_STATUS = { available: 'Available', preview: 'Preview', planned: 'Planned' };
-const ENV_DOMAINS = [['office', 'Office and general'], ['air', 'Air'], ['land', 'Land'], ['maritime', 'Maritime: surface'], ['submarine', 'Maritime: submarine']];
+const ENV_DOMAINS = [['office', 'Office and general'], ['air', 'Air'], ['land', 'Land and joint'], ['maritime', 'Maritime: surface'], ['submarine', 'Maritime: submarine']];
 const envNow = () => HFE_ENV.resolve(S.env.id, S.env.params);
 const envRole = E => (E.roles || []).find(r => r.id === S.env.role) || (E.roles || [{ id: 'user', name: 'User', z: 0 }])[0];
 const shortRole = r => r.name.split(' (')[0];
@@ -5070,7 +5279,7 @@ function loadEnv(id, opt = {}) {
   const T = HFE_ENV.get(id); if (!HFE_ENV.loadable(T)) return false;
   const role = (T.roles.find(r => r.id === opt.role) || T.roles[0]).id;
   S.env = { id, role, params: { ...(opt.params || {}) } };
-  if (!opt.keepWs) { S.ws = mergeWs(T.ws); if (!$('#cfg').hidden) renderCfg(); }
+  if (!opt.keepWs) { const r = T.roles.find(x => x.id === role); S.ws = mergeWs(r && r.mirror ? HFE_ENV.mirrorWs(T.ws) : T.ws); if (!$('#cfg').hidden) renderCfg(); }
   if (!opt.noUrl) syncEnvUrl();
   renderEnvPanel();
   if (!opt.silent) update();
@@ -5099,10 +5308,12 @@ function renderEnvPanel() {
     (E.status === 'preview' ? '<p class="help">Preview: the geometry is generic and illustrative, built from public dimensions only, and the environment-specific checks are still to come.</p>' : '');
 }
 function renderEnvLib() {
-  const cur = S.env.id;
+  const cur = envBootPending ? null : S.env.id;   // on the start screen nothing is loaded yet
   const card = e => {
     const ok = HFE_ENV.loadable(e), roles = e.roles || [];
-    const btns = !ok ? '' : roles.map((r, i) => `<button class="btn${i === 0 ? ' primary' : ''}" data-env="${e.id}" data-role="${r.id}">${roles.length > 1 ? 'Load as ' + esc(shortRole(r).toLowerCase()) : (e.id === cur ? 'Reload' : 'Load')}</button>`).join('');
+    // a pair of seats gets a button each; rooms with many seats load the first, and the Environment tab picks another
+    const btns = !ok ? '' : roles.length === 2 ? roles.map((r, i) => `<button class="btn${i === 0 ? ' primary' : ''}" data-env="${e.id}" data-role="${r.id}">Load as ${esc(shortRole(r).toLowerCase())}</button>`).join('')
+      : `<button class="btn primary" data-env="${e.id}" data-role="${roles[0].id}">${e.id === cur ? 'Reload' : 'Load'}</button>${roles.length > 2 ? `<span class="help" style="margin:0;align-self:center">${roles.length} seats; choose one in the Environment tab</span>` : ''}`;
     return `<div class="env-card ${e.status}${e.id === cur ? ' cur' : ''}"><h3><span>${esc(e.name)}</span><span class="env-badge ${e.status}">${e.id === cur ? 'Loaded' : ENV_STATUS[e.status]}</span></h3>` +
       `<span class="fam">${esc(e.family)}</span><p>${esc(e.summary)}</p>${btns ? `<div class="btnrow">${btns}</div>` : ''}</div>`;
   };
@@ -5112,7 +5323,7 @@ function renderEnvLib() {
   }).join('');
 }
 let envBootPending = false;
-function openEnvLib(boot) { envBootPending = !!boot; renderEnvLib(); $('#envlib').hidden = false; setTimeout(() => { const b = $('#envlib-list .env-card.cur [data-env]') || $('#envlib-list [data-env]'); b && b.focus(); }, 0); }
+function openEnvLib(boot) { envBootPending = !!boot; renderEnvLib(); $('#envlib').classList.toggle('start', !!boot); $('#envlib').hidden = false; setTimeout(() => { const b = $('#envlib-list .env-card.cur [data-env]') || $('#envlib-list [data-env]'); b && b.focus(); }, 0); }
 function closeEnvLib() {
   $('#envlib').hidden = true;
   // the first choice of environment is the click that can also take the workspace full screen
@@ -5122,12 +5333,16 @@ function bindEnv() {
   $('#env-btn').onclick = () => openEnvLib(); $('#env-open').onclick = () => openEnvLib();
   $('#envlib-close').onclick = closeEnvLib;
   $('#envlib').addEventListener('click', e => {
-    if (e.target.id === 'envlib') { closeEnvLib(); return; }
+    if (e.target.id === 'envlib') { if (!envBootPending) closeEnvLib(); return; }
     const b = e.target.closest('[data-env]'); if (!b) return;
     loadEnv(b.dataset.env, { role: b.dataset.role }); closeEnvLib();
     const E = envNow(); toast(`Loaded ${E.name}${E.roles.length > 1 ? ' as ' + shortRole(envRole(E)).toLowerCase() : ''}.`);
   });
-  $('#env-role').onchange = e => { S.env.role = e.target.value; syncEnvUrl(); renderEnvPanel(); update(); };
+  $('#env-role').onchange = e => {
+    const E = envNow(), was = !!envRole(E).mirror; S.env.role = e.target.value;
+    if (!!envRole(E).mirror !== was) S.ws = HFE_ENV.mirrorWs(S.ws);   // left and right seats are mirror images
+    syncEnvUrl(); renderEnvPanel(); update();
+  };
   $('#env-params').addEventListener('change', e => {
     const k = e.target.dataset.envp; if (!k) return;
     S.env.params[k] = e.target.value === '' ? null : +e.target.value;
@@ -5136,32 +5351,81 @@ function bindEnv() {
   });
   $('#env-reset').onclick = () => { S.env.params = {}; renderEnvPanel(); update(); };
 }
-// Shell and the other roles' consoles. Built after the workstation so the consoles can be copied from it.
+// Shell, fixtures and the other roles' consoles. Built after the workstation so the consoles can be copied from it.
+// Everything is placed in the shell frame (see core/environments.js); the group is then moved, and mirrored for a mirrored
+// role, so that the assessed seat sits at the world origin.
+function envFront(sh) {
+  const I = sh.internal;
+  if (sh.kind === 'tube') { const R = I.diameter / 2, dy = (sh.frontAt || 1200) - I.axis; return Math.sqrt(Math.max(R * R - dy * dy, 0)); }
+  return I.width / 2;
+}
+function envRoleX(E, r, W) { return envFront(E.shell) - E.shell.frontGap - W.deskDepth + (r.dx || 0); }
 function buildEnv(G, W) {
-  const g = groups.env; clearGroup(g);
+  const g = groups.env; clearGroup(g); g.position.set(0, 0, 0); g.scale.set(1, 1, 1);
   const E = envNow(), sh = E.shell; if (!sh) return;
-  const role = envRole(E), I = sh.internal;
-  const xF = W.deskDepth + sh.frontGap, xR = xF - I.width, xc = (xF + xR) / 2, zc = -role.z, z0 = zc - I.length / 2, z1 = zc + I.length / 2;
-  const plane = (w, h, mat, x, y, z, ry, rx, node) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat); m.position.set(x, y, z); m.rotation.set(rx || 0, ry || 0, 0, 'YXZ'); m.userData.node = node; m.userData.layer = 'ENV'; g.add(m); return m; };
-  plane(I.length, I.height, MATS.envWall, xF, I.height / 2, zc, -Math.PI / 2, 0, 'env.shell.walls');
-  plane(I.length, I.height, MATS.envWall, xR, I.height / 2, zc, Math.PI / 2, 0, 'env.shell.walls');
-  plane(I.width, I.height, MATS.envWall, xc, I.height / 2, z0, 0, 0, 'env.shell.walls');
-  plane(I.width, I.height, MATS.envWall, xc, I.height / 2, z1, Math.PI, 0, 'env.shell.walls');
-  plane(I.width, I.length, MATS.envWall, xc, I.height, zc, 0, Math.PI / 2, 'env.shell.walls');
-  plane(I.width, I.length, MATS.envFloor, xc, -1, zc, 0, -Math.PI / 2, 'env.shell.floor');
-  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(I.width, I.height, I.length)), MATS.envEdge);
-  edges.position.set(xc, I.height / 2, zc); edges.userData.node = 'env.shell.walls'; g.add(edges);
-  const d = sh.door;
-  if (d) {
-    const dz = clamp(zc + d.z, z0 + d.width / 2, z1 - d.width / 2), dx = d.side === 'front' ? xF - 3 : xR + 3;
-    plane(d.width, d.height, MATS.envDoor, dx, d.height / 2, dz, d.side === 'front' ? -Math.PI / 2 : Math.PI / 2, 0, 'env.shell.door');
+  const role = envRole(E), I = sh.internal, sa = role.mirror ? -1 : 1, front = envFront(sh);
+  const ax = envRoleX(E, role, W);
+  g.position.set(-ax, 0, -sa * role.z); g.scale.z = sa;
+  const tag = (m, node) => { m.userData.node = node; m.userData.layer = 'ENV'; return m; };
+  const plane = (w, h, mat, x, y, z, ry, rx, node, par = g) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat); m.position.set(x, y, z); m.rotation.set(rx || 0, ry || 0, 0, 'YXZ'); par.add(tag(m, node)); return m; };
+  if (sh.kind === 'tube') {
+    // fuselage or hull: an open cylinder seen from inside (back faces only), end bulkheads, and a flat floor
+    const R = I.diameter / 2, L = I.length, half = Math.sqrt(Math.max(R * R - I.axis * I.axis, 0));
+    const tube = new THREE.Mesh(new THREE.CylinderGeometry(R, R, L, 72, 1, true), MATS.envWallBack);
+    tube.rotation.x = Math.PI / 2; tube.position.set(0, I.axis, 0); g.add(tag(tube, 'env.shell.walls'));
+    for (const [z, ry] of [[-L / 2, 0], [L / 2, Math.PI]]) {
+      const c = new THREE.Mesh(new THREE.CircleGeometry(R, 72), MATS.envWall); c.position.set(0, I.axis, z); c.rotation.y = ry; g.add(tag(c, 'env.shell.walls'));
+    }
+    plane(2 * half, L, MATS.envFloor, 0, -1, 0, 0, -Math.PI / 2, 'env.shell.floor');
+    const ring = z => { const p = []; for (let i = 0; i <= 72; i++) { const t = i / 72 * Math.PI * 2; p.push(new V3(R * Math.cos(t), I.axis + R * Math.sin(t), z)); } return p; };
+    for (const z of [-L / 2, L / 2]) g.add(tag(new THREE.Line(new THREE.BufferGeometry().setFromPoints(ring(z)), MATS.envEdge), 'env.shell.walls'));
+  } else {
+    const xF = I.width / 2, xR = -I.width / 2, z0 = -I.length / 2, z1 = I.length / 2;
+    plane(I.length, I.height, MATS.envWall, xF, I.height / 2, 0, -Math.PI / 2, 0, 'env.shell.walls');
+    plane(I.length, I.height, MATS.envWall, xR, I.height / 2, 0, Math.PI / 2, 0, 'env.shell.walls');
+    plane(I.width, I.height, MATS.envWall, 0, I.height / 2, z0, 0, 0, 'env.shell.walls');
+    plane(I.width, I.height, MATS.envWall, 0, I.height / 2, z1, Math.PI, 0, 'env.shell.walls');
+    if (sh.ceiling !== false) plane(I.width, I.length, MATS.envWall, 0, I.height, 0, 0, Math.PI / 2, 'env.shell.walls');
+    plane(I.width, I.length, MATS.envFloor, 0, -1, 0, 0, -Math.PI / 2, 'env.shell.floor');
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(I.width, I.height, I.length)), MATS.envEdge);
+    edges.position.set(0, I.height / 2, 0); g.add(tag(edges, 'env.shell.walls'));
+    const d = sh.door;
+    if (d) {
+      const dz = clamp(d.z, z0 + d.width / 2, z1 - d.width / 2), dx = d.side === 'front' ? xF - 3 : xR + 3;
+      plane(d.width, d.height, MATS.envDoor, dx, d.height / 2, dz, d.side === 'front' ? -Math.PI / 2 : Math.PI / 2, 0, 'env.shell.door');
+    }
   }
-  // other roles: copies of the active console (desk, screens, desk items and seat), sharing its geometry
-  if (E.stations === 'mirror') for (const r of E.roles) {
-    if (r.id === role.id) continue;
-    const c = groups.ws.clone(); c.position.z = r.z - role.z;
-    c.traverse(o => { o.userData = { keepGeo: true, layer: 'ENV' }; });
-    c.userData.node = 'env.station.' + r.id; g.add(c);
+  // fixtures: racks, pedestals, video walls, pipes, canopy. Shared ones in the shell frame, role ones at every seat.
+  const FM = { console: MATS.envConsole, rack: MATS.envRack, dark: MATS.frame, metal: MATS.metal, glass: MATS.envGlass, wall: MATS.envWall2 };
+  const addFix = (f, par, node) => {
+    const x = f.front != null ? front - f.front : (f.x || 0), mat = FM[f.mat] || MATS.envConsole;
+    let m;
+    if (f.k === 'disp') {
+      m = new THREE.Group(); m.position.set(x, f.y, f.z || 0); m.rotation.set(-rad(f.tilt || 0), -Math.PI / 2 + rad(f.yaw || 0), 0, 'YXZ');
+      m.add(box(f.w + 24, f.h + 24, 40, MATS.frame, 0, 0, -22)); m.add(box(f.w, f.h, 4, MATS.envDisplay, 0, 0, 0));
+    } else if (f.k === 'cyl') {
+      if (f.axis === 'z') { m = new THREE.Mesh(new THREE.CylinderGeometry(f.r, f.r, f.len, 24), mat); m.rotation.x = Math.PI / 2; m.position.set(x, f.y, f.z || 0); }
+      else { m = new THREE.Mesh(new THREE.CylinderGeometry(f.r, f.r, f.y1 - f.y0, 32), mat); m.position.set(x, (f.y0 + f.y1) / 2, f.z || 0); }
+    } else if (f.k === 'dome') {
+      m = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 16, 0, Math.PI * 2, 0, Math.PI / 2), mat); m.scale.set(f.rx, f.ry, f.rz); m.position.set(x, f.y, f.z || 0);
+    } else {
+      m = box(f.d, f.h, f.w, mat, x, f.y, f.z || 0); m.rotation.set(0, rad(f.yaw || 0), rad(f.tilt || 0), 'YXZ');
+    }
+    par.add(tag(m, node)); m.traverse(o => { if (o !== m) o.userData.layer = 'ENV'; });
+  };
+  (E.fixtures || []).forEach(f => addFix(f, g, 'env.fixtures'));
+  // each seat: its role fixtures and, for the other seats, a copy of the active console (desk, screens, items, seat)
+  for (const r of E.roles) {
+    const so = r.mirror ? -1 : 1, seat = new THREE.Group(); seat.position.set(envRoleX(E, r, W), 0, r.z); seat.scale.z = so;
+    const active = r.id === role.id;
+    (E.roleFixtures || []).forEach(f => addFix(f, seat, active ? 'env.fixtures' : 'env.station.' + r.id));
+    if (!active && E.stations === 'mirror') {
+      // the workstation is already mirrored for a mirrored active role, so undo that before mirroring for this seat
+      const c = groups.ws.clone(); c.scale.z = sa;
+      c.traverse(o => { o.userData = { keepGeo: true, layer: 'ENV' }; });
+      seat.add(c);
+    }
+    seat.userData.node = active ? 'env.fixtures' : 'env.station.' + r.id; g.add(seat);
   }
 }
 
@@ -5218,7 +5482,8 @@ function treeNodes() {
   }
   if (W.footrest > 0 && (mdl || !CH.ring)) add('ws.foot', 'Footrest', 'part', `${W.footrest} mm`);
   add('ws.desk', 'Desk', 'desk', `${W.deskWidth} × ${W.deskDepth}`);
-  add('ws.desk.top', 'Top', 'part'); add('ws.desk.legs', 'Legs', 'part'); add('ws.desk.panel', 'Modesty panel', 'part');
+  add('ws.desk.top', W.deskStyle === 'panel' ? 'Panel' : 'Top', 'part');
+  if (W.deskStyle === 'console') add('ws.desk.legs', 'Cabinet', 'part'); else if (W.deskStyle !== 'panel') { add('ws.desk.legs', 'Legs', 'part'); add('ws.desk.panel', 'Modesty panel', 'part'); }
   add('ws.scr', 'Screens', 'folder', String(W.screens.count));
   W.screens.list.slice(0, W.screens.count).forEach((sc, i) => add('ws.scr.' + i, `Screen ${i + 1}`, 'screen', `${sc.size}″ ${sc.aspect}${sc.orient === 'portrait' ? ' portrait' : ''}`));
   add('ws.scr.stands', 'Stands', 'part');
@@ -5230,8 +5495,9 @@ function treeNodes() {
   if (E.shell) {
     const I = E.shell.internal;
     add('env', E.name, 'folder', E.roles.length > 1 ? envRole(E).name.split(' (')[0] : '');
-    add('env.shell', 'Shelter', 'part', `${I.length} × ${I.width} × ${I.height}`);
-    add('env.shell.walls', 'Walls and ceiling', 'part'); add('env.shell.floor', 'Floor', 'part'); if (E.shell.door) add('env.shell.door', 'Door', 'part');
+    add('env.shell', E.shell.kind === 'tube' ? 'Fuselage' : 'Enclosure', 'part', E.shell.kind === 'tube' ? `⌀${I.diameter} × ${I.length}` : `${I.length} × ${I.width} × ${I.height}`);
+    add('env.shell.walls', E.shell.kind === 'tube' ? 'Wall and bulkheads' : E.shell.ceiling === false ? 'Walls' : 'Walls and ceiling', 'part'); add('env.shell.floor', 'Floor', 'part'); if (E.shell.door) add('env.shell.door', 'Door', 'part');
+    if ((E.fixtures || []).length || (E.roleFixtures || []).length) add('env.fixtures', 'Fittings and displays', 'part', 'not assessed');
     if (E.stations === 'mirror') E.roles.filter(r => r.id !== envRole(E).id).forEach(r => add('env.station.' + r.id, r.name.split(' (')[0] + ' console', 'desk', 'copy'));
   }
   add('grid', 'Floor grid', 'grid');
@@ -5392,7 +5658,7 @@ function bindShell() {
     if (e.key !== 'Escape') return;
     closeMenus();
     if (!$('#about').hidden) $('#about').hidden = true;
-    if (!$('#envlib').hidden) closeEnvLib();
+    if (!$('#envlib').hidden && !envBootPending) closeEnvLib();
     if (!$('#fs-gate').hidden) $('#fs-skip').click();
   });
 }
