@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><!-- Offline build. Bundles three.js 0.160.0 (MIT, three.js authors), jsPDF 2.5.1 (MIT, James Hall and contributors) and svg2pdf.js 2.2.3 (MIT, yWorks GmbH). --><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style></head><body><title>Seated Workstation Fit</title>
+<!doctype html><html lang="en"><head><!-- Offline build. Bundles three.js 0.160.0 (MIT, three.js authors), jsPDF 2.5.1 (MIT, James Hall and contributors) and svg2pdf.js 2.2.3 (MIT, yWorks GmbH). --><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style></head><body><title>Anthropometry Modelling Tool</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
 /* Layout: Blender-style workspace. Top bar with menus; 3D viewport (header, tool strip, object browser overlay, view cube) centre;
@@ -11,7 +11,7 @@
   --ok-bg:#e7f3ea; --warn-bg:#fbf0de; --bad-bg:#fae6e4; --info-bg:#eef1f4;
   --scene-bg:#f7f8fa; --grid-a:#d8dde3; --grid-b:#e9ecf0;
   --mk:#b7c1ca; --mk-joint:#a3aeb9; --shoe:#3b434c; --chair:#4a545e; --desk:#ddd8cf; --metal:#939da7; --screen:#1e242a; --frame:#2f363d; --kb:#3a424a; --device:#454d56; --ball:#8a2f2f; --paper:#fbfbf8; --panel-glass:#aebccb;
-  --zone-n:#2b7a43; --zone-m:#9f6000; --wire:#53708c;
+  --zone-n:#2b7a43; --zone-m:#9f6000; --wire:#53708c; --env-wall:#d6dbe0; --env-floor:#d3d8dd; --env-edge:#9aa5b0; --env-door:#c3cad1;
   --cube-face:#f1f4f7; --cube-hover:#d5e3f0; --cube-edge:#98a3af; --cube-text:#36424f;
   --overlay:rgba(20,28,36,.36); --float:rgba(255,255,255,.94); --shadow:0 6px 22px rgba(0,0,0,.12);
   --f-sans:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Roboto,Arial,sans-serif;
@@ -25,7 +25,7 @@
   --ok-bg:rgba(63,208,126,.13); --warn-bg:rgba(255,178,46,.13); --bad-bg:rgba(255,92,80,.15); --info-bg:#141414;
   --scene-bg:#000000; --grid-a:#2a2a2a; --grid-b:#141414;
   --mk:#a2acb6; --mk-joint:#8a95a0; --shoe:#33373b; --chair:#4c5258; --desk:#5b564e; --metal:#80878e; --screen:#11161c; --frame:#41464c; --kb:#31353a; --device:#3b4045; --ball:#c0504a; --paper:#d2d2d2; --panel-glass:#3a4652;
-  --zone-n:#3fd07e; --zone-m:#ffb22e; --wire:#6fa8ff;
+  --zone-n:#3fd07e; --zone-m:#ffb22e; --wire:#6fa8ff; --env-wall:#16191c; --env-floor:#202428; --env-edge:#4a525a; --env-door:#2a3036;
   --cube-face:#121212; --cube-hover:#1b3352; --cube-edge:#4d4d4d; --cube-text:#dcdcdc;
   --overlay:rgba(0,0,0,.66); --float:rgba(8,8,8,.92); --shadow:0 6px 24px rgba(0,0,0,.7);
   color-scheme:dark;
@@ -293,6 +293,30 @@ textarea{width:100%;min-height:90px;font-size:11px;border:1px solid var(--rule);
 #popa-prog{width:100%}
 .drw-prev svg{width:100%;height:auto;display:block;background:#fff;box-shadow:0 1px 6px rgba(0,0,0,.14)}
 .about-card{width:min(780px,100%)}
+/* ---- environment library and tab ---- */
+.env-btn{border:0;border-left:1px solid var(--rule-strong);background:transparent;cursor:pointer;font:inherit;padding:2px 8px 2px 10px;border-radius:0}
+.env-btn:hover b{text-decoration:underline}
+.env-btn b{color:var(--ink);font-weight:600}
+.envlib-card{width:min(1040px,100%)}
+.envlib-body{padding:12px 16px 18px;overflow:auto}
+.envlib-body>p{margin:0 0 10px;color:var(--muted);max-width:80ch}
+.envlib-dom{font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;margin:14px 0 6px}
+.envlib-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:8px}
+.env-card{border:1px solid var(--rule);border-radius:6px;background:var(--panel-2);padding:10px 12px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.env-card.cur{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.env-card.planned{opacity:.72}
+.env-card h3{font-size:13px;display:flex;align-items:baseline;gap:8px;justify-content:space-between}
+.env-card .fam{font-size:11.5px;color:var(--faint)}
+.env-card p{margin:0;font-size:12px;line-height:1.45;color:var(--muted)}
+.env-card .btnrow{margin:auto 0 0;padding-top:4px}
+.env-badge{font-size:10.5px;font-weight:600;border-radius:3px;padding:1px 6px;white-space:nowrap;flex:none}
+.env-badge.available{background:var(--ok-bg);color:var(--ok)}
+.env-badge.preview{background:var(--warn-bg);color:var(--warn)}
+.env-badge.planned{background:var(--info-bg);color:var(--info)}
+.env-cur{display:flex;flex-direction:column;gap:4px}
+.env-cur .t{font-weight:600;font-size:13px;display:flex;gap:8px;align-items:baseline;justify-content:space-between}
+.env-list{margin:4px 0;padding-left:18px;color:var(--muted);font-size:12px}
+.env-list li{margin:3px 0}
 .about-body{padding:12px 18px 18px;overflow:auto;font-size:12.5px}
 .about-body ul{padding-left:18px;color:var(--muted);font-size:12.5px}
 .about-body li{margin:5px 0}
@@ -331,6 +355,7 @@ textarea{width:100%;min-height:90px;font-size:11px;border:1px solid var(--rule);
   <symbol id="i-eye" viewBox="0 0 16 16"><path d="M1.2 8S3.8 3.6 8 3.6 14.8 8 14.8 8 12.2 12.4 8 12.4 1.2 8 1.2 8z"/><circle cx="8" cy="8" r="2.1"/></symbol>
   <symbol id="i-eyeoff" viewBox="0 0 16 16"><path d="M2.5 2.5l11 11M6.4 4A6.8 6.8 0 0 1 8 3.6C12.2 3.6 14.8 8 14.8 8a12.7 12.7 0 0 1-2 2.6M9.6 12.2a6.3 6.3 0 0 1-1.6.2C3.8 12.4 1.2 8 1.2 8a12.6 12.6 0 0 1 2.4-2.9"/></symbol>
   <symbol id="i-tw" viewBox="0 0 10 10"><path d="M3.5 2 7 5 3.5 8" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-env" viewBox="0 0 16 16"><path d="M1.8 5.2 8 2l6.2 3.2v6.6L8 15l-6.2-3.2zM1.8 5.2 8 8.4l6.2-3.2M8 8.4V15"/></symbol>
   <symbol id="i-folder" viewBox="0 0 16 16"><path d="M1.8 4h4.4l1.4 1.5h6.6V13H1.8z"/></symbol>
   <symbol id="i-part" viewBox="0 0 16 16"><path d="M3 5l5-2.8L13 5v6l-5 2.8L3 11z M3 5l5 2.8L13 5M8 7.8v6"/></symbol>
   <symbol id="i-screen" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="8.5" rx="1"/><path d="M8 11v2.5M5 13.5h6"/></symbol>
@@ -350,6 +375,8 @@ textarea{width:100%;min-height:90px;font-size:11px;border:1px solid var(--rule);
     <span class="logo"><i></i>HFE Lab</span>
     <div class="menu"><button class="menu-btn" aria-haspopup="menu" aria-expanded="false">File</button>
       <div class="menu-pop" role="menu" hidden>
+        <button role="menuitem" data-click="#env-open">Environment library…</button>
+        <hr>
         <button role="menuitem" data-click="#json-in">Open setup…<span class="kbd">JSON</span></button>
         <button role="menuitem" data-click="#exp-json">Save setup<span class="kbd">JSON</span></button>
         <hr>
@@ -408,7 +435,7 @@ textarea{width:100%;min-height:90px;font-size:11px;border:1px solid var(--rule);
         <button role="menuitem" data-act="keys">Mouse and keys</button>
       </div>
     </div>
-    <span class="app-title">Seated Workstation Fit</span>
+    <button class="app-title env-btn" id="env-btn" title="Change environment">Anthropometry Modelling Tool · <b id="env-name">Seated desk workstation</b></button>
     <span class="tb-spacer"></span>
     <div class="who" id="who"></div>
     <div class="seg" role="group" aria-label="Theme"><button id="th-light" aria-pressed="true">Light</button><button id="th-dark" aria-pressed="false">Dark</button></div>
@@ -490,12 +517,28 @@ textarea{width:100%;min-height:90px;font-size:11px;border:1px solid var(--rule);
 
     <aside class="side" aria-label="Properties">
       <div class="tabs" role="tablist" aria-orientation="vertical">
+        <button role="tab" id="t-env" aria-selected="false" aria-controls="tp-env" aria-label="Environment" title="Environment"><svg class="i"><use href="#i-env"/></svg></button>
         <button role="tab" id="t-man" aria-selected="true" aria-controls="tp-man" aria-label="Manikin" title="Manikin"><svg class="i"><use href="#i-person"/></svg></button>
         <button role="tab" id="t-ws" aria-selected="false" aria-controls="tp-ws" aria-label="Workstation" title="Workstation"><svg class="i"><use href="#i-chair"/></svg></button>
         <button role="tab" id="t-lim" aria-selected="false" aria-controls="tp-lim" aria-label="Limits" title="Limits"><svg class="i"><use href="#i-sliders"/></svg></button>
       </div>
       <div class="prop-wrap">
         <div class="prop-title"><span id="prop-title">Manikin</span><span class="sub" id="prop-sub"></span></div>
+        <div class="tabpanel" id="tp-env" role="tabpanel" hidden>
+          <details class="pnl" open><summary>Environment</summary><div class="pnl-body">
+            <div class="env-cur" id="env-cur"></div>
+            <div class="btnrow"><button class="btn primary" id="env-open">Environment library…</button></div>
+          </div></details>
+          <details class="pnl" open id="env-role-pnl"><summary>Role</summary><div class="pnl-body">
+            <div class="row2"><label for="env-role">Seat assessed</label><select id="env-role"></select></div>
+            <p class="help">The manikin sits at this role's console. The other consoles are drawn as copies of it.</p>
+          </div></details>
+          <details class="pnl" open id="env-par-pnl"><summary>Geometry</summary><div class="pnl-body"><div id="env-params"></div>
+            <div class="btnrow"><button class="btn" id="env-reset">Reset to template</button></div>
+          </div></details>
+          <details class="pnl" open><summary>Checks</summary><div class="pnl-body" id="env-checks"></div></details>
+          <details class="pnl"><summary>Sources</summary><div class="pnl-body" id="env-sources"></div></details>
+        </div>
         <div class="tabpanel" id="tp-man" role="tabpanel">
           <details class="pnl" open><summary>Population</summary><div class="pnl-body">
             <div class="row2"><label for="pop">Dataset</label><select id="pop"></select></div>
@@ -578,6 +621,16 @@ textarea{width:100%;min-height:90px;font-size:11px;border:1px solid var(--rule);
       <p id="fs-how" hidden></p>
       <div class="btnrow"><button class="btn primary" id="fs-go">Go full screen</button><button class="btn" id="fs-skip">Stay in the window</button></div>
       <p style="font-size:12px">Switch any time from View › Full screen, the button in the top bar, or F11.</p>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="envlib" hidden>
+  <div class="modal-card envlib-card" role="dialog" aria-modal="true" aria-labelledby="envlib-h">
+    <div class="modal-head"><h2 id="envlib-h">Environment library</h2><span class="tb-spacer"></span><button class="icon-btn" id="envlib-close" aria-label="Close">×</button></div>
+    <div class="envlib-body">
+      <p>Choose where to put the manikin. Each environment is a template: geometry, seated roles, workstation defaults and the checks that apply. Loading one replaces the current workstation layout; the manikin and limits stay as they are.</p>
+      <div id="envlib-list"></div>
     </div>
   </div>
 </div>
@@ -766,6 +819,118 @@ const CURVES = [[0, 'Flat'], [3800, '3800R'], [3000, '3000R'], [2300, '2300R'], 
 function screenDims(sc) { const [a, b] = ASPECTS[sc.aspect] || [16, 9]; const k = sc.size * 25.4 / Math.hypot(a, b); let w = a * k, h = b * k; if (sc.orient === 'portrait') [w, h] = [h, w]; return { w, h }; }
 function objDims(o) { return o.type === 'keyboard' ? { d: KB[o.kb].d, w: KB[o.kb].w, h: 30 } : OBJ[o.type]; }
 
+/* ---------------- environment library (ENV-07, ENV-08) ----------------
+   Each environment is a template held as data: geometry, roles, defaults for the workstation model, and the checks
+   that apply now or are planned. The tool loads a template by id (?env=<id> in the URL, the Environment tab, or the
+   library dialog). New templates are added here, not in the tool's code. See docs/ENVIRONMENTS_AND_KIT.md section 3.
+
+   Frame: Y up, +X forward (towards the console), +Z to the operator's right. The origin is the seat front edge of the
+   active role's seat, at floor level. All lengths in mm, angles in degrees.
+
+   Public builds carry generic, illustrative templates built from public dimensions only. Real platform geometry is
+   project data and is never added to this file (docs/ENVIRONMENTS_AND_KIT.md section 7).
+
+   Fields
+     id, name, family (domain and sub-domain), domain (office | air | land | maritime | submarine)
+     status       available | preview | planned (planned templates are listed but cannot be loaded)
+     summary      one or two sentences for the library card
+     roles        [{ id, name, z }]: each seated position, z = its centreline relative to the shell centre
+     shell        optional enclosure: { kind: 'box', internal: { length, width, height }, frontGap, door }
+                  length runs along Z, width along X; frontGap is from the desk's far edge to the front wall
+     stations     'mirror': every other role gets a copy of the active console, screens and seat
+     params       user-adjustable geometry: [{ key, label, path, min, max, step }] (path into the template)
+     ws           partial workstation settings merged over the tool's defaults when the template loads
+     checks       { now: [check groups that apply], planned: [plain-language checks still to come] }
+     sources      standards and public references behind the geometry
+     reqs         requirement IDs the template serves */
+const HFE_ENV = (() => {
+  const T = [
+    {
+      id: 'desk-workstation', name: 'Seated desk workstation', family: 'Office and general', domain: 'office', status: 'available',
+      summary: 'An office or control-room desk with a chair, one to four screens and desk items. The original Seated Workstation Fit model.',
+      roles: [{ id: 'user', name: 'Desk user', z: 0 }],
+      ws: {},
+      checks: { now: ['Vision', 'Head and neck', 'Upper limb', 'Trunk and seat', 'Lower limb', 'Furniture', 'Joint range of motion', 'Clearance'], planned: [] },
+      sources: ['ISO 9241-5', 'BS EN 1335-1:2020', 'MIL-STD-1472', 'ANSUR II'],
+      reqs: ['ENV-02', 'ENV-03', 'ENV-05']
+    },
+    {
+      id: 'gcs-container', name: 'Containerised ground control station', family: 'Air: remotely piloted', domain: 'air', status: 'preview',
+      summary: 'A generic, illustrative ISO-container shelter with two side-by-side operator consoles (pilot and sensor operator), each with a display array. Built for MQ-9B class display placement and display creep studies. Not the real GCS geometry.',
+      roles: [{ id: 'pilot', name: 'Pilot (left console)', z: -750 }, { id: 'sensor', name: 'Sensor operator (right console)', z: 750 }],
+      // ISO 668 series 1 20 ft container, typical internal dimensions; the console sits against the front long wall
+      shell: { kind: 'box', internal: { length: 5898, width: 2352, height: 2393 }, frontGap: 60, door: { side: 'rear', z: 2300, width: 900, height: 2000 } },
+      stations: 'mirror',
+      params: [
+        { key: 'length', label: 'Shelter internal length', path: ['shell', 'internal', 'length'], min: 3000, max: 12000, step: 10 },
+        { key: 'width', label: 'Shelter internal width', path: ['shell', 'internal', 'width'], min: 1600, max: 3500, step: 10 },
+        { key: 'height', label: 'Shelter internal height', path: ['shell', 'internal', 'height'], min: 1800, max: 3000, step: 10 }
+      ],
+      ws: {
+        chair: 'task', armrests: true, footrest: 0,
+        deskSize: '1400x800', deskWidth: 1400, deskDepth: 800, legroom: 600,
+        screens: {
+          count: 4, layout: 'custom', bottom: 60, tilt: 5,
+          // primary flight display centre, two side displays, one situational-awareness display above
+          list: [
+            { size: 24, aspect: '16:10', orient: 'landscape', curve: 0, tilt: null, dy: 0, x: 560, z: 0, yaw: 0 },
+            { size: 24, aspect: '16:10', orient: 'landscape', curve: 0, tilt: null, dy: 0, x: 520, z: -500, yaw: 32 },
+            { size: 24, aspect: '16:10', orient: 'landscape', curve: 0, tilt: null, dy: 0, x: 520, z: 500, yaw: -32 },
+            { size: 24, aspect: '16:10', orient: 'landscape', curve: 0, tilt: -8, dy: 345, x: 600, z: 0, yaw: 0 }
+          ]
+        }
+      },
+      checks: {
+        now: ['Vision', 'Head and neck', 'Upper limb', 'Trunk and seat', 'Lower limb', 'Furniture', 'Joint range of motion', 'Clearance'],
+        planned: [
+          'Every display checked for every operator: viewing distance, legibility, gaze and head rotation, off-axis angle (ENV-11)',
+          'Display priority and frequency of use, so a high-priority display outside the primary zone fails (ENV-11)',
+          'Occlusion of one display by another, by the console or by the operator’s arms (ENV-11)',
+          'Chair push-back and rotation clearance to the rear wall, shared passage, door ingress and egress',
+          'Baseline against “with new displays” comparison for display creep (PRJ-02)',
+          'More than four displays per console'
+        ]
+      },
+      sources: ['Typical internal dimensions of an ISO 668 20 ft container', 'Def Stan 00-250, MIL-STD-1472 and BS EN ISO 9241 for the planned display checks (values to be entered with source records)'],
+      reqs: ['ENV-07', 'ENV-08', 'ENV-11']
+    },
+    // planned templates (ENV-08): listed so users can see the roadmap; they cannot be loaded yet
+    { id: 'vehicle-commander', name: 'Vehicle commander station with roof hatch', family: 'Land: vehicle', domain: 'land', status: 'planned',
+      summary: 'Commander and gunner stations under a roof hatch: head and helmet clearance, hatch transit with kit, vision blocks and sights. The kit-heavy second slice.',
+      checks: { planned: ['Head and helmet clearance', 'Hatch transit with kit', 'Vision block and periscope sightlines', 'Reach to controls'] } },
+    { id: 'vehicle-driver', name: 'Vehicle driver station', family: 'Land: vehicle', domain: 'land', status: 'planned',
+      summary: 'Driver seat, pedals, steering and vision blocks, head-out and closed-down.', checks: { planned: ['Pedal and control reach', 'Knee clearance', 'Vision blocks'] } },
+    { id: 'dismounted', name: 'Doorways, steps and firing positions', family: 'Land: dismounted', domain: 'land', status: 'planned',
+      summary: 'Apertures, step heights, trench and firing-step profiles, kneeling and prone positions.', checks: { planned: ['Aperture transit', 'Step heights', 'Weapon sight alignment'] } },
+    { id: 'fast-jet', name: 'Fast-jet cockpit', family: 'Air: fixed wing', domain: 'air', status: 'planned',
+      summary: 'Seat reference point, design eye point, canopy line and harness constraint.', checks: { planned: ['Design eye point accommodation', 'External vision envelope', 'Canopy and helmet clearance'] } },
+    { id: 'rotary-cabin', name: 'Rotary-wing cabin and door', family: 'Air: rotary', domain: 'air', status: 'planned',
+      summary: 'Pilot station, troop seats, door and ramp, with cabin headroom.', checks: { planned: ['Cabin headroom', 'Door transit with kit'] } },
+    { id: 'ship-bridge', name: 'Ship’s bridge and operations console', family: 'Maritime: surface', domain: 'maritime', status: 'planned',
+      summary: 'Standing and seated consoles, passageways, ladders, watertight doors and hatches.', checks: { planned: ['Console reach and vision', 'Ladder geometry', 'Hatch transit'] } },
+    { id: 'submarine-control', name: 'Submarine control room', family: 'Maritime: submarine', domain: 'submarine', status: 'planned',
+      summary: 'Control room station, passageway, bunk space and hatch in restricted headroom.', checks: { planned: ['Clearance in restricted headroom', 'Hatch transit', 'Bunk access'] } }
+  ];
+  const BY = Object.fromEntries(T.map(e => [e.id, e]));
+  const DEFAULT = 'desk-workstation';
+  const loadable = e => !!e && e.status !== 'planned';
+  const get = id => BY[id] || null;
+  const getPath = (o, p) => p.reduce((a, k) => (a == null ? a : a[k]), o);
+  // a working copy of a template with the user's parameter values applied
+  function resolve(id, params) {
+    const e = structuredClone(BY[id] || BY[DEFAULT]);
+    for (const p of e.params || []) {
+      const v = params && params[p.key];
+      if (v == null || !isFinite(v)) continue;
+      const parent = getPath(e, p.path.slice(0, -1)); if (parent) parent[p.path[p.path.length - 1]] = Math.min(p.max, Math.max(p.min, +v));
+    }
+    return e;
+  }
+  const paramValue = (e, p) => getPath(e, p.path);
+  return { list: T, get, resolve, paramValue, loadable, DEFAULT };
+})();
+
+
 /* ---------------- state ---------------- */
 const SCREEN_DEFAULT = () => ({ size: 27, aspect: '16:9', orient: 'landscape', curve: 0, tilt: null, dy: 0, x: 450, z: 0, yaw: 0 });
 const WS_DEFAULT = {
@@ -821,7 +986,8 @@ const LIM_DEFAULT = Object.fromEntries(CHECKS.map(c => [c.id, { g: [...c.g], a: 
 const S = {
   pop: RAW.defaultPop || 'ansur-m', pct: 50, method: 'subject', custom: null,
   ws: structuredClone(WS_DEFAULT), lim: structuredClone(LIM_DEFAULT),
-  view: 'right', proj: 'ortho', ann: true, showWs: true, zones: true, mk: 'solid', showModel: true, kit: 'none'
+  view: 'right', proj: 'ortho', ann: true, showWs: true, zones: true, mk: 'solid', showModel: true, kit: 'none',
+  env: { id: HFE_ENV.DEFAULT, role: 'user', params: {} }
 };
 const STATUS = {
   ok: { word: 'Within limits', glyph: '✓' }, warn: { word: 'Marginal', glyph: '!' },
@@ -1720,7 +1886,7 @@ scene.add(new THREE.HemisphereLight(0xffffff, 0x8a949c, 1.25));
 const sun = new THREE.DirectionalLight(0xffffff, 1.35); sun.position.set(1800, 3200, 2600); scene.add(sun);
 const fill = new THREE.DirectionalLight(0xffffff, 0.45); fill.position.set(-2500, 1200, -1500); scene.add(fill);
 let grid = null;
-const groups = { body: new THREE.Group(), ws: new THREE.Group(), zones: new THREE.Group(), ann: new THREE.Group() };
+const groups = { body: new THREE.Group(), ws: new THREE.Group(), zones: new THREE.Group(), ann: new THREE.Group(), env: new THREE.Group() };
 Object.values(groups).forEach(g => scene.add(g));
 let labelsForExport = [];
 function tok(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#888'; }
@@ -1738,7 +1904,11 @@ function makeMats() {
     ghost: std('--mk', { transparent: true, opacity: 0.2, depthWrite: false }), link: new THREE.MeshBasicMaterial({ color: col('--accent') }),
     dim: new THREE.LineBasicMaterial({ color: col('--dim'), depthTest: false, transparent: true }),
     dash: new THREE.LineDashedMaterial({ color: col('--dim'), dashSize: 18, gapSize: 12, depthTest: false, transparent: true }),
-    keyline: new THREE.LineBasicMaterial({ color: col('--metal') }), home: new THREE.LineBasicMaterial({ color: col('--accent') })
+    keyline: new THREE.LineBasicMaterial({ color: col('--metal') }), home: new THREE.LineBasicMaterial({ color: col('--accent') }),
+    // environment shells: single-sided walls facing inwards, so the walls nearest the camera drop out and the room reads as a cutaway
+    envWall: std('--env-wall', { roughness: 0.9, emissive: col('--env-wall'), emissiveIntensity: 0.4 }), envFloor: std('--env-floor', { roughness: 0.95 }),
+    envDoor: std('--env-door', { roughness: 0.8, emissive: col('--env-door'), emissiveIntensity: 0.4 }),
+    envEdge: new THREE.LineBasicMaterial({ color: col('--env-edge') })
   };
   ['ok', 'warn', 'bad', 'info'].forEach(s => MATS['arc_' + s] = new THREE.LineBasicMaterial({ color: col(s === 'info' ? '--dim' : '--' + s), depthTest: false, transparent: true }));
   scene.background = col('--scene-bg');
@@ -3144,7 +3314,7 @@ function update() {
   const { G, R } = solvePosture(M, W);
   const rows = evaluate(R, W, G); lastRows = rows;
   window.__last = { M, G, R, rows };
-  buildBody(M, G); buildWorkstation(M, G, W); buildZones(G, W); buildAnnotations(M, G, R, W, rows);
+  buildBody(M, G); buildWorkstation(M, G, W); buildEnv(G, W); buildZones(G, W); buildAnnotations(M, G, R, W, rows);
   applyVisibility(); renderTree(); syncProxies();
   renderResults(rows); renderManikinPanel(M); syncWsControls(); $('#kit-help').textContent = kitHelp();
   if (!$('#cfg').hidden) renderPlan();
@@ -3317,7 +3487,7 @@ function bind() {
     catch { const ta = document.createElement('textarea'); ta.value = txt; ta.setAttribute('aria-label', 'Table text'); $('.results-head').after(ta); ta.select(); toast('Text selected: press Ctrl/Cmd+C.'); setTimeout(() => ta.remove(), 15000); }
   };
   $('#exp-csv').onclick = () => saveFile(`workstation-checks-${stamp()}.csv`, csvText());
-  $('#exp-json').onclick = () => saveFile(`workstation-setup-${stamp()}.json`, JSON.stringify({ app: 'seated-workstation-fit', v: 2, pop: S.pop, pct: S.pct, method: S.method, custom: S.custom || currentManikin().vals, customEdited: !!S.custom, ws: S.ws, lim: S.lim }, null, 2));
+  $('#exp-json').onclick = () => saveFile(`${S.env.id}-setup-${stamp()}.json`, JSON.stringify({ app: 'hfe-anthropometry', v: 3, env: S.env, pop: S.pop, pct: S.pct, method: S.method, custom: S.custom || currentManikin().vals, customEdited: !!S.custom, ws: S.ws, lim: S.lim }, null, 2));
   $('#exp-png').onclick = exportPNG;
   $('#csv').addEventListener('change', onCsv);
   $('#json-in').addEventListener('change', onJson);
@@ -3910,7 +4080,7 @@ async function drwPDF() {
     const el = holder.querySelector('svg');
     if (doc.svg) await doc.svg(el, { x: 0, y: 0, width: 420, height: 297 }); else await window.svg2pdf.svg2pdf(el, doc, { x: 0, y: 0, width: 420, height: 297 });
     holder.remove();
-    doc.setProperties({ title: DRW.title || 'Seated workstation fit', subject: 'Seated workstation drawing', creator: 'HFE Lab · Seated Workstation Fit' });
+    doc.setProperties({ title: DRW.title || 'Seated workstation fit', subject: 'Seated workstation drawing', creator: 'HFE Lab · Anthropometry Modelling Tool' });
     await saveFile(`${(DRW.dwg || defaultDwg())}.pdf`, doc.output('blob'));
     $('#drw-status').textContent = `A3 landscape, scale 1:${drwLast.den}.`;
   } catch (e) { $('#drw-status').textContent = 'Could not make the PDF: ' + e.message; }
@@ -4696,7 +4866,7 @@ function renderPopa() {
 function popaCsv(R) {
   const q = s => `"${String(s ?? '').replace(/"/g, '""')}"`, L = [], row = a => L.push(a.map(q).join(','));
   const G = R.groups, cnt = c => !!R.settings.pol.groups[c.group];
-  row(['HFE Lab, Seated Workstation Fit: population accommodation']); row(['Run', R.when.toISOString()]);
+  row(['HFE Lab, Anthropometry Modelling Tool: population accommodation']); row(['Environment', envNow().name + (envNow().roles.length > 1 ? ', ' + envRole(envNow()).name : '')]); row(['Run', R.when.toISOString()]);
   row(['Validation status', 'Not validated. Posture from geometric rules, not a validated posture-prediction model. Confidence intervals (Wilson score, 95 %) cover sampling only.']);
   for (const g of G) row(['Dataset', `${g.label}, n = ${g.n}`, g.file ? `${g.file} sha256 ${g.sha256}` : 'records loaded in this session']);
   row(['Settings digest (sha256 of workstation, limits and run settings)', R.digest || 'unavailable in this browser']);
@@ -4769,7 +4939,7 @@ function bindPopa() {
     const b = e.target.closest('button'); if (!b) return; const R = POPA.last; if (!R) return;
     if (b.id === 'popa-csv') saveFile(`population-accommodation-${stamp()}.csv`, popaCsv(R));
     else if (b.id === 'popa-subj') saveFile(`population-accommodation-people-${stamp()}.csv`, popaSubjectsCsv(R));
-    else if (b.id === 'popa-json') saveFile(`population-run-${stamp()}.json`, JSON.stringify({ app: 'seated-workstation-fit', v: 2, pop: S.pop, pct: S.pct, method: S.method, custom: S.custom || currentManikin().vals, customEdited: !!S.custom, ws: R.settings.ws, lim: R.settings.lim,
+    else if (b.id === 'popa-json') saveFile(`population-run-${stamp()}.json`, JSON.stringify({ app: 'hfe-anthropometry', v: 3, env: S.env, pop: S.pop, pct: S.pct, method: S.method, custom: S.custom || currentManikin().vals, customEdited: !!S.custom, ws: R.settings.ws, lim: R.settings.lim,
       population: { pol: R.settings.pol, run: R.when.toISOString(), digest: R.digest, datasets: R.groups.map(g => ({ pop: g.pop, label: g.label, n: g.n, file: g.file, sha256: g.sha256 })),
         overall: R.groups.map(g => ({ pop: g.pop, accommodated: g.overall.pass, allGreen: g.overall.green, n: g.n })) } }, null, 2));
     else if (b.id === 'popa-base') { POPA.base = POPA.base ? null : R; renderPopa(); }
@@ -4874,13 +5044,125 @@ function mergeWs(w) {
 async function onJson(e) {
   const f = e.target.files[0]; $('#json-err').textContent = ''; if (!f) return;
   try {
-    const j = JSON.parse(await f.text()); if (j.app !== 'seated-workstation-fit') throw new Error('This is not a setup file from this page.');
+    const j = JSON.parse(await f.text()); if (j.app !== 'hfe-anthropometry' && j.app !== 'seated-workstation-fit') throw new Error('This is not a setup file from this page.');
+    // files from Seated Workstation Fit (v2) have no environment: they are desk workstation setups
+    const je = j.env && HFE_ENV.loadable(HFE_ENV.get(j.env.id)) ? j.env : { id: HFE_ENV.DEFAULT };
+    loadEnv(je.id, { role: je.role, params: je.params, keepWs: true, silent: true });
     if (j.pop && POPS[j.pop]) S.pop = j.pop; if (j.pct) S.pct = j.pct; if (j.method) S.method = j.method;
     S.custom = (j.customEdited || !POPS[j.pop]) ? j.custom : null;
     S.ws = mergeWs(j.ws); if (j.lim) S.lim = { ...structuredClone(LIM_DEFAULT), ...j.lim };
     if (j.population && j.population.pol) { const d = POPA.pol; POPA.pol = { ...d, ...j.population.pol, groups: { ...d.groups, ...(j.population.pol.groups || {}) } }; }
     renderLimits(); popOptions(); update(); toast('Setup loaded.');
   } catch (err) { $('#json-err').textContent = 'Could not load that file: ' + err.message; }
+}
+
+/* ---------------- environments (ENV-07): templates from core/environments.js ---------------- */
+const ENV_STATUS = { available: 'Available', preview: 'Preview', planned: 'Planned' };
+const ENV_DOMAINS = [['office', 'Office and general'], ['air', 'Air'], ['land', 'Land'], ['maritime', 'Maritime: surface'], ['submarine', 'Maritime: submarine']];
+const envNow = () => HFE_ENV.resolve(S.env.id, S.env.params);
+const envRole = E => (E.roles || []).find(r => r.id === S.env.role) || (E.roles || [{ id: 'user', name: 'User', z: 0 }])[0];
+const shortRole = r => r.name.split(' (')[0];
+function syncEnvUrl() {
+  try { const u = new URL(location.href); u.searchParams.set('env', S.env.id); const E = envNow(); if (E.roles.length > 1 && S.env.role !== E.roles[0].id) u.searchParams.set('role', S.env.role); else u.searchParams.delete('role'); history.replaceState(history.state, '', u); } catch { /* sandboxed frame or file: URL */ }
+}
+// Load a template. Unless keepWs, the workstation layout is replaced by the template's; the manikin and limits are kept.
+function loadEnv(id, opt = {}) {
+  const T = HFE_ENV.get(id); if (!HFE_ENV.loadable(T)) return false;
+  const role = (T.roles.find(r => r.id === opt.role) || T.roles[0]).id;
+  S.env = { id, role, params: { ...(opt.params || {}) } };
+  if (!opt.keepWs) { S.ws = mergeWs(T.ws); if (!$('#cfg').hidden) renderCfg(); }
+  if (!opt.noUrl) syncEnvUrl();
+  renderEnvPanel();
+  if (!opt.silent) update();
+  return true;
+}
+function initEnv() {
+  let q = {}; try { const p = new URLSearchParams(location.search); q = { id: p.get('env'), role: p.get('role') }; } catch { /* no URL */ }
+  let skip = false; try { skip = sessionStorage.getItem('hfe-env-skip') === '1'; } catch { /* storage blocked */ }
+  const given = HFE_ENV.loadable(HFE_ENV.get(q.id));
+  loadEnv(given ? q.id : HFE_ENV.DEFAULT, { role: q.role, silent: true, noUrl: !given });
+  return { ask: !given && !skip };
+}
+function renderEnvPanel() {
+  const E = envNow(), role = envRole(E), list = a => a && a.length ? `<ul class="env-list">${a.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : '';
+  $('#env-name').textContent = E.name + (E.roles.length > 1 ? ` (${shortRole(role).toLowerCase()})` : '');
+  $('#env-cur').innerHTML = `<div class="t">${esc(E.name)}<span class="env-badge ${E.status}">${ENV_STATUS[E.status]}</span></div><span class="help" style="margin:0">${esc(E.family)}</span><p class="help">${esc(E.summary)}</p>`;
+  $('#env-role-pnl').hidden = E.roles.length < 2;
+  $('#env-role').innerHTML = selOpts(E.roles.map(r => [r.id, r.name]), role.id);
+  const P = E.params || [];
+  $('#env-par-pnl').hidden = !P.length;
+  $('#env-params').innerHTML = P.length ? `<div class="fgrid">${P.map(p => fNum(p.label, `data-envp="${p.key}" min="${p.min}" max="${p.max}" step="${p.step}"`, HFE_ENV.paramValue(E, p), 'mm', 'envp-' + p.key)).join('')}</div>` : '';
+  const C = E.checks || {};
+  $('#env-checks').innerHTML = `<p class="help">Assessed now: ${esc((C.now || []).join(', ').toLowerCase() || 'none')}.</p>` +
+    (C.planned && C.planned.length ? `<p class="help" style="margin-bottom:0">Planned for this environment:</p>${list(C.planned)}` : '');
+  $('#env-sources').innerHTML = list(E.sources) + (E.reqs ? `<p class="help">Requirements: ${esc(E.reqs.join(', '))}.</p>` : '') +
+    (E.status === 'preview' ? '<p class="help">Preview: the geometry is generic and illustrative, built from public dimensions only, and the environment-specific checks are still to come.</p>' : '');
+}
+function renderEnvLib() {
+  const cur = S.env.id;
+  const card = e => {
+    const ok = HFE_ENV.loadable(e), roles = e.roles || [];
+    const btns = !ok ? '' : roles.map((r, i) => `<button class="btn${i === 0 ? ' primary' : ''}" data-env="${e.id}" data-role="${r.id}">${roles.length > 1 ? 'Load as ' + esc(shortRole(r).toLowerCase()) : (e.id === cur ? 'Reload' : 'Load')}</button>`).join('');
+    return `<div class="env-card ${e.status}${e.id === cur ? ' cur' : ''}"><h3><span>${esc(e.name)}</span><span class="env-badge ${e.status}">${e.id === cur ? 'Loaded' : ENV_STATUS[e.status]}</span></h3>` +
+      `<span class="fam">${esc(e.family)}</span><p>${esc(e.summary)}</p>${btns ? `<div class="btnrow">${btns}</div>` : ''}</div>`;
+  };
+  $('#envlib-list').innerHTML = ENV_DOMAINS.map(([d, label]) => {
+    const items = HFE_ENV.list.filter(e => e.domain === d);
+    return items.length ? `<div class="envlib-dom">${esc(label)}</div><div class="envlib-grid">${items.map(card).join('')}</div>` : '';
+  }).join('');
+}
+let envBootPending = false;
+function openEnvLib(boot) { envBootPending = !!boot; renderEnvLib(); $('#envlib').hidden = false; setTimeout(() => { const b = $('#envlib-list .env-card.cur [data-env]') || $('#envlib-list [data-env]'); b && b.focus(); }, 0); }
+function closeEnvLib() {
+  $('#envlib').hidden = true;
+  // the first choice of environment is the click that can also take the workspace full screen
+  if (envBootPending) { envBootPending = false; startFullScreenPrompt(); }
+}
+function bindEnv() {
+  $('#env-btn').onclick = () => openEnvLib(); $('#env-open').onclick = () => openEnvLib();
+  $('#envlib-close').onclick = closeEnvLib;
+  $('#envlib').addEventListener('click', e => {
+    if (e.target.id === 'envlib') { closeEnvLib(); return; }
+    const b = e.target.closest('[data-env]'); if (!b) return;
+    loadEnv(b.dataset.env, { role: b.dataset.role }); closeEnvLib();
+    const E = envNow(); toast(`Loaded ${E.name}${E.roles.length > 1 ? ' as ' + shortRole(envRole(E)).toLowerCase() : ''}.`);
+  });
+  $('#env-role').onchange = e => { S.env.role = e.target.value; syncEnvUrl(); renderEnvPanel(); update(); };
+  $('#env-params').addEventListener('change', e => {
+    const k = e.target.dataset.envp; if (!k) return;
+    S.env.params[k] = e.target.value === '' ? null : +e.target.value;
+    const E = envNow(), p = E.params.find(x => x.key === k); e.target.value = HFE_ENV.paramValue(E, p);   // show the clamped value
+    update();
+  });
+  $('#env-reset').onclick = () => { S.env.params = {}; renderEnvPanel(); update(); };
+}
+// Shell and the other roles' consoles. Built after the workstation so the consoles can be copied from it.
+function buildEnv(G, W) {
+  const g = groups.env; clearGroup(g);
+  const E = envNow(), sh = E.shell; if (!sh) return;
+  const role = envRole(E), I = sh.internal;
+  const xF = W.deskDepth + sh.frontGap, xR = xF - I.width, xc = (xF + xR) / 2, zc = -role.z, z0 = zc - I.length / 2, z1 = zc + I.length / 2;
+  const plane = (w, h, mat, x, y, z, ry, rx, node) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat); m.position.set(x, y, z); m.rotation.set(rx || 0, ry || 0, 0, 'YXZ'); m.userData.node = node; m.userData.layer = 'ENV'; g.add(m); return m; };
+  plane(I.length, I.height, MATS.envWall, xF, I.height / 2, zc, -Math.PI / 2, 0, 'env.shell.walls');
+  plane(I.length, I.height, MATS.envWall, xR, I.height / 2, zc, Math.PI / 2, 0, 'env.shell.walls');
+  plane(I.width, I.height, MATS.envWall, xc, I.height / 2, z0, 0, 0, 'env.shell.walls');
+  plane(I.width, I.height, MATS.envWall, xc, I.height / 2, z1, Math.PI, 0, 'env.shell.walls');
+  plane(I.width, I.length, MATS.envWall, xc, I.height, zc, 0, Math.PI / 2, 'env.shell.walls');
+  plane(I.width, I.length, MATS.envFloor, xc, -1, zc, 0, -Math.PI / 2, 'env.shell.floor');
+  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(I.width, I.height, I.length)), MATS.envEdge);
+  edges.position.set(xc, I.height / 2, zc); edges.userData.node = 'env.shell.walls'; g.add(edges);
+  const d = sh.door;
+  if (d) {
+    const dz = clamp(zc + d.z, z0 + d.width / 2, z1 - d.width / 2), dx = d.side === 'front' ? xF - 3 : xR + 3;
+    plane(d.width, d.height, MATS.envDoor, dx, d.height / 2, dz, d.side === 'front' ? -Math.PI / 2 : Math.PI / 2, 0, 'env.shell.door');
+  }
+  // other roles: copies of the active console (desk, screens, desk items and seat), sharing its geometry
+  if (E.stations === 'mirror') for (const r of E.roles) {
+    if (r.id === role.id) continue;
+    const c = groups.ws.clone(); c.position.z = r.z - role.z;
+    c.traverse(o => { o.userData = { keepGeo: true, layer: 'ENV' }; });
+    c.userData.node = 'env.station.' + r.id; g.add(c);
+  }
 }
 
 /* ---------------- theme ---------------- */
@@ -4893,7 +5175,7 @@ function onTheme() { syncThemeButtons(); makeMats(); makeCube(); update(); }
 new MutationObserver(onTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
 /* ---------------- workspace shell: object browser, menus, splitters, full screen ---------------- */
-const VIS = { hidden: new Set(), collapsed: new Set(['man', 'ws.chair', 'ws.desk', 'ws.scr', 'ws.obj', 'zones', 'ann']) };
+const VIS = { hidden: new Set(), collapsed: new Set(['man', 'ws.chair', 'ws.desk', 'ws.scr', 'ws.obj', 'zones', 'ann', 'env.shell']) };
 try { const v = JSON.parse(localStorage.getItem('swf-vis') || 'null'); if (v) { VIS.hidden = new Set(v.hidden || []); if (v.collapsed) VIS.collapsed = new Set(v.collapsed); } } catch { /* storage blocked */ }
 const saveVis = () => { try { localStorage.setItem('swf-vis', JSON.stringify({ hidden: [...VIS.hidden], collapsed: [...VIS.collapsed] })); } catch { /* storage blocked */ } };
 // the three overlay toggles in the viewport header own these branches of the tree
@@ -4944,6 +5226,14 @@ function treeNodes() {
   W.objects.forEach(o => add('ws.obj.' + o.id, objName(o, W.objects), 'item'));
   add('zones', 'Reach zones', 'zone'); add('zones.normal', 'Normal zone', 'zone'); add('zones.max', 'Maximum zone', 'zone');
   add('ann', 'Annotations', 'dim'); add('ann.dims', 'Dimensions', 'dim'); add('ann.checks', 'Angles and check labels', 'dim'); add('ann.sight', 'Sight lines', 'dim');
+  const E = envNow();
+  if (E.shell) {
+    const I = E.shell.internal;
+    add('env', E.name, 'folder', E.roles.length > 1 ? envRole(E).name.split(' (')[0] : '');
+    add('env.shell', 'Shelter', 'part', `${I.length} × ${I.width} × ${I.height}`);
+    add('env.shell.walls', 'Walls and ceiling', 'part'); add('env.shell.floor', 'Floor', 'part'); if (E.shell.door) add('env.shell.door', 'Door', 'part');
+    if (E.stations === 'mirror') E.roles.filter(r => r.id !== envRole(E).id).forEach(r => add('env.station.' + r.id, r.name.split(' (')[0] + ' console', 'desk', 'copy'));
+  }
   add('grid', 'Floor grid', 'grid');
   return out;
 }
@@ -4981,7 +5271,7 @@ function highlight(id) {
   if (hlBox) { scene.remove(hlBox); hlBox.geometry.dispose(); hlBox.material.dispose(); hlBox = null; }
   if (id && id !== 'grid' && !id.startsWith('ann')) {
     const box = new THREE.Box3(), hit = n => n && (n === id || n.startsWith(id + '.'));
-    for (const g of [groups.body, groups.ws, groups.zones]) {
+    for (const g of [groups.body, groups.ws, groups.zones, groups.env]) {
       if (!g.visible) continue;
       g.traverseVisible(o => { if (hit(o.userData.node) && !(o.parent && hit(o.parent.userData.node))) box.expandByObject(o); });
     }
@@ -5102,6 +5392,7 @@ function bindShell() {
     if (e.key !== 'Escape') return;
     closeMenus();
     if (!$('#about').hidden) $('#about').hidden = true;
+    if (!$('#envlib').hidden) closeEnvLib();
     if (!$('#fs-gate').hidden) $('#fs-skip').click();
   });
 }
@@ -5110,6 +5401,8 @@ function bindShell() {
 if (/(^|\.)hfe-lab\.dev$|\.github\.io$/.test(location.hostname)) { const m = $('.logo'), a = document.createElement('a'); a.href = '/'; a.className = 'logo'; a.innerHTML = m.innerHTML; a.title = 'HFE Lab home'; a.style.textDecoration = 'none'; m.replaceWith(a); }
 makeMats(); makeCube(); popOptions(); renderWsControls(); renderLimits(); bind(); bindDrw(); bindPopa(); bindShell(); restoreModels();
 if (innerWidth < 700) $('#br-min').click();
-resize(); setProj('ortho'); update(); startFullScreenPrompt();
+bindEnv(); const envBoot = initEnv();
+resize(); setProj('ortho'); update();
+if (envBoot.ask) openEnvLib(true); else startFullScreenPrompt();
 </script>
 </body></html>

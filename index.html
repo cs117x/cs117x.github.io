@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>HFE Lab</title>
-<meta name="description" content="Human factors engineering: notes and tools.">
+<meta name="description" content="Human factors engineering tools: an anthropometry modelling tool with an environment library, and a UI components library in development.">
 <meta name="robots" content="noindex, nofollow">
 <link rel="icon" href="/favicon.ico" sizes="32x32">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -12,12 +12,12 @@
 <meta name="theme-color" content="#1f5a8a">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://hfe-lab.dev/">
-<meta property="og:title" content="HFE Lab · Seated Workstation Fit">
-<meta property="og:description" content="Interactive 3D fit checks for seated workstations, using link-segment manikins built from real anthropometric records.">
+<meta property="og:title" content="HFE Lab · Anthropometry Modelling Tool">
+<meta property="og:description" content="Interactive 3D fit checks in a library of environments, using link-segment manikins built from real anthropometric records.">
 <meta property="og:image" content="https://hfe-lab.dev/social.png">
 <meta property="og:image:width" content="1280">
 <meta property="og:image:height" content="640">
-<meta property="og:image:alt" content="HFE Lab: Seated Workstation Fit, with a wireframe manikin seated on a stool">
+<meta property="og:image:alt" content="HFE Lab, with a wireframe manikin seated on a stool">
 <meta name="twitter:card" content="summary_large_image">
 <style>
 /* Layout: two-column holding page. Text and one tool card left, slowly turning wireframe manikin right. */
@@ -42,6 +42,12 @@ h1{font-size:clamp(26px,3.4vw,38px);line-height:1.15;font-weight:600;margin:0 0 
 .d{display:block;font-size:14px;line-height:1.55;color:var(--muted)}
 .go{display:block;margin-top:12px;font-size:13.5px;font-weight:600;color:var(--accent)}
 .alt{margin:12px 0 0;font-size:13px;line-height:1.5;color:var(--muted)}
+.cards{display:flex;flex-direction:column;gap:12px;max-width:520px}
+.k{display:flex;justify-content:space-between;gap:8px}
+.badge{font-size:11.5px;font-weight:600;border-radius:3px;padding:0 6px;line-height:18px}
+.badge.live{background:#e7f3ea;color:#2b7a43}
+.badge.dev{background:#fbf0de;color:#8a5400}
+.card.dev{background:transparent}
 .alt a{color:var(--accent);font-weight:600}
 .figure{margin:0;display:flex;flex-direction:column;gap:10px;min-width:0}
 canvas{width:100%;height:min(76vh,700px);display:block;cursor:grab;touch-action:pan-y}
@@ -56,15 +62,23 @@ figcaption{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 16p
 <main class="wrap">
   <section class="intro">
     <div class="mark">HFE Lab</div>
-    <h1>Human factors engineering: notes and tools.</h1>
-    <p class="lede">Small, careful tools for fitting equipment and workplaces to the people who use them.</p>
-    <a class="card" href="/workstation-fit-model/">
-      <span class="k">Tool</span>
-      <span class="t">Seated Workstation Fit</span>
-      <span class="d">An interactive 3D assessment of a seated workstation. A link-segment manikin is built from individual anthropometric records, its posture is solved from the chair, desk, screens and desk objects, and the result is checked against editable limits: viewing distances and angles, joint angles, clearances and reach zones. Section planes and a measure tool cut through the scene, population accommodation runs every ANSUR II record through the design, and a whole-body posture solver (beta) adds joint limits and clearance.</span>
-      <span class="go">Open the tool →</span>
-    </a>
-    <p class="alt"><a href="/workstation-fit-model/workstation-fit-offline.html" download="workstation-fit-offline.html">Download the offline version</a>: one HTML file with every library inside, for computers with no internet access.</p>
+    <h1>Human factors engineering tools.</h1>
+    <p class="lede">Careful tools for fitting equipment and workplaces to the people who use them.</p>
+    <div class="cards">
+      <a class="card" href="/anthropometry/">
+        <span class="k"><span>Tool</span><span class="badge live">Live</span></span>
+        <span class="t">Anthropometry Modelling Tool</span>
+        <span class="d">Put a manikin built from a real person's measurements into an environment, solve its posture and check the fit against editable limits: sightlines, joint angles, clearances and reach. Environments: a seated desk workstation and a containerised ground control station (preview), with vehicle, cockpit, ship and submarine templates planned.</span>
+        <span class="go">Open the tool →</span>
+      </a>
+      <a class="card dev" href="/ui-components/">
+        <span class="k"><span>Library</span><span class="badge dev">In development</span></span>
+        <span class="t">UI Components Library</span>
+        <span class="d">The shared workspace parts behind HFE Lab tools: menus, panels, object browser, checks table, dialogs, and light and dark themes, documented so new applications look and behave the same.</span>
+        <span class="go">See what is planned →</span>
+      </a>
+    </div>
+    <p class="alt"><a href="/anthropometry/anthropometry-offline.html" download="anthropometry-offline.html">Download the offline version</a> of the modelling tool: one HTML file with every library inside, for computers with no internet access.</p>
   </section>
   <figure class="figure">
     <canvas id="c" role="img" aria-label="Slowly turning wireframe model of a seated person"></canvas>

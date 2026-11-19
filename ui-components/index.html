@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>UI Components Library</title>
+<meta name="description" content="HFE Lab UI Components Library: the shared workspace parts behind HFE Lab tools. In development.">
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="/favicon.ico" sizes="32x32">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#1f5a8a">
+<style>
+/* Placeholder page for the UI Components Library, styled like the landing page. */
+:root{
+  --bg:#ffffff; --ink:#1c2530; --muted:#5b6672; --faint:#8a949e; --rule:#e1e5ea; --accent:#1f5a8a; --card:#f6f8fa;
+  --f:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Roboto,Arial,sans-serif;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f);-webkit-font-smoothing:antialiased}
+body{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:860px;margin:0 auto;padding-block:40px 32px}
+.mark{font-weight:700;color:var(--accent);font-size:15px;text-decoration:none}
+.badge{display:inline-block;font-size:12px;font-weight:600;border-radius:3px;padding:1px 7px;background:#fbf0de;color:#8a5400;margin:28px 0 10px}
+h1{font-size:clamp(26px,3.4vw,36px);line-height:1.15;font-weight:600;margin:0 0 12px;text-wrap:balance}
+h2{font-size:16px;font-weight:600;margin:32px 0 10px}
+p{color:var(--muted);font-size:15px;line-height:1.55;max-width:64ch;margin:0 0 12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
+.item{border:1px solid var(--rule);border-radius:6px;background:var(--card);padding:12px 14px}
+.item b{display:block;font-size:14px;margin-bottom:4px}
+.item span{font-size:13px;line-height:1.5;color:var(--muted)}
+.sw{display:flex;flex-wrap:wrap;gap:8px}
+.chip{display:flex;align-items:center;gap:8px;border:1px solid var(--rule);border-radius:6px;padding:6px 10px 6px 6px;font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.chip i{width:22px;height:22px;border-radius:4px;display:block;border:1px solid rgba(0,0,0,.08)}
+.chip b{color:var(--ink);font-weight:600;margin-right:4px}
+a{color:var(--accent)}
+.foot{margin-top:40px;font-size:12px;color:var(--faint)}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <a class="mark" href="/">HFE Lab</a>
+  <div class="badge">In development</div>
+  <h1>UI Components Library</h1>
+  <p>The workspace parts that HFE Lab tools share, documented with live examples so that new applications (lifting, constrained environments, cross-sections, storyboards) look and behave like the <a href="/anthropometry/">Anthropometry Modelling Tool</a>. Each component will be shown in the light and full-black dark themes, at desktop and tablet widths, with its keyboard and screen-reader behaviour.</p>
+
+  <h2>Planned components</h2>
+  <div class="grid">
+    <div class="item"><b>Workspace shell</b><span>Top bar with menus, 3D viewport, properties panel, docked checks and status bar, with resizable splitters.</span></div>
+    <div class="item"><b>Menus and tool strip</b><span>Menu bar, menu items with shortcuts and check marks, and the vertical tool strip.</span></div>
+    <div class="item"><b>Object browser</b><span>Scene tree with visibility toggles, collapse state and hover highlight.</span></div>
+    <div class="item"><b>Property panels</b><span>Collapsible panels, number fields with units, selects and segmented buttons.</span></div>
+    <div class="item"><b>Checks table</b><span>Results rated within limits, marginal or outside limits, with glyphs as well as colour, and editable ranges.</span></div>
+    <div class="item"><b>Dialogs</b><span>Modal dialogs, the environment library and the full-screen prompt.</span></div>
+    <div class="item"><b>View cube</b><span>Orientation cube with faces, edges and corners to click, and a home view.</span></div>
+    <div class="item"><b>Drawings</b><span>Title block, dimension and angle styles for PDF, SVG and DXF output.</span></div>
+  </div>
+
+  <h2>Theme colours in use today</h2>
+  <div class="sw" aria-label="Light theme colours">
+    <span class="chip"><i style="background:#1f5a8a"></i><b>Accent</b>#1f5a8a</span>
+    <span class="chip"><i style="background:#2b7a43"></i><b>Within limits</b>#2b7a43</span>
+    <span class="chip"><i style="background:#9f6000"></i><b>Marginal</b>#9f6000</span>
+    <span class="chip"><i style="background:#bb382c"></i><b>Outside limits</b>#bb382c</span>
+    <span class="chip"><i style="background:#d97a00"></i><b>Selection</b>#d97a00</span>
+  </div>
+  <p style="margin-top:12px;font-size:13px">Dark theme: accent #4c9bff, within limits #3fd07e, marginal #ffb22e, outside limits #ff5c50, on a #000000 background.</p>
+
+  <div class="foot"><a href="/">hfe-lab.dev</a></div>
+</main>
+</body>
+</html>
