@@ -1,8 +1,11 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex, nofollow, noarchive"><meta name="swf-models" content="models/"><link rel="icon" href="/favicon.ico" sizes="32x32"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><meta name="theme-color" content="#1f5a8a"><title>Workspace Visualisation</title><style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style></head><body>
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
-/* Layout: Blender-style workspace. Top bar with menus; 3D viewport (header, tool strip, object browser overlay, view cube) centre;
-   properties editor with vertical tabs right; checks table docked under the viewport; status bar at the bottom. Full-black dark theme. */
+/* Layout: Blender-style workspace with a CAD ribbon. Menu bar; ribbon of grouped, labelled tools (Fit model, Layout, Inspect,
+   Analyse, Export); 3D viewport (header, object browser overlay, view cube) centre; properties editor with vertical tabs
+   right; Analysis pop-out pane (the checks, worst first) launched from the ribbon; status bar with the check summary
+   and units at the bottom.
+   Blender-grey dark theme. */
 :root{
   --bg:#e9ecef; --chrome:#dfe3e7; --area:#ffffff; --header:#eef0f3; --panel:#ffffff; --panel-2:#f4f6f8; --pnl-head:#eaedf0;
   --field:#ffffff; --field-hover:#f0f3f6; --ink:#1c2530; --muted:#5b6672; --faint:#8a949e; --rule:#dde1e6; --rule-strong:#c4ccd5;
@@ -18,16 +21,16 @@
   --r:4px; --props-w:384px; --checks-h:30vh;
 }
 :root[data-theme="dark"]{
-  --bg:#000000; --chrome:#000000; --area:#000000; --header:#080808; --panel:#050505; --panel-2:#0b0b0b; --pnl-head:#121212;
-  --field:#161616; --field-hover:#202020; --ink:#e9e9e9; --muted:#a3a3a3; --faint:#6e6e6e; --rule:#1b1b1b; --rule-strong:#2d2d2d;
+  --bg:#161616; --chrome:#1f1f1f; --area:#282828; --header:#303030; --panel:#2b2b2b; --panel-2:#323232; --pnl-head:#3a3a3a;
+  --field:#1d1d1d; --field-hover:#3d3d3d; --ink:#e6e6e6; --muted:#b4b4b4; --faint:#828282; --rule:#1c1c1c; --rule-strong:#4a4a4a;
   --accent:#4c9bff; --accent-ink:#000000; --accent-soft:rgba(76,155,255,.16); --dim:#62a8ff; --sel:#ff9d1c;
   --ok:#3fd07e; --warn:#ffb22e; --bad:#ff5c50; --info:#8e8e8e;
-  --ok-bg:rgba(63,208,126,.13); --warn-bg:rgba(255,178,46,.13); --bad-bg:rgba(255,92,80,.15); --info-bg:#141414;
-  --scene-bg:#000000; --grid-a:#2a2a2a; --grid-b:#141414;
+  --ok-bg:rgba(63,208,126,.13); --warn-bg:rgba(255,178,46,.13); --bad-bg:rgba(255,92,80,.15); --info-bg:#333333;
+  --scene-bg:#393939; --grid-a:#505050; --grid-b:#444444;
   --mk:#a2acb6; --mk-joint:#8a95a0; --shoe:#33373b; --chair:#4c5258; --desk:#5b564e; --metal:#80878e; --screen:#11161c; --frame:#41464c; --kb:#31353a; --device:#3b4045; --ball:#c0504a; --paper:#d2d2d2; --panel-glass:#3a4652;
   --zone-n:#3fd07e; --zone-m:#ffb22e; --wire:#6fa8ff; --env-wall:#16191c; --env-floor:#202428; --env-edge:#4a525a; --env-door:#2a3036; --env-console:#4a463e; --env-rack:#2c2b28; --env-glow:#1d3d57;
-  --cube-face:#121212; --cube-hover:#1b3352; --cube-edge:#4d4d4d; --cube-text:#dcdcdc;
-  --overlay:rgba(0,0,0,.66); --float:rgba(8,8,8,.92); --shadow:0 6px 24px rgba(0,0,0,.7);
+  --cube-face:#2e2e2e; --cube-hover:#1b3352; --cube-edge:#5c5c5c; --cube-text:#dcdcdc;
+  --overlay:rgba(0,0,0,.66); --float:rgba(43,43,43,.94); --shadow:0 6px 24px rgba(0,0,0,.5);
   color-scheme:dark;
 }
 *{box-sizing:border-box}
@@ -41,7 +44,7 @@ button,select,input{font:inherit;color:inherit}
 svg.i{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
 
 /* ---- shell ---- */
-.shell{display:grid;grid-template-rows:30px minmax(0,1fr) 24px;height:100vh;height:100dvh;
+.shell{display:grid;grid-template-rows:30px auto minmax(0,1fr) 24px;height:100vh;height:100dvh;
   padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)}
 .topbar{display:flex;align-items:center;gap:2px;padding:0 8px;background:var(--chrome);border-bottom:1px solid var(--rule);min-width:0;overflow-x:auto;overflow-y:visible;scrollbar-width:none}
 .topbar::-webkit-scrollbar{display:none}
@@ -67,8 +70,44 @@ svg.i{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-widt
 .who b{color:var(--ink);font-weight:600}
 
 .work{display:grid;grid-template-columns:minmax(0,1fr) 5px var(--props-w);min-height:0}
-.center{display:grid;grid-template-rows:minmax(0,1fr) 5px var(--checks-h);min-height:0;min-width:0}
-.center.checks-min{grid-template-rows:minmax(0,1fr) 5px 28px}
+.center{display:grid;grid-template-rows:minmax(0,1fr);min-height:0;min-width:0}
+/* ---- ribbon (CAD-style tool groups under the menu bar) ---- */
+.ribbon{display:flex;align-items:stretch;gap:0;padding:3px 6px 0;background:var(--header);border-bottom:1px solid var(--rule);overflow-x:auto;scrollbar-width:none;min-width:0}
+.ribbon::-webkit-scrollbar{display:none}
+.rb-grp{display:flex;flex-direction:column;align-items:center;padding:0 6px;border-right:1px solid var(--rule);flex:none}
+.rb-grp:last-child{border-right:0}
+.rb-row{display:flex;gap:2px}
+.rb{display:flex;flex-direction:column;align-items:center;gap:2px;min-width:54px;max-width:78px;padding:4px 4px 3px;border:1px solid transparent;border-radius:4px;background:transparent;cursor:pointer;color:var(--ink);font-size:11px;line-height:1.15;text-align:center}
+.rb svg.i{width:20px;height:20px;color:var(--muted)}
+.rb.primary svg.i{color:var(--accent)}
+.rb:hover{background:var(--field-hover);border-color:var(--rule)}
+.rb[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent)}
+.rb[aria-pressed="true"] svg.i{color:var(--accent)}
+.rb-lbl{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);padding:1px 0 3px;margin-top:auto}
+/* ---- Analysis pop-out pane (floats over the workspace; drag by its title bar, resize from the corner) ---- */
+.ana-pane{position:fixed;z-index:40;top:110px;right:16px;width:min(780px,calc(100vw - 32px));height:min(68vh,640px);min-width:340px;min-height:180px;
+  max-width:calc(100vw - 16px);max-height:calc(100dvh - 16px);display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--rule-strong);
+  border-radius:6px;box-shadow:var(--shadow);resize:both;overflow:hidden}
+.ana-pane[hidden]{display:none}
+.ana-bar{display:flex;align-items:center;gap:8px;padding:5px 6px 5px 10px;background:var(--header);border-bottom:1px solid var(--rule);cursor:move;user-select:none;touch-action:none}
+.ana-bar h2{font-size:12.5px}
+.ana-bar svg.i{width:15px;height:15px;color:var(--accent)}
+.ana-body{flex:1;min-height:0;overflow:auto;padding:8px 10px 10px}
+.ana-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px;margin:0 0 6px}
+.ana-head .btnrow{margin:0}
+.ana-pane .table-wrap{border:1px solid var(--rule);border-radius:5px;background:var(--panel)}
+.ana-pane .legend{border:0;background:transparent;padding:0}
+.ana-pane th,.ana-pane td{padding:3px 7px}
+.ana-pane #results td:first-child{min-width:190px}
+#results tr.sev td{font-size:12px;font-weight:600;background:var(--area);padding-top:9px;border-bottom-color:var(--rule-strong)}
+#results tr.sev.bad td{color:var(--bad)}
+#results tr.sev.warn td{color:var(--warn)}
+#results tr.sev.ok td{color:var(--ok)}
+.chk-grp{display:block;font-size:11px;color:var(--faint)}
+.sb-sum{display:inline-flex;gap:4px;border:0;background:transparent;padding:0;cursor:pointer;flex:none}
+.sb-sum .pill{line-height:16px}
+.sb-sep{width:1px;height:12px;background:var(--rule-strong);flex:none}
+.sb-units{flex:none}
 .split{background:var(--bg);position:relative;z-index:4}
 .split.v{cursor:col-resize}.split.h{cursor:row-resize}
 .split:hover,.split.drag{background:var(--accent)}
@@ -77,12 +116,10 @@ svg.i{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-widt
 .viewport{display:grid;grid-template-rows:30px minmax(0,1fr);background:var(--area);min-height:0;min-width:0}
 .vp-head{display:flex;align-items:center;gap:6px;padding:0 6px;background:var(--header);border-bottom:1px solid var(--rule);min-width:0;overflow-x:auto;scrollbar-width:none}
 .vp-head::-webkit-scrollbar{display:none}
-.vp-body{display:grid;grid-template-columns:40px minmax(0,1fr);min-height:0}
-.toolstrip{display:flex;flex-direction:column;gap:3px;padding:6px 5px;background:var(--header);border-right:1px solid var(--rule);overflow-y:auto}
+.vp-body{display:grid;grid-template-columns:minmax(0,1fr);min-height:0}
 .tool{width:30px;height:30px;display:grid;place-items:center;border:1px solid transparent;border-radius:4px;background:transparent;cursor:pointer;color:var(--muted)}
 .tool:hover{background:var(--field-hover);color:var(--ink)}
 .tool.primary{color:var(--accent)}
-.toolstrip hr{border:0;border-top:1px solid var(--rule);width:100%;margin:3px 0}
 .seg{display:inline-flex;border-radius:4px;overflow:hidden;background:var(--field);border:1px solid var(--rule-strong);flex:none}
 .seg button{border:0;background:transparent;padding:2px 9px;cursor:pointer;font-size:12px;color:var(--muted);line-height:20px;white-space:nowrap}
 .seg button+button{border-left:1px solid var(--rule-strong)}
@@ -133,10 +170,7 @@ svg.i{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-widt
 .tn-name{overflow:hidden;text-overflow:ellipsis;min-width:0}
 .tn-sub{color:var(--faint);margin-left:4px;font-size:11px}
 
-/* ---- checks (docked under the viewport) ---- */
-.checks{display:grid;grid-template-rows:28px auto minmax(0,1fr);background:var(--area);min-height:0;min-width:0;border-top:1px solid var(--rule)}
-.center.checks-min .checks{grid-template-rows:28px 0 0}
-.center.checks-min .checks .legend,.center.checks-min .checks .table-wrap{display:none}
+/* ---- checks table (Analysis pane) ---- */
 .area-head{display:flex;align-items:center;gap:8px;padding:0 8px;background:var(--header);border-bottom:1px solid var(--rule);min-width:0;overflow-x:auto;scrollbar-width:none}
 .area-head::-webkit-scrollbar{display:none}
 .area-head h2{font-size:12.5px;white-space:nowrap}
@@ -251,7 +285,10 @@ textarea{width:100%;min-height:90px;font-size:11px;border:1px solid var(--rule);
 .modal-body{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);min-height:0}
 @media (max-width:860px){.modal-body{grid-template-columns:minmax(0,1fr);overflow:auto}}
 .cfg-form{padding:10px 14px;overflow:auto;min-width:0;border-right:1px solid var(--rule)}
-.cfg-plan{padding:10px 14px;display:flex;flex-direction:column;gap:6px;min-width:0;background:var(--panel-2)}
+.cfg-plan{padding:10px 14px;display:flex;flex-direction:column;gap:6px;min-width:0;min-height:0;overflow:auto;background:var(--panel-2)}
+.cfg-plan>*{flex-shrink:0}
+.cfg-list{border-top:1px solid var(--rule);margin-top:4px}
+#cfg:has(#cfg-list:not([hidden])) #plan{max-height:44vh}
 .plan-head{font-size:12.5px;font-weight:600;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
 .plan-head span{font-weight:400;color:var(--muted);font-size:12px}
 #plan{width:100%;height:auto;max-height:62vh;background:var(--panel);border:1px solid var(--rule);border-radius:var(--r);touch-action:none;user-select:none}
@@ -352,14 +389,13 @@ textarea{width:100%;min-height:90px;font-size:11px;border:1px solid var(--rule);
 /* narrow windows: stack the areas and let the page scroll */
 @media (max-width:1000px){
   body{overflow:auto}
-  .shell{height:auto;min-height:100dvh;grid-template-rows:30px auto 24px}
+  .shell{height:auto;min-height:100dvh;grid-template-rows:30px auto auto 24px}
   .work{grid-template-columns:minmax(0,1fr)}
   .split.v{display:none}
-  .center{grid-template-rows:62vh 0 auto}
-  .split.h{display:none}
-  .checks{grid-template-rows:28px auto auto}
-  .checks .table-wrap{overflow:auto;max-height:70vh}
-  .center,.work,.viewport,.checks{min-width:0;max-width:100vw}
+  .center{grid-template-rows:62vh}
+  .ana-pane{left:8px;right:8px;top:auto;bottom:32px;width:auto;height:70dvh;min-width:0;resize:none}
+  .center,.work,.viewport{min-width:0;max-width:100vw}
+  .sb-units,.sb-sep,.statusbar .hint{display:none}
   .side{border-left:0;border-top:1px solid var(--rule)}
   .tabpanel{max-height:none}
   .app-title,.who{display:none}
@@ -395,6 +431,7 @@ textarea{width:100%;min-height:90px;font-size:11px;border:1px solid var(--rule);
   <symbol id="i-measure" viewBox="0 0 16 16"><path d="M1.8 11.2 11.2 1.8l3 3-9.4 9.4z"/><path d="M4.6 8.4l1.4 1.4M6.6 6.4l1 1M8.4 4.6l1.4 1.4M10.4 2.6l1 1"/></symbol>
   <symbol id="i-pop" viewBox="0 0 16 16"><circle cx="4" cy="4.2" r="1.5"/><circle cx="8" cy="3.4" r="1.5"/><circle cx="12" cy="4.6" r="1.5"/><path d="M2 14.5V9.5a2 2 0 0 1 4 0M6 14.5V8.7a2 2 0 0 1 4 0v5.8M10 9.9a2 2 0 0 1 4 0v4.6"/></symbol>
   <symbol id="i-look" viewBox="0 0 16 16"><circle cx="8" cy="7.2" r="4.6"/><path d="M3.6 6c1.6.2 3.6-.6 4.9-2.4 1 1.6 2.4 2.4 3.9 2.4M6.3 7.6v.3M9.7 7.6v.3M6.6 9.8c.8.6 2 .6 2.8 0M5.2 11.2 4.4 14.6M10.8 11.2l.8 3.4"/></symbol>
+  <symbol id="i-ana" viewBox="0 0 16 16"><path d="M2 2.5v11h12"/><path d="M4.5 10.5 7 7.5l2.2 1.8L13 4.5"/><circle cx="13" cy="4.5" r=".9" fill="currentColor"/></symbol>
   <symbol id="i-info" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.3"/><path d="M8 7.2v4M8 4.8v.2"/></symbol>
 </svg>
 
@@ -450,7 +487,7 @@ textarea{width:100%;min-height:90px;font-size:11px;border:1px solid var(--rule);
         <button role="menuitem" data-click="#tool-meas">Measure…</button>
         <hr>
         <button role="menuitemcheckbox" data-act="browser">Object browser</button>
-        <button role="menuitemcheckbox" data-act="checks">Checks panel</button>
+        <button role="menuitemcheckbox" aria-checked="false" data-act="checks">Analysis pane</button>
         <button role="menuitemcheckbox" data-act="fs">Full screen<span class="kbd">F11</span></button>
         <hr>
         <button role="menuitemcheckbox" data-click="#th-light" data-checked="#th-light">Light theme</button>
@@ -471,7 +508,43 @@ textarea{width:100%;min-height:90px;font-size:11px;border:1px solid var(--rule);
     <button class="btn primary" id="exp-drw" style="margin-left:6px">Export drawing</button>
   </header>
 
-  <div class="work">
+  <nav class="ribbon" role="toolbar" aria-label="Tools">
+    <div class="rb-grp"><div class="rb-row">
+      <button class="rb" data-tab="#t-man" title="Manikin: population, percentile and body dimensions"><svg class="i"><use href="#i-person"/></svg><span>Manikin</span></button>
+      <button class="rb" data-tab="#t-look" title="Manikin appearance: skin, eyes, hair, eyewear"><svg class="i"><use href="#i-look"/></svg><span>Appearance</span></button>
+      <button class="rb" data-tab="#t-man" data-sec="Clothing and kit" title="Clothing and kit"><svg class="i"><use href="#i-part"/></svg><span>Clothing and kit</span></button>
+      <button class="rb" data-tab="#t-ws" data-sec="Chair" title="Chair: model and adjustment"><svg class="i"><use href="#i-chair"/></svg><span>Chair</span></button>
+      <button class="rb" data-tab="#t-ws" data-sec="Desk" title="Desk: height, size and legroom"><svg class="i"><use href="#i-desk2"/></svg><span>Desk</span></button>
+      <button class="rb" data-tab="#t-env" title="Environment settings: role and geometry"><svg class="i"><use href="#i-env"/></svg><span>Environment settings</span></button>
+      <button class="rb" data-tab="#t-lim" title="Limits: the green and amber ranges for each check"><svg class="i"><use href="#i-sliders"/></svg><span>Limits</span></button>
+    </div><div class="rb-lbl">Set up</div></div>
+    <div class="rb-grp"><div class="rb-row">
+      <button class="rb primary" data-click="#fit-kb" title="Fit chair to keyboard: home row at elbow height"><svg class="i"><use href="#i-kb"/></svg><span>Chair to keyboard</span></button>
+      <button class="rb" data-click="#fit-pop" title="Fit chair to legs: seat at popliteal height plus shoe"><svg class="i"><use href="#i-legs"/></svg><span>Chair to legs</span></button>
+      <button class="rb" data-click="#fit-mon" title="Fit screen height: top of the main screen just below eye height"><svg class="i"><use href="#i-mon"/></svg><span>Screen height</span></button>
+      <button class="rb" data-click="#fit-desk" title="Fit desk to elbow (sit-stand desk)"><svg class="i"><use href="#i-desk"/></svg><span>Desk to elbow</span></button>
+    </div><div class="rb-lbl">Fit model</div></div>
+    <div class="rb-grp"><div class="rb-row">
+      <button class="rb" data-click="#env-open" title="Environment library"><svg class="i"><use href="#i-env"/></svg><span>Environment library</span></button>
+      <button class="rb" data-click="#open-scr" title="Edit screens"><svg class="i"><use href="#i-screen"/></svg><span>Screens</span></button>
+      <button class="rb" data-click="#open-obj" title="Edit desk objects"><svg class="i"><use href="#i-layout"/></svg><span>Desk objects</span></button>
+    </div><div class="rb-lbl">Layout</div></div>
+    <div class="rb-grp"><div class="rb-row">
+      <button class="rb" id="tool-sec" title="Section planes and section box" aria-pressed="false"><svg class="i"><use href="#i-section"/></svg><span>Section</span></button>
+      <button class="rb" id="tool-meas" title="Measure distances and angles" aria-pressed="false"><svg class="i"><use href="#i-measure"/></svg><span>Measure</span></button>
+    </div><div class="rb-lbl">Inspect</div></div>
+    <div class="rb-grp"><div class="rb-row">
+      <button class="rb" data-act="checks" id="ana-open" aria-pressed="false" aria-controls="ana" title="Analysis: the checks against limits, worst first (pop-out pane)"><svg class="i"><use href="#i-ana"/></svg><span>Analysis</span></button>
+      <button class="rb" id="popa-open" title="Population accommodation: run every person in the dataset"><svg class="i"><use href="#i-pop"/></svg><span>Population</span></button>
+    </div><div class="rb-lbl">Analyse</div></div>
+    <div class="rb-grp"><div class="rb-row">
+      <button class="rb" data-click="#exp-drw" title="Export drawing: PDF, SVG, PNG or DXF"><svg class="i"><use href="#i-draw"/></svg><span>Drawing</span></button>
+      <button class="rb" data-click="#exp-png" title="Save the view as PNG"><svg class="i"><use href="#i-camera"/></svg><span>Image</span></button>
+      <button class="rb" data-click="#exp-csv" title="Save the checks as CSV"><svg class="i"><use href="#i-grid"/></svg><span>Checks CSV</span></button>
+    </div><div class="rb-lbl">Export</div></div>
+  </nav>
+
+  <div class="work" id="work">
     <div class="center" id="center">
       <section class="viewport" aria-label="3D view">
         <div class="vp-head">
@@ -498,21 +571,6 @@ textarea{width:100%;min-height:90px;font-size:11px;border:1px solid var(--rule);
           <button class="btn icon" id="exp-png" title="Save view as PNG" aria-label="Save view as PNG"><svg class="i"><use href="#i-camera"/></svg></button>
         </div>
         <div class="vp-body">
-          <div class="toolstrip" role="toolbar" aria-orientation="vertical" aria-label="Tools">
-            <button class="tool primary" data-click="#fit-kb" title="Fit chair to keyboard: home row at elbow height" aria-label="Fit chair to keyboard"><svg class="i"><use href="#i-kb"/></svg></button>
-            <button class="tool" data-click="#fit-pop" title="Fit chair to legs: seat at popliteal height plus shoe" aria-label="Fit chair to legs"><svg class="i"><use href="#i-legs"/></svg></button>
-            <button class="tool" data-click="#fit-mon" title="Fit screen height: top of the main screen just below eye height" aria-label="Fit screen height"><svg class="i"><use href="#i-mon"/></svg></button>
-            <button class="tool" data-click="#fit-desk" title="Fit desk to elbow (sit-stand desk)" aria-label="Fit desk to elbow"><svg class="i"><use href="#i-desk"/></svg></button>
-            <hr>
-            <button class="tool" data-click="#open-scr" title="Edit screens" aria-label="Edit screens"><svg class="i"><use href="#i-screen"/></svg></button>
-            <button class="tool" data-click="#open-obj" title="Edit desk objects" aria-label="Edit desk objects"><svg class="i"><use href="#i-layout"/></svg></button>
-            <hr>
-            <button class="tool" id="tool-sec" title="Section planes and section box" aria-label="Section" aria-pressed="false"><svg class="i"><use href="#i-section"/></svg></button>
-            <button class="tool" id="tool-meas" title="Measure distances and angles" aria-label="Measure" aria-pressed="false"><svg class="i"><use href="#i-measure"/></svg></button>
-            <hr>
-            <button class="tool" id="popa-open" title="Population accommodation: run every person in the dataset" aria-label="Population accommodation"><svg class="i"><use href="#i-pop"/></svg></button>
-            <button class="tool" data-click="#exp-drw" title="Export drawing" aria-label="Export drawing"><svg class="i"><use href="#i-draw"/></svg></button>
-          </div>
           <div class="stage" id="stage"><div class="label-layer" id="labels"></div>
             <div class="browser" id="browser">
               <div class="br-head"><span>Browser</span><button class="btn small" id="br-min" aria-expanded="true" title="Collapse the browser">–</button></div>
@@ -520,25 +578,6 @@ textarea{width:100%;min-height:90px;font-size:11px;border:1px solid var(--rule);
             </div>
           </div>
         </div>
-      </section>
-      <div class="split h" id="split-h" role="separator" aria-orientation="horizontal" aria-label="Resize the checks panel"></div>
-      <section class="checks" aria-label="Checks">
-        <div class="area-head">
-          <h2>Checks against limits</h2>
-          <div class="summary" id="summary"></div>
-          <span class="tb-spacer"></span>
-          <button class="btn small" id="copy-csv">Copy table</button>
-          <button class="btn small" id="exp-csv">Save CSV</button>
-          <button class="btn small" id="exp-json">Save setup JSON</button>
-          <button class="btn small" id="checks-toggle" aria-expanded="true" title="Collapse or expand the checks panel">▾</button>
-        </div>
-        <div class="legend">
-          <span><i class="g ok">✓</i>Within limits: inside the green range</span>
-          <span><i class="g warn">!</i>Marginal: outside green but inside the amber range</span>
-          <span><i class="g bad">✕</i>Outside limits: outside the amber range</span>
-          <span>Ranges are set on the Limits tab.</span>
-        </div>
-        <div class="table-wrap"><table id="results"><thead><tr><th>Check</th><th>Value</th><th>Result</th><th>Green range</th><th>Amber range</th><th>Note</th></tr></thead><tbody></tbody></table></div>
       </section>
     </div>
     <div class="split v" id="split-v" role="separator" aria-orientation="vertical" aria-label="Resize the properties panel"></div>
@@ -640,11 +679,32 @@ textarea{width:100%;min-height:90px;font-size:11px;border:1px solid var(--rule);
   </div>
 
   <footer class="statusbar">
+    <button class="sb-sum" id="sb-sum" title="Open the Analysis pane" aria-label="Check summary: open the Analysis pane"></button>
+    <span class="sb-sep"></span><span class="sb-units">Units: mm · degrees · kg</span><span class="sb-sep"></span>
     <span class="toast" id="toast" role="status"></span>
     <span class="tb-spacer"></span>
     <span class="hint" id="hint">Drag to orbit · scroll to zoom · right-drag to pan · drag or click the cube to change view</span>
   </footer>
 </div>
+
+<aside class="ana-pane" id="ana" role="dialog" aria-labelledby="ana-h" hidden>
+  <div class="ana-bar" id="ana-bar"><svg class="i"><use href="#i-ana"/></svg><h2 id="ana-h">Analysis</h2><span class="tb-spacer"></span><button class="icon-btn" id="ana-close" aria-label="Close the Analysis pane">×</button></div>
+  <div class="ana-body">
+          <div class="ana-head">
+            <div class="summary" id="summary"></div>
+            <div class="btnrow"><button class="btn small" id="copy-csv">Copy table</button><button class="btn small" id="exp-csv">Save CSV</button><button class="btn small" id="exp-json">Save setup JSON</button></div>
+          </div>
+          <details class="pnl"><summary>Key</summary><div class="pnl-body">
+            <div class="legend">
+          <span><i class="g ok">✓</i>Within limits: inside the green range</span>
+          <span><i class="g warn">!</i>Marginal: outside green but inside the amber range</span>
+          <span><i class="g bad">✕</i>Outside limits: outside the amber range</span>
+          <span>Checks are listed worst first. Ranges are set on the Limits tab.</span>
+        </div>
+          </div></details>
+          <div class="table-wrap"><table id="results"><thead><tr><th>Check</th><th>Value</th><th>Result</th><th>Green range</th><th>Amber range</th><th>Note</th></tr></thead><tbody></tbody></table></div>
+  </div>
+</aside>
 
 <div class="fs-banner" id="fs-banner" hidden role="status"><span>Full screen works best for this workspace.</span><button class="btn primary small" id="fs-banner-go">Go full screen</button><button class="icon-btn" id="fs-banner-x" aria-label="Dismiss" style="font-size:16px">×</button></div>
 
@@ -682,7 +742,7 @@ textarea{width:100%;min-height:90px;font-size:11px;border:1px solid var(--rule);
         <li>Left-drag to orbit, scroll to zoom, right-drag (or Shift-drag) to pan. Drag the view cube to turn, or click a face, edge or corner to snap to it.</li>
         <li>The browser at the top left of the viewport lists every object. Use the eye to show or hide it; hover a row to outline the object.</li>
         <li>F11 (Windows) or Ctrl+Cmd+F (Mac) toggles full screen; Esc leaves it.</li>
-        <li>Section (toolstrip, or View menu): cut the view with a plane across X, Y or Z, normal to the current view, or keep only a box. Cut faces are hatched: the manikin at 45°, the workstation at 135°. Open surfaces in imported models are closed with straight edges, so their hatching is approximate.</li>
+        <li>Section (ribbon, or View menu): cut the view with a plane across X, Y or Z, normal to the current view, or keep only a box. Cut faces are hatched: the manikin at 45°, the workstation at 135°. Open surfaces in imported models are closed with straight edges, so their hatching is approximate.</li>
         <li>Measure: click two points for a distance (with its X, Y and Z components) or three for an angle, the second being the vertex. Points snap to the nearest vertex within 10 pixels, can be picked on cut faces, and can be projected onto a single section plane. Esc cancels a measurement in progress.</li>
       </ul>
       <h3 style="font-size:13px;margin-top:12px">Model assumptions</h3>
@@ -720,6 +780,7 @@ textarea{width:100%;min-height:90px;font-size:11px;border:1px solid var(--rule);
         <div class="plan-head">Plan view <span id="plan-hint">Drag objects to move them</span></div>
         <svg id="plan" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Plan view of the desk, screens and objects"></svg>
         <div class="plan-key"><span><i style="background:var(--zone-n);opacity:.35"></i>Normal reach</span><span><i style="background:var(--zone-m);opacity:.25"></i>Maximum reach</span><span><i style="background:var(--accent)"></i>Line of sight</span></div>
+        <div class="cfg-list" id="cfg-list" hidden></div>
       </div>
     </div>
     <div class="modal-foot"><span class="help" id="cfg-hint">Changes apply to the 3D view as you make them.</span><button class="btn" id="cfg-back">Back</button><button class="btn primary" id="cfg-next">Next: desk objects</button></div>
@@ -767,7 +828,8 @@ textarea{width:100%;min-height:90px;font-size:11px;border:1px solid var(--rule);
         <div class="field"><label for="drw-style">Views</label><select id="drw-style"><option value="shaded">Shaded with outlines</option><option value="lines">Line drawing, hidden lines removed</option></select></div>
         <label class="chk"><input type="checkbox" id="drw-iso" checked> Include isometric view</label>
         <label class="chk"><input type="checkbox" id="drw-zones" checked> Show reach zones on the plan</label>
-        <p class="help">A3 landscape sheet. Right side elevation, front elevation and plan are aligned for the chosen projection at one standard scale. Dimensions in mm. The setup summary, parts list and flagged results sit above the title block. The DXF has the same sheet as vector linework with hidden lines removed, on named layers, drawn at full size so the views measure true millimetres.</p>
+        <label class="chk"><input type="checkbox" id="drw-results" checked> Include analysis results (check summary and flagged checks)</label>
+        <p class="help">A3 landscape sheet. Right side elevation, front elevation and plan are aligned for the chosen projection at one standard scale. Dimensions in mm. The setup summary, parts list and (unless you leave them out) the analysis results sit above the title block. The DXF has the same sheet as vector linework with hidden lines removed, on named layers, drawn at full size so the views measure true millimetres.</p>
         <div class="btnrow"><button class="btn primary" id="drw-pdf">Save PDF</button><button class="btn" id="drw-svg">Save SVG</button><button class="btn" id="drw-png">Save PNG</button><button class="btn" id="drw-dxf" title="Vector linework on named layers, at full size in mm">Save DXF</button></div>
         <p class="help" id="drw-dxf-note" hidden>DXF files can't be saved from inside Claude. Open the tool on its own site to export DXF.</p>
       </div>
@@ -3845,10 +3907,10 @@ function buildAnnotations(M, G, R, W, rows) {
   const armSt = (id, side) => rate(R[id][side < 0 ? 'L' : 'R'], S.lim[id]);
   const backX = G.seatRearX - 170;
   annNode = 'ann.dims';
-  dimV(backX, 0, W.seatH, 0, `${fmt(W.seatH)}`, 'Seat', 'info', -10);
-  dimV(backX - 120, 0, G.E.y, 0, `${fmt(G.E.y)}`, 'Eye', 'info', -10);
-  dimV(W.deskDepth + 90, 0, W.deskH, 0, `${fmt(W.deskH)}`, 'Desk', 'info');
-  if (W.footrest > 0) dimV(G.A.x + 260, 0, W.footrest, 0, `${fmt(W.footrest)}`, 'Footrest');
+  dimV(backX, 0, W.seatH, 0, `${fmt(W.seatH)} mm`, 'Seat', 'info', -10);
+  dimV(backX - 120, 0, G.E.y, 0, `${fmt(G.E.y)} mm`, 'Eye', 'info', -10);
+  dimV(W.deskDepth + 90, 0, W.deskH, 0, `${fmt(W.deskH)} mm`, 'Desk', 'info');
+  if (W.footrest > 0) dimV(G.A.x + 260, 0, W.footrest, 0, `${fmt(W.footrest)} mm`, 'Footrest');
   const E = v3(G.E), pi = G.scr.primary, nS = G.scr.list.length;
   G.scr.list.forEach((s, i) => {
     const Pc = s.P.centre;
@@ -3861,7 +3923,7 @@ function buildAnnotations(M, G, R, W, rows) {
       const tx = s.P.top.x + 70, tz = s.P.top.z, ts = st('topVsEye' + k);
       line([new V3(tx, s.P.top.y, tz), new V3(tx, G.E.y, tz)], MATS['arc_' + ts]);
       for (const y of [s.P.top.y, G.E.y]) line([new V3(tx - 14, y - 14, tz), new V3(tx + 14, y + 14, tz)], MATS['arc_' + ts]);
-      tag(`${R.screens[i].topVsEye > 0 ? '+' : ''}${fmt(R.screens[i].topVsEye)}`, ts, new V3(tx + 60, (s.P.top.y + G.E.y) / 2, tz), 'Top vs eye');
+      tag(`${R.screens[i].topVsEye > 0 ? '+' : ''}${fmt(R.screens[i].topVsEye)} mm`, ts, new V3(tx + 60, (s.P.top.y + G.E.y) / 2, tz), 'Top vs eye');
     } else {
       const ss = worst(['viewDist', 'losCentre', 'gazeH', 'topVsEye', 'losNormal'].map(id => st(`${id}#${i}`)));
       const ga = R.screens[i].gazeH;
@@ -3885,7 +3947,7 @@ function buildAnnotations(M, G, R, W, rows) {
     const x = Math.max(G.maxTopX, 15), y1 = G.maxTop, y2 = G.deskUnder, s = st('thigh');
     line([new V3(x, y1, 0), new V3(x, y2, 0)], MATS['arc_' + s]);
     for (const y of [y1, y2]) line([new V3(x - 12, y - 12, 0), new V3(x + 12, y + 12, 0)], MATS['arc_' + s]);
-    tag(`${fmt(R.thigh)}`, s, new V3(x + 95, Math.min(y1, y2) - 30, 0), 'Thigh');
+    tag(`${fmt(R.thigh)} mm`, s, new V3(x + 95, Math.min(y1, y2) - 30, 0), 'Thigh');
   }
   if (R.footGap > 1) tag(`${fmt(R.footGap)} mm gap`, 'bad', new V3(G.A.x + 120, G.floorY + 40, z), 'Feet');
   let ti = 0; G.objs.forEach(ob => { const r = rows.find(x => x.key === 'obj#' + ob.o.id); if (r && r.status !== 'ok') tag(r.status === 'bad' ? 'out of reach' : 'max zone', r.status, ob.reachPt.clone().add(new V3(0, 70 + 34 * ti++, 0)), objName(ob.o, W.objects)); });
@@ -4153,7 +4215,7 @@ function renderCfg() {
   $('#cfg-back').hidden = cfgStep === 'screens';
   $('#cfg-next').textContent = cfgStep === 'screens' ? 'Next: desk objects' : 'Done';
   $('#plan-hint').textContent = cfgStep === 'screens' ? (S.ws.screens.layout === 'custom' ? 'Drag screens to move them' : 'Lines show gaze from the eyes to each screen centre') : 'Drag objects to move them';
-  const W = S.ws, SC = W.screens, f = $('#cfg-form');
+  const W = S.ws, SC = W.screens, f = $('#cfg-form'), pl = $('#cfg .cfg-plan'), keep = [f.scrollTop, pl.scrollTop, f.dataset.step === cfgStep];
   if (cfgStep === 'screens') {
     const n = SC.count;
     let h = `<div class="sec">Array</div><div class="fgrid">`;
@@ -4191,11 +4253,12 @@ function renderCfg() {
     }
     f.innerHTML = h;
   } else {
-    let h = `<div class="sec">Add an object</div>${propBrowser()}`;
+    f.innerHTML = `<div class="sec">Add an object</div>${propBrowser()}`;
+    // the hands and the objects already on the desk sit beside the plan, so the library keeps the left column
     const opts = [['', 'Resting (no object)'], ...W.objects.map(o => [o.id, objName(o, W.objects)])];
-    h += `<div class="sec">Hands</div><div class="fgrid">${fSel('Left hand uses', 'data-h="L"', opts, W.hands.L, 'h-L')}${fSel('Right hand uses', 'data-h="R"', opts, W.hands.R, 'h-R')}</div>`;
+    let h = `<div class="sec">Hands</div><div class="fgrid">${fSel('Left hand uses', 'data-h="L"', opts, W.hands.L, 'h-L')}${fSel('Right hand uses', 'data-h="R"', opts, W.hands.R, 'h-R')}</div>`;
     h += `<div class="sec">Objects on the desk</div>`;
-    if (!W.objects.length) h += `<p class="help">The desk is empty. Add a keyboard or pointing device above.</p>`;
+    if (!W.objects.length) h += `<p class="help">The desk is empty. Add a keyboard or pointing device from the library.</p>`;
     for (const o of W.objects) {
       h += `<div class="item"><div class="item-head"><span>${esc(objName(o, W.objects))}</span><button class="btn small" data-rm="${o.id}" aria-label="Remove ${esc(objName(o, W.objects))}">Remove</button></div><div class="fgrid">`;
       const sib = Object.entries(HFE_PROPS.MODELS).filter(([, m]) => m.type === o.type);
@@ -4211,8 +4274,11 @@ function renderCfg() {
       h += fSel('Use', `data-o="${o.id}" data-of="use"`, [['frequent', 'Frequent'], ['occasional', 'Occasional']], o.use, `o-${o.id}-use`);
       h += `</div></div>`;
     }
-    f.innerHTML = h;
+    $('#cfg-list').innerHTML = h;
   }
+  $('#cfg-list').hidden = cfgStep !== 'objects'; if (cfgStep !== 'objects') $('#cfg-list').innerHTML = '';
+  if (keep[2]) { f.scrollTop = keep[0]; pl.scrollTop = keep[1]; }   // a re-render keeps both columns where they were
+  f.dataset.step = cfgStep;
   renderPlan();
 }
 let planVB = null, planDrag = null;
@@ -4281,15 +4347,22 @@ const limText = r => (r[0] == null && r[1] == null) ? 'any' : r[0] == null ? `�
 /* ---------------- results ---------------- */
 let lastRows = [], lastM = null;
 function renderResults(rows) {
-  let html = '', grp = '';
-  for (const r of rows) {
-    if (r.group !== grp) { grp = r.group; html += `<tr class="grp"><td colspan="6">${grp}</td></tr>`; }
+  // worst first: outside limits, then marginal, then within limits (each in check order)
+  let html = '';
+  for (const [st, word] of [['bad', 'Outside limits'], ['warn', 'Marginal'], ['ok', 'Within limits']]) {
+    const sec = rows.filter(r => r.status === st);
+    if (!sec.length) continue;
+    html += `<tr class="sev ${st}"><td colspan="6">${STATUS[st].glyph} ${word} (${sec.length})</td></tr>`;
+    for (const r of sec) {
     const L = r.base ? S.lim[r.base] : null, S_ = STATUS[r.status];
-    html += `<tr><td>${esc(r.name)}</td><td class="v">${r.text}</td><td><span class="st ${r.status}"><i class="g ${r.status}">${S_.glyph}</i>${S_.word}</span></td><td class="lim">${L ? limText(L.g) : r.gtxt || ''}</td><td class="lim">${L ? limText(L.a) : r.atxt || ''}</td><td class="note">${esc(r.note || '')}</td></tr>`;
+    html += `<tr data-st="${st}"><td>${esc(r.name)}<span class="chk-grp">${esc(r.group)}</span></td><td class="v">${r.text}</td><td><span class="st ${r.status}"><i class="g ${r.status}">${S_.glyph}</i>${S_.word}</span></td><td class="lim">${L ? limText(L.g) : r.gtxt || ''}</td><td class="lim">${L ? limText(L.a) : r.atxt || ''}</td><td class="note">${esc(r.note || '')}</td></tr>`;
+    }
   }
   $('#results tbody').innerHTML = html;
   const n = s => rows.filter(r => r.status === s).length;
   $('#summary').innerHTML = `<span class="pill ok">✓ ${n('ok')} within limits</span><span class="pill warn">! ${n('warn')} marginal</span><span class="pill bad">✕ ${n('bad')} outside limits</span>`;
+  $('#sb-sum').innerHTML = `<span class="pill ok">✓ ${n('ok')}</span><span class="pill warn">! ${n('warn')}</span><span class="pill bad">✕ ${n('bad')}</span>`;
+  $('#sb-sum').title = `${n('ok')} within limits, ${n('warn')} marginal, ${n('bad')} outside limits: open the Analysis pane`;
 }
 function csvText() {
   const q = s => `"${String(s).replace(/"/g, '""')}"`;
@@ -4433,7 +4506,7 @@ function bind() {
   $$('#cfg .steps button').forEach(b => b.onclick = () => { cfgStep = b.dataset.step; renderCfg(); });
   $('#cfg-back').onclick = () => { cfgStep = 'screens'; renderCfg(); };
   $('#cfg-next').onclick = () => { if (cfgStep === 'screens') { cfgStep = 'objects'; renderCfg(); } else closeCfg(); };
-  const form = $('#cfg-form');
+  const form = $('#cfg .modal-body');   // the form (left) and the object list beside the plan (right)
   const applyField = (t, structural) => {
     const W = S.ws, SC = W.screens; let v = t.value, rerender = structural;
     const num = x => { const n = parseFloat(x); return isFinite(n) ? n : null; };
@@ -4499,7 +4572,7 @@ function bind() {
   $('#copy-csv').onclick = async () => {
     const txt = csvText();
     try { await navigator.clipboard.writeText(txt); toast('Table copied.'); }
-    catch { const ta = document.createElement('textarea'); ta.value = txt; ta.setAttribute('aria-label', 'Table text'); $('.results-head').after(ta); ta.select(); toast('Text selected: press Ctrl/Cmd+C.'); setTimeout(() => ta.remove(), 15000); }
+    catch { const ta = document.createElement('textarea'); ta.value = txt; ta.setAttribute('aria-label', 'Table text'); $('.ana-head').after(ta); ta.select(); toast('Text selected: press Ctrl/Cmd+C.'); setTimeout(() => ta.remove(), 15000); }
   };
   $('#exp-csv').onclick = () => saveFile(`workstation-checks-${stamp()}.csv`, csvText());
   $('#exp-json').onclick = () => saveFile(`${S.env.id}-setup-${stamp()}.json`, JSON.stringify({ app: 'hfe-anthropometry', v: 3, env: S.env, pop: S.pop, pct: S.pct, method: S.method, custom: S.custom || currentManikin().vals, customEdited: !!S.custom, ws: S.ws, lim: S.lim, kit: S.kit, look: S.look }, null, 2));
@@ -4543,7 +4616,7 @@ async function exportPNG() {
 }
 
 /* ---------------- engineering drawing export ---------------- */
-const DRW = { proj: 'first', title: 'Seated workstation fit', drawn: '', dwg: '', iso: true, zones: true, style: 'shaded' };
+const DRW = { proj: 'first', title: 'Seated workstation fit', drawn: '', dwg: '', iso: true, zones: true, results: true, style: 'shaded' };
 const PDFLIB = ['https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js', 'https://cdn.jsdelivr.net/npm/svg2pdf.js@2.2.3/dist/svg2pdf.umd.min.js'];
 function loadScript(src) { return new Promise((res, rej) => { if ([...document.scripts].some(s => s.src === src && s.dataset.ok)) return res(); const s = document.createElement('script'); s.src = src; s.onload = () => { s.dataset.ok = '1'; res(); }; s.onerror = () => rej(new Error('Could not load the PDF library.')); document.head.append(s); }); }
 const dtx = s => String(s).replace(/−/g, '-').replace(/″/g, 'in').replace(/≤/g, '<=').replace(/≥/g, '>=').replace(/[✓✕]/g, '').replace(/[–—]/g, '-').replace(/[‘’]/g, "'");
@@ -4811,13 +4884,15 @@ async function makeDrawing(opts = {}) {
     G.objs.forEach((ob, i) => { const o = ob.o; line(`${i + 1}  ${objName(o, W.objects)}${o.type === 'keyboard' ? ` (${KB[o.kb].label.toLowerCase()})` : ''}: centre ${Math.round(o.x)} from desk edge, ${Math.round(Math.abs(o.z))} ${o.z >= 0 ? 'right' : 'left'} of centreline; ${o.use} use.`); });
     const handName = sd => { const o = W.objects.find(x => x.id === W.hands[sd]); return o ? objName(o, W.objects).toLowerCase() : 'resting'; };
     line(`Hands: left on ${handName('L')}, right on ${handName('R')}.`);
-    y += 1.2; head('Results');
-    const n = st => rows.filter(r => r.status === st).length;
-    const sw = (c, x) => RECT(x, y - 2.1, 2.4, 2.4, { fill: c });
-    out += sw('#2b7a43', PX + 4) + svgText(PX + 7.6, y, `${n('ok')} within limits`, 2.3) + sw('#9f6000', PX + 34) + svgText(PX + 37.6, y, `${n('warn')} marginal`, 2.3) + sw('#bb382c', PX + 60) + svgText(PX + 63.6, y, `${n('bad')} outside limits`, 2.3); y += 4.2;
-    const flagged = rows.filter(r => r.status === 'bad').concat(rows.filter(r => r.status === 'warn'));
-    for (const r of flagged) { if (y > sumBottom - 9) { line(`+ ${flagged.length - flagged.indexOf(r)} more in the tool's checks table.`, { fill: '#4a525a' }); break; } line(`${r.status === 'bad' ? 'Outside' : 'Marginal'}: ${r.name}: ${r.text}`, { fill: r.status === 'bad' ? '#bb382c' : '#7a4a00' }); }
-    if (!flagged.length) line('Every check is within its green range.');
+    if (DRW.results) {   // the analysis results: left off for an architectural-style sheet of the layout alone
+      y += 1.2; head('Results');
+      const n = st => rows.filter(r => r.status === st).length;
+      const sw = (c, x) => RECT(x, y - 2.1, 2.4, 2.4, { fill: c });
+      out += sw('#2b7a43', PX + 4) + svgText(PX + 7.6, y, `${n('ok')} within limits`, 2.3) + sw('#9f6000', PX + 34) + svgText(PX + 37.6, y, `${n('warn')} marginal`, 2.3) + sw('#bb382c', PX + 60) + svgText(PX + 63.6, y, `${n('bad')} outside limits`, 2.3); y += 4.2;
+      const flagged = rows.filter(r => r.status === 'bad').concat(rows.filter(r => r.status === 'warn'));
+      for (const r of flagged) { if (y > sumBottom - 9) { line(`+ ${flagged.length - flagged.indexOf(r)} more in the tool's checks table.`, { fill: '#4a525a' }); break; } line(`${r.status === 'bad' ? 'Outside' : 'Marginal'}: ${r.name}: ${r.text}`, { fill: r.status === 'bad' ? '#bb382c' : '#7a4a00' }); }
+      if (!flagged.length) line('Every check is within its green range.');
+    }
     y = Math.max(y + 1, sumBottom - 8.5);
     for (const l of wrapText('Link-segment manikin; posture solved from the workstation geometry, not by a validated posture-prediction model. Limits are typical guidance values unless edited. Dimensions in mm; angles in degrees.', 86)) { out += svgText(PX + 4, y, l, 1.9, { fill: '#5b6672' }); y += 2.7; }
     svg += out;
@@ -5074,7 +5149,7 @@ function defaultDwg() { const d = new Date(); const p = n => String(n).padStart(
 let drwLast = null, drwTimer = null;
 function openDrw() {
   $('#drw').hidden = false; $('#drw-title').value = DRW.title; $('#drw-drawn').value = DRW.drawn; DRW.dwg = DRW.dwg || defaultDwg(); $('#drw-no').value = DRW.dwg;
-  $('#drw-proj').value = DRW.proj; $('#drw-style').value = DRW.style; $('#drw-iso').checked = DRW.iso; $('#drw-zones').checked = DRW.zones; refreshDrw();
+  $('#drw-proj').value = DRW.proj; $('#drw-style').value = DRW.style; $('#drw-iso').checked = DRW.iso; $('#drw-zones').checked = DRW.zones; $('#drw-results').checked = DRW.results; refreshDrw();
 }
 function closeDrw() { $('#drw').hidden = true; $('#exp-drw').focus(); }
 function refreshDrw() {
@@ -5115,6 +5190,7 @@ function bindDrw() {
   $('#drw-iso').onchange = e => { DRW.iso = e.target.checked; refreshDrw(); };
   $('#drw-style').onchange = e => { DRW.style = e.target.value; refreshDrw(); };
   $('#drw-zones').onchange = e => { DRW.zones = e.target.checked; refreshDrw(); };
+  $('#drw-results').onchange = e => { DRW.results = e.target.checked; refreshDrw(); };
   for (const [id, k] of [['drw-title', 'title'], ['drw-drawn', 'drawn'], ['drw-no', 'dwg']]) $('#' + id).addEventListener('input', e => { DRW[k] = e.target.value.slice(0, 60); refreshDrw(); });
   if (window.claude) { $('#drw-dxf').hidden = true; $('#drw-dxf-note').hidden = false; }
   $('#drw-pdf').onclick = drwPDF; $('#drw-svg').onclick = () => drwLast && saveFile(`${(DRW.dwg || defaultDwg())}.svg`, drwLast.svg); $('#drw-png').onclick = drwPNG; $('#drw-dxf').onclick = drwDXF;
@@ -6436,34 +6512,49 @@ function openMenu(btn) {
     let on = false;
     if (it.dataset.checked) on = $(it.dataset.checked).getAttribute('aria-pressed') === 'true';
     else if (it.dataset.act === 'browser') on = !$('#browser').hidden;
-    else if (it.dataset.act === 'checks') on = !$('#center').classList.contains('checks-min');
+    else if (it.dataset.act === 'checks') on = !$('#ana').hidden;
     else if (it.dataset.act === 'fs') on = FS.active();
     it.setAttribute('aria-checked', String(on));
   }
 }
 function shellAct(act) {
   if (act === 'browser') { $('#browser').hidden = !$('#browser').hidden; }
-  else if (act === 'checks') toggleChecks();
+  else if (act === 'checks') showAnalysis();
   else if (act === 'fs') { if (document.fullscreenElement || document.webkitFullscreenElement) FS.exit(); else goFullScreen(); }
   else if (act === 'about' || act === 'keys') { $('#about').hidden = false; if (act === 'keys') $('#keys-list').scrollIntoView({ block: 'nearest' }); $('#about-close').focus(); }
 }
-function toggleChecks(force) {
-  const c = $('#center'), min = force != null ? force : !c.classList.contains('checks-min');
-  c.classList.toggle('checks-min', min); $('#checks-toggle').textContent = min ? '▴' : '▾'; $('#checks-toggle').setAttribute('aria-expanded', String(!min));
+// the checks live in the Analysis pop-out pane, launched from the ribbon (or the status bar summary)
+function showAnalysis(force) {
+  const pane = $('#ana'), open = force != null ? force : pane.hidden;
+  if (open && pane.hidden && !pane.dataset.moved) {   // first open: just under the ribbon, at the right of the viewport
+    const rb = $('.ribbon').getBoundingClientRect();
+    if (innerWidth > 1000) { pane.style.top = Math.round(rb.bottom + 8) + 'px'; pane.style.right = Math.round(innerWidth - $('.viewport').getBoundingClientRect().right + 8) + 'px'; }
+  }
+  pane.hidden = !open; $('#ana-open').setAttribute('aria-pressed', String(open));
+}
+function dragPane(pane, bar) {
+  bar.addEventListener('pointerdown', e => {
+    if (e.target.closest('button') || innerWidth <= 1000) return;
+    e.preventDefault(); bar.setPointerCapture(e.pointerId);
+    const r = pane.getBoundingClientRect(), dx = e.clientX - r.left, dy = e.clientY - r.top;
+    const move = ev => {
+      pane.style.left = clamp(ev.clientX - dx, 0, innerWidth - 80) + 'px'; pane.style.top = clamp(ev.clientY - dy, 0, innerHeight - 40) + 'px';
+      pane.style.right = 'auto'; pane.dataset.moved = '1';
+    };
+    const up = () => { bar.removeEventListener('pointermove', move); bar.removeEventListener('pointerup', up); };
+    bar.addEventListener('pointermove', move); bar.addEventListener('pointerup', up);
+  });
 }
 /* resizable areas */
 function splitter(el, axis) {
   el.addEventListener('pointerdown', e => {
     e.preventDefault(); el.setPointerCapture(e.pointerId); el.classList.add('drag');
     const root = document.documentElement, x0 = e.clientX, y0 = e.clientY;
-    const w0 = $('.side').getBoundingClientRect().width, h0 = $('.checks').getBoundingClientRect().height;
-    const move = ev => {
-      if (axis === 'v') root.style.setProperty('--props-w', clamp(w0 - (ev.clientX - x0), 280, Math.min(760, innerWidth * 0.6)) + 'px');
-      else { toggleChecks(false); root.style.setProperty('--checks-h', clamp(h0 - (ev.clientY - y0), 90, innerHeight * 0.72) + 'px'); }
-    };
+    const w0 = $('.side').getBoundingClientRect().width;
+    const move = ev => { root.style.setProperty('--props-w', clamp(w0 - (ev.clientX - x0), 280, Math.min(900, innerWidth * 0.65)) + 'px'); };
     const up = () => {
       el.classList.remove('drag'); el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up);
-      try { localStorage.setItem('swf-split', JSON.stringify({ w: root.style.getPropertyValue('--props-w'), h: root.style.getPropertyValue('--checks-h') })); } catch { /* storage blocked */ }
+      try { localStorage.setItem('swf-split', JSON.stringify({ w: root.style.getPropertyValue('--props-w') })); } catch { /* storage blocked */ }
     };
     el.addEventListener('pointermove', move); el.addEventListener('pointerup', up);
   });
@@ -6505,7 +6596,18 @@ function bindShell() {
     if (it.dataset.click) { const t = $(it.dataset.click); if (t) t.click(); } else if (it.dataset.act) shellAct(it.dataset.act);
   }));
   document.addEventListener('click', e => { if (!e.target.closest('.menu')) closeMenus(); });
-  $$('.toolstrip [data-click]').forEach(b => b.addEventListener('click', () => { const t = $(b.dataset.click); if (t) t.click(); }));
+  $$('.ribbon [data-click]').forEach(b => b.addEventListener('click', () => { const t = $(b.dataset.click); if (t) t.click(); }));
+  // Set up: open a properties tab, and the named section in it
+  $$('.ribbon [data-tab]').forEach(b => b.addEventListener('click', () => {
+    const t = $(b.dataset.tab); if (!t) return; t.click();
+    const panel = $('#' + t.getAttribute('aria-controls'));
+    const sec = b.dataset.sec && [...panel.querySelectorAll('details.pnl > summary')].find(x => x.textContent.trim().startsWith(b.dataset.sec));
+    if (sec) { sec.parentElement.open = true; sec.scrollIntoView({ block: 'start' }); } else panel.scrollTop = 0;
+  }));
+  $$('.ribbon [data-act]').forEach(b => b.addEventListener('click', () => shellAct(b.dataset.act)));
+  $('#sb-sum').onclick = () => showAnalysis(true);
+  $('#ana-close').onclick = () => showAnalysis(false);
+  dragPane($('#ana'), $('#ana-bar'));
   $$('.tabs [role="tab"]').forEach(t => t.addEventListener('click', () => { $('#prop-title').textContent = t.getAttribute('aria-label'); }));
   // object browser
   const tree = $('#br-tree');
@@ -6517,11 +6619,9 @@ function bindShell() {
   tree.addEventListener('mouseover', e => { const row = e.target.closest('.tn'); if (row && row.dataset.id !== hlBox?.userData?.id) { highlight(row.dataset.id); if (hlBox) hlBox.userData.id = row.dataset.id; } });
   tree.addEventListener('mouseleave', () => highlight(null));
   $('#br-min').onclick = () => { const b = $('#browser'), min = !b.classList.contains('min'); b.classList.toggle('min', min); $('#br-tree').hidden = min; $('#br-min').textContent = min ? '+' : '–'; $('#br-min').setAttribute('aria-expanded', String(!min)); };
-  // docked checks and splitters
-  $('#checks-toggle').onclick = () => toggleChecks();
-  splitter($('#split-v'), 'v'); splitter($('#split-h'), 'h');
-  $('#split-h').addEventListener('dblclick', () => toggleChecks());
-  try { const v = JSON.parse(localStorage.getItem('swf-split') || 'null'); if (v) { if (v.w) document.documentElement.style.setProperty('--props-w', v.w); if (v.h) document.documentElement.style.setProperty('--checks-h', v.h); } } catch { /* storage blocked */ }
+  // splitter between the viewport and the properties editor
+  splitter($('#split-v'), 'v');
+  try { const v = JSON.parse(localStorage.getItem('swf-split') || 'null'); if (v && v.w) document.documentElement.style.setProperty('--props-w', v.w); } catch { /* storage blocked */ }
   // about
   $('#about-close').onclick = () => { $('#about').hidden = true; };
   $('#about').addEventListener('click', e => { if (e.target.id === 'about') $('#about').hidden = true; });
@@ -6534,6 +6634,7 @@ function bindShell() {
   document.addEventListener('fullscreenchange', onFsChange); document.addEventListener('webkitfullscreenchange', onFsChange);
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
+    if (!$('#ana').hidden && !$('.modal:not([hidden])') && !$('.menu-pop:not([hidden])')) showAnalysis(false);   // Esc closes the pane when nothing else is open
     closeMenus();
     if (!$('#about').hidden) $('#about').hidden = true;
     if (!$('#envlib').hidden && !envBootPending) closeEnvLib();
