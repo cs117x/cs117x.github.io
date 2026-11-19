@@ -392,7 +392,7 @@ const BODY = (() => {
       limbs[k].fingers = [1, 2, 3, 4, 5].map(n => {
         const j = [1, 2, 3].map(i => toH(J(`f${n}${i}${k}`))), tip = toH(J(`f${n}tip${k}`));
         const dirs = [new V().subVectors(j[1], j[0]), new V().subVectors(j[2], j[1]), new V().subVectors(tip, j[2])].map(d => d.normalize());
-        return { j, ax: dirs.map(d => new V().crossVectors(d, X).normalize()) };
+        return { j, tip, ax: dirs.map(d => new V().crossVectors(d, X).normalize()) };
       });
     }
     // 3. per-vertex local coordinates for each of its four bones
@@ -452,7 +452,9 @@ const BODY = (() => {
         const F0 = new V(tip.x - W.x, 0, tip.z - W.z); if (F0.lengthSq() < 1) F0.set(1, 0, 0); F0.normalize();
         const Fd = F0.clone().multiplyScalar(Math.cos(tilt)).addScaledVector(Yv, Math.sin(tilt)).normalize();
         const Lz = new V().crossVectors(Fd, Yv).normalize(), U = new V().crossVectors(Lz, Fd).normalize();
-        const yh = Fd.clone().negate(), xh = U.clone().negate(), zh = new V().crossVectors(xh, yh);
+        let yh = Fd.clone().negate(), xh = U.clone().negate(), zh = new V().crossVectors(xh, yh);
+        // a gripped handle gives the hand's whole frame (x out of the palm, y towards the elbow)
+        if (a.hand.basis) { xh = v3(a.hand.basis.x).normalize(); yh = perp(v3(a.hand.basis.y), xh); zh = new V().crossVectors(xh, yh); }
         fr['hand' + k] = { o: W, q: basisQ(xh, yh, zh) };
         fr['forearm' + k] = { o: E, q: limbQ(E, W, xh) };
         const z = s * G.legZ, Hs = v3(G.H, z), K = v3(G.K, z), A = v3(G.A, z);
@@ -466,6 +468,54 @@ const BODY = (() => {
   /* ---------- skinning ---------- */
   const FING = /^f(\d)(\d)([LR])$/;
   const POSES = { keyboard: [24, 48, 24, 14], mouse: [14, 30, 16, 8], tbThumb: [18, 38, 20, 22], tbFinger: [10, 36, 22, 10], phone: [52, 68, 38, 30], doc: [6, 12, 6, 6], rest: [14, 28, 14, 10] };
+  // Grasp: each finger closes on the object, joint by joint from the knuckle, each joint stopping when the finger beyond it
+  // touches the object (or the surface it stands on) or the joint reaches its limit, as hand models in DHM tools close on
+  // an object. Shapes, in world mm: a handle { c, a, r } (cylinder: a point, axis direction and radius), or a body
+  // { kind: 'ellipsoid', c, u: [x, y, z axes], r: [3 radii] } such as a mouse; `floor` is the height of the surface below.
+  // Contact is a finger pad (4.5% of hand length) on the surface. Returns degrees per finger and joint.
+  const GRASP_MAX = [[50, 60, 70], [90, 110, 80], [90, 110, 80], [90, 110, 80], [90, 110, 80]];
+  function shapeDist(g, floor) {
+    const sdf = g.kind === 'ellipsoid'
+      ? p => { const d = new V(p.x - g.c.x, p.y - g.c.y, p.z - g.c.z), l = g.u.map((u, i) => d.dot(u) / g.r[i]), k = Math.hypot(...l); return (k - 1) * Math.min(...g.r); }
+      : p => { const d = new V(p.x - g.c.x, p.y - g.c.y, p.z - g.c.z), a = v3w(g.a).normalize(); return d.addScaledVector(a, -d.dot(a)).length() - g.r; };
+    return floor == null ? sdf : p => Math.min(sdf(p), p.y - floor);
+  }
+  // nearest approach of the moving part of a finger (joint n onwards) to the shape: sampled along each phalanx, not only
+  // at the joints, so a long proximal phalanx cannot pass through a thin handle between its two ends
+  function segDist(pts, n, dist) {
+    let d = Infinity;
+    for (let k = n; k < pts.length - 1; k++)
+      for (let f = 0.25; f <= 1; f += 0.25) d = Math.min(d, dist(pts[k].clone().lerp(pts[k + 1], f)));
+    return d;
+  }
+  function graspAngles(Lk, hd, g, HL, floor, limits) {
+    const dist = shapeDist(g, floor), pad = 0.06 * HL, W = p => hd.o.clone().add(p.clone().applyQuaternion(hd.q));
+    return Lk.fingers.map((fg, i) => {
+      const ang = [0, 0, 0], max = limits ? limits[i] : GRASP_MAX[i];
+      const chain = () => {
+        const pts = [fg.j[0].clone()]; let q = new Q();
+        for (let n = 0; n < 3; n++) {
+          q = q.clone().multiply(qAxis(fg.ax[n], rad(ang[n])));
+          pts.push(pts[n].clone().add((n < 2 ? fg.j[n + 1] : fg.tip).clone().sub(fg.j[n]).applyQuaternion(q)));
+        }
+        return pts.map(W);
+      };
+      for (let n = 0; n < 3; n++) {
+        const top = Math.max(0, max[n]);
+        let was = null;
+        for (let a = 0; a <= top; a += 2) {
+          ang[n] = a;
+          // stop on first contact; a finger that starts nearer than the pad, or already inside (a hand set low), may
+          // not get any nearer
+          const d = segDist(chain(), n, dist);
+          if (was == null) was = d;
+          if (d < Math.min(pad, was) - 0.5) { ang[n] = Math.max(0, a - 2); break; }
+        }
+      }
+      return ang;
+    });
+  }
+  const v3w = p => new V(p.x, p.y, p.z);
   function bonePoses(M, G, F, fr) {
     const out = new Array(D.bones.length), set = (n, o, q) => { out[decode().B[n]] = { o, q }; };
     const P = fr.pelvis, T = fr.trunk, Hd = fr.head;
@@ -484,10 +534,13 @@ const BODY = (() => {
       set('hand' + k, hd.o, hd.q);
       set('thigh' + k, th.o, th.q); set('shank' + k, fr['shank' + k].o, fr['shank' + k].q); set('foot' + k, fr['foot' + k].o, fr['foot' + k].q);
       set('buttock' + k, th.o, P.q.clone().slerp(th.q.clone().multiply(Lk.thigh.qi), 0.3));
-      // fingers: flexion at each joint in the hand frame, distal joints first
-      const [mcp, pip, dip, thf] = POSES[(G.arms && G.arms[s] && G.arms[s].pose) || 'rest'] || POSES.rest;
+      // fingers: flexion at each joint in the hand frame, distal joints first; round a gripped handle they close until they touch it
+      const arm = G.arms && G.arms[s], [mcp, pip, dip, thf] = POSES[(arm && arm.pose) || 'rest'] || POSES.rest;
+      const wrap = arm && arm.hand && arm.hand.grasp ? graspAngles(Lk, hd, arm.hand.grasp, M.handlength, arm.hand.floor)
+        : arm && arm.hand && arm.hand.floor != null ? graspAngles(Lk, hd, { kind: 'ellipsoid', c: { x: 0, y: -1e6, z: 0 }, u: [X, Yv, Zv], r: [1, 1, 1] }, M.handlength, arm.hand.floor,
+          [0, 1, 2, 3, 4].map(i => i === 0 ? [thf * 0.6, thf, thf * 0.8] : [mcp, pip, dip].map(a => a * (1 + (i - 2) * 0.04)))) : null;
       Lk.fingers.forEach((fg, i) => {
-        const ang = i === 0 ? [thf * 0.6, thf, thf * 0.8] : [mcp, pip, dip].map(a => a * (1 + (i - 2) * 0.04));
+        const ang = wrap ? wrap[i] : i === 0 ? [thf * 0.6, thf, thf * 0.8] : [mcp, pip, dip].map(a => a * (1 + (i - 2) * 0.04));
         for (let n = 1; n <= 3; n++) {
           // local -> rotated about joints n..1 (distal first): p' = q (p - j) + j, composed
           let q = new Q(), t = new V();

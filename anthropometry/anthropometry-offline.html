@@ -690,7 +690,7 @@ textarea{width:100%;min-height:90px;font-size:11px;border:1px solid var(--rule);
         <li>The body is a link-segment model built from the selected record's measurements. It has no soft-tissue compression, the seat is treated as a hard flat surface (as in the survey seated measurements), and posture is set by the workstation geometry, not by a validated posture-prediction model.</li>
         <li>Hip joint: half buttock depth forward of the back of the buttock, half thigh clearance above the seat. Knee joint: midway between buttock–popliteal and buttock–knee lengths, and halfway between popliteal height and knee height. Ankle joint: lateral malleolus height.</li>
         <li>Shoulder joint: 11% of shoulder–elbow length below the acromion. Upper-arm link: 82% of shoulder–elbow length. Forearm link: radiale–stylion (or elbow–wrist) length. On a keyboard the fingertips reach the home row at 75% of hand length from the wrist, wrist 30 mm above the key tops.</li>
-        <li>Reach zones are drawn on the desk at 30 mm above its surface. Normal zone: forearm plus 40% of hand length (to the centre of grip), swung from a relaxed elbow position below each shoulder. Maximum zone: upper arm plus forearm plus 40% of hand length, swung from each shoulder. Both assume no trunk lean.</li>
+        <li>Reach zones are drawn on the desk at 30 mm above its surface. Normal zone: forearm plus 40% of hand length (to the centre of grip), swung from every elbow position that keeps both shoulder checks (flexion and abduction) in their green range, with the elbow clear of the trunk. Maximum zone: upper arm plus forearm plus 40% of hand length, swung from each shoulder. Both assume no trunk lean. Desk objects are judged against the zones in 3D at their reach point, so an object on a raised base is judged at its real height.</li>
         <li>Screens: side-by-side screens are hinged edge to edge at the set angle and gap, symmetrically about the chosen centre. Curved screens bend about a vertical axis at their stated radius. The head pitches to view the main screen; it does not turn, so horizontal angles are reported as gaze angles from straight ahead.</li>
         <li>Seated shoulder and cervicale heights for ANSUR II are derived per subject as standing height minus (stature − sitting height), because ANSUR II has no seated acromion height.</li>
         <li>Neck flexion pivots at C7. In auto head mode the head tilts until the eyes look down at the main screen centre by the preferred eye rotation, limited to −10° to 45°. Head inclination 0° means the Frankfurt plane is level.</li>
@@ -1589,6 +1589,32 @@ function layoutScreens(W, deskY) {
 }
 
 /* ---------------- desk objects ---------------- */
+// The handle a hand closes round: its axis (two points in the object's frame) and radius, in mm. A model in core/props.js can
+// give its own (`grasp`); otherwise it follows the generic stick and throttle shapes. grasp: false means a fingertip control.
+function graspOf(o, dims) {
+  const m = HFE_PROPS.of(o);
+  if (m && m.grasp === false) return null;
+  if (m && m.grasp) return m.grasp;
+  if (o.type === 'stick') return { a: [6, dims.grip - 50, 0], b: [14, dims.h - 10, 0], r: 16 };
+  if (o.type === 'throttle') return { a: [-10, dims.grip - 50, 0], b: [-4, dims.h - 10, 0], r: 21 };
+  return null;
+}
+// Power grip (Napier 1956): the handle lies across the palm, the thumb uppermost and the fingers closed round it. The hand
+// faces the handle with its fingers along the horizontal line from the shoulder (a neutral wrist in the horizontal plane),
+// the palm towards the body's midline side of the handle. The handle's axis sits one palm-thickness (taken as 10% of hand
+// length) plus its radius out of the palm, 42% of hand length from the wrist (over the distal palm). Returns the hand's
+// frame (x out of the palm, y towards the elbow, z towards the thumb on the right hand), and the wrist target.
+function gripHand(side, S, gr, HL) {
+  const A = new V3().subVectors(gr.b, gr.a).normalize();
+  const t = Math.abs(A.y) > 0.2 ? clamp((gr.y - gr.a.y) / (gr.b.y - gr.a.y), 0, 1) : 0.5;
+  const C = gr.a.clone().lerp(gr.b, t);
+  let Fd = new V3().subVectors(C, S); Fd.addScaledVector(A, -Fd.dot(A)); Fd.y = Math.abs(A.y) > 0.9 ? 0 : Fd.y;
+  if (Fd.lengthSq() < 1) Fd.set(1, 0, 0); Fd.addScaledVector(A, -Fd.dot(A)).normalize();
+  const x = new V3().crossVectors(A, Fd).multiplyScalar(side).normalize(), y = Fd.clone().negate(), z = A.clone().multiplyScalar(side);
+  const gx = 0.12 * HL + gr.r, gy = 0.42 * HL;
+  const Wt = C.clone().addScaledVector(x, -gx).addScaledVector(Fd, -gy);
+  return { Wt, tip: Wt.clone().addScaledVector(Fd, HL), tilt: 0, basis: { x, y, z }, grasp: { c: C, a: A, r: gr.r } };
+}
 function objName(o, all) {
   const same = all.filter(x => objLabel(x) === objLabel(o));
   return objLabel(o) + (same.length > 1 ? ' ' + (same.indexOf(o) + 1) : '');
@@ -1607,16 +1633,25 @@ function objWorld(o, deskY, HL, reachH) {
     const [wx, wy, tx, ty] = HFE_PROPS.of(o).hand; r.reachPt = T(0, 30, 0);
     r.hand = () => ({ Wt: T(wx * HL, wy, 0), tip: T(tx * HL, ty, 0), tilt: 0 });
   } else if (o.type === 'mouse') {
+    // palm grip: the palm over the mouse's top, one palm-thickness (10% of hand length) below the hand's axis, with the
+    // knuckles near the front so the fingers close onto the buttons (core/bodylib.js) and end near the front edge
     r.reachPt = T(0, 30, 0);
-    r.hand = () => ({ Wt: T(-0.55 * HL, 32, 0), tip: T(0.25 * HL, 30, 0), tilt: 0 });
+    const hump = { x: dims.d / 2 - 0.57 * HL, y: dims.h }, ax = [T(1, 0, 0).sub(T(0, 0, 0)), new V3(0, 1, 0), T(0, 0, 1).sub(T(0, 0, 0))];
+    const shell = { kind: 'ellipsoid', c: T(0, 0, 0), u: ax, r: [dims.d / 2, dims.h, dims.w / 2] };
+    r.hand = () => ({ Wt: T(hump.x - 0.35 * HL, hump.y + 0.14 * HL, 0), tip: T(hump.x + 0.65 * HL, hump.y + 0.14 * HL, 0), tilt: 0, grasp: shell });
   } else if (o.type === 'tbThumb') {
     r.reachPt = T(0, 30, 0);
     r.hand = () => ({ Wt: T(-0.52 * HL, 50, 0), tip: T(0.3 * HL, 46, 0), tilt: 0 });
   } else if (o.type === 'tbFinger') {
     r.reachPt = T(0, 30, 0);
     r.hand = () => ({ Wt: T(-0.62 * HL, 44, 0), tip: T(0.12 * HL, 64, 0), tilt: 0 });
+  } else if ((o.type === 'stick' || o.type === 'throttle') && graspOf(o, dims)) {
+    // power grip round the handle: the palm against it, thumb uppermost, fingers closed round it (gripHand)
+    const gy = dims.grip, g = graspOf(o, dims); r.reachPt = T(0, gy, 0);
+    r.grasp = { a: T(...g.a), b: T(...g.b), r: g.r, y: gy + (o.base != null ? o.base : deskY) };
+    r.hand = (side, S) => gripHand(side, S, r.grasp, HL);
   } else if (o.type === 'stick' || o.type === 'throttle') {
-    // power grip round a near-vertical handle: wrist behind and below the grip, fingers wrapped round it
+    // fingertip control (panel mini-joystick): hand palm down behind the knob
     const gy = dims.grip; r.reachPt = T(0, gy, 0);
     r.hand = () => ({ Wt: T(-0.42 * HL, gy - 0.12 * HL, 0), tip: T(0.12 * HL, gy + 0.05 * HL, 0), tilt: rad(20) });
   } else if (o.type === 'phone') {
@@ -1628,6 +1663,25 @@ function objWorld(o, deskY, HL, reachH) {
     r.hand = () => ({ Wt: T(-0.42 * HL, 26, 0), tip: T(0.35 * HL, 14, 0), tilt: 0 });
   }
   return r;
+}
+// outline of the union of each arm's circles, traced by rays from a point inside them (both arms together when their
+// zones overlap, so the zone reads as one area)
+function zoneUnion(sets) {
+  const ring = (ox, oz, cs) => {
+    const pts = [];
+    for (let k = 0; k < 180; k++) {
+      const t = k / 180 * Math.PI * 2, ux = Math.cos(t), uz = Math.sin(t); let best = 0;
+      for (const c of cs) { const px = ox - c.x, pz = oz - c.z, b = ux * px + uz * pz, cc = px * px + pz * pz - c.r * c.r, disc = b * b - cc; if (disc >= 0) best = Math.max(best, -b + Math.sqrt(disc)); }
+      pts.push({ x: ox + ux * best, z: oz + uz * best });
+    }
+    return pts;
+  };
+  const cen = cs => ({ x: cs.reduce((a, c) => a + c.x, 0) / cs.length, z: cs.reduce((a, c) => a + c.z, 0) / cs.length });
+  const inAny = (p, cs) => cs.some(c => Math.hypot(p.x - c.x, p.z - c.z) < c.r * 0.98);
+  const all = sets.flat().filter(c => c.r > 1); if (!all.length) return [];
+  const m = cen(all);
+  if (sets.every(cs => cs.length) && inAny(m, sets[0]) && inAny(m, sets[1])) return [ring(m.x, m.z, all)];
+  return sets.filter(cs => cs.length).map(cs => { const p = cen(cs), o = inAny(p, cs) ? p : cs[0]; return ring(o.x, o.z, cs.filter(c => c.r > 1)); });
 }
 function zonePolys(circles) {
   // union of circles in plan (x, z), sampled from a point inside all of them when possible
@@ -1895,6 +1949,8 @@ const HFE_SOLVER = (() => {
        { type: 'look', seg, origin, local, world, scale? } a segment ray (origin + direction) through a world point
                                                         (world may be a function of the ray origin)
        { type: 'half', seg, local, n, d }               keep n · p >= d (one-sided)
+       { type: 'outside', seg, local, ref, c, r }       keep a point outside the elliptic cylinder along ref's y axis,
+                                                        centre c = [x, z] and radii r = [x, z] in ref's frame (one-sided)
        { type: 'avoid', caps: [ids], boxes, margin }    keep capsules at least margin from boxes (one-sided)
      opts: { q0, pref, regW (per DOF weight, mm per radian), lock (set of DOF keys), lim (overrides by DOF
      key: [lo, hi] radians), iters } */
@@ -1915,6 +1971,11 @@ const HFE_SOLVER = (() => {
         for (let i = 0; i < 3; i++) r.push(s * (d[i] - to[i]));
       } else if (t.type === 'half') {
         const p = point(sk, F, t.seg, t.local); r.push(w * Math.min(0, dot(t.n, p) - t.d));
+      } else if (t.type === 'outside') {
+        // keep a point outside an elliptic cylinder that runs along another segment's y axis (e.g. the elbow outside the trunk)
+        const f = F[sk.index[t.ref]], l = mtv(f.R, sub(point(sk, F, t.seg, t.local), f.p));
+        const k = Math.hypot((l[0] - t.c[0]) / t.r[0], (l[2] - t.c[1]) / t.r[1]);
+        r.push(w * Math.min(0, k - 1) * Math.min(t.r[0], t.r[1]));
       } else if (t.type === 'avoid') {
         if (!L) L = capsLandmarks(sk, F);
         const caps = capsules(sk.M, L).filter(c => t.caps.some(p => c.id.startsWith(p)));
@@ -2123,6 +2184,8 @@ function solve(M, W, ov) {
 
   // desk objects and arms
   const reachH = 0.75 * HL, ghZ = 0.415 * M.biacromialbreadth;
+  // the trunk's cross-section that the upper arm must stay outside (see armIK)
+  const trunkEnv = { T, a: 0.5 * M.chestdepth, b: 0.37 * M.biacromialbreadth, cx: 0.5 * M.chestdepth, ru: 0.12 * SEL, dR };
   const objs = W.objects.map(o => objWorld(o, deskY, HL, reachH)); G.objs = objs;
   const kbFirst = objs.find(x => x.o.type === 'keyboard');
   const arms = {};
@@ -2130,35 +2193,50 @@ function solve(M, W, ov) {
     const Sv = new V3(Sh.x, Sh.y, side * ghZ);
     const id = W.hands[side < 0 ? 'L' : 'R'];
     const ob = id === '' ? null : (objs.find(x => x.o.id === id) || kbFirst || null);
-    const t = ob ? ob.hand(side) : { Wt: new V3(Sh.x + 260, deskY + 30, side * 150), tip: new V3(Sh.x + 260 + 0.6 * HL, deskY + 20, side * 150), tilt: 0 };
-    const pole = new V3(-0.2, -1, 0.65 * side).normalize();
-    const ik = ov && ov.arms ? ov.arms[side] : ik2(Sv, t.Wt, Lu, Lf, pole);
+    const t0 = ob ? ob.hand(side, Sv) : null, t = t0 ? { ...t0, floor: ob.o.base != null ? ob.o.base : deskY } : { Wt: new V3(Sh.x + 260, deskY + 30, side * 150), tip: new V3(Sh.x + 260 + 0.6 * HL, deskY + 20, side * 150), tilt: 0 };
+    const ik = ov && ov.arms ? ov.arms[side] : armIK(Sv, t.Wt, Lu, Lf, side, trunkEnv);
     const El = ik.E, Wr = ik.W;
     const elbow = deg(new V3().subVectors(Sv, El).angleTo(new V3().subVectors(Wr, El)));
     const shFlex = deg(Math.atan2(El.x - Sv.x, Sv.y - El.y));
     const shAbd = deg(Math.atan2((El.z - Sv.z) * side, Sv.y - El.y));
     const slope = deg(Math.atan2(Wr.y - El.y, Math.hypot(Wr.x - El.x, Wr.z - El.z)));
-    arms[side] = { S: Sv, E: El, W: Wr, hand: t, elbow, shFlex, shAbd, wrist: deg(t.tilt) - slope, reach: ik.short, obj: ob ? ob.o.id : null, pose: ob ? ob.o.type : 'rest' };
+    // wrist extension: for a gripped handle, from the hand's frame (fingers rotated towards the back of the hand)
+    const fa = new V3().subVectors(Wr, El).normalize();
+    const wrist = t.basis ? deg(Math.atan2(fa.dot(t.basis.x), -fa.dot(t.basis.y))) : deg(t.tilt) - slope;
+    arms[side] = { S: Sv, E: El, W: Wr, hand: t, elbow, shFlex, shAbd, wrist, reach: ik.short, obj: ob ? ob.o.id : null, pose: ob ? ob.o.type : 'rest' };
   }
   R.homeVsElbow = kbFirst ? (deskY + kbFirst.o.homeRowH) - (seatY + M.elbowrestheight) : null;
   for (const k of ['elbow', 'shFlex', 'shAbd', 'wrist', 'reach']) R[k] = { L: arms[-1][k], R: arms[1][k] };
 
-  // reach zones on the desk
+  // reach zones on the desk, 30 mm above it (to the centre of grip, 40% of hand length beyond the wrist).
+  // Normal: forearm swept from every elbow position the shoulder's green comfort ranges allow (the Shoulder flexion and
+  // Shoulder abduction checks), so a hand inside it can work with both shoulder checks green. Maximum: the whole arm swept
+  // from the shoulder. Both assume no trunk lean.
   const yc = deskY + 30, grip = 0.4 * HL, Rn = Lf + grip, Rm = Lu + Lf + grip;
-  const zn = [], zm = [];
+  const zn = [], zm = [], zE = [], flexG = (S.lim.shFlex || CHECK.shFlex).g, abdG = (S.lim.shAbd || CHECK.shAbd).g;
   for (const side of [-1, 1]) {
-    const Ex = Sh.x + Lu * Math.sin(rad(10)), Ey = Sh.y - Lu * Math.cos(rad(10)), Ez = side * (ghZ + 20);
-    zn.push({ x: Ex, z: Ez, r: Math.sqrt(Math.max(0, Rn * Rn - (Ey - yc) ** 2)) });
-    zm.push({ x: Sh.x, z: side * ghZ, r: Math.sqrt(Math.max(0, Rm * Rm - (Sh.y - yc) ** 2)) });
+    const cs = [], es = [], Sv = new V3(Sh.x, Sh.y, side * ghZ);
+    for (let i = 0; i <= 6; i++) for (let j = 0; j <= 6; j++) {
+      const f = rad(lerp(flexG[0] ?? -5, flexG[1] ?? 20, i / 6)), a = rad(lerp(abdG[0] ?? -10, abdG[1] ?? 20, j / 6));
+      const d = new V3(Math.tan(f), -1, side * Math.tan(a)).normalize(), E = Sv.clone().addScaledVector(d, Lu);
+      if (insideTrunk(E, trunkEnv)) continue;
+      es.push(E); const h = E.y - yc; if (Math.abs(h) < Rn) cs.push({ x: E.x, z: E.z, r: Math.sqrt(Rn * Rn - h * h) });
+    }
+    zn.push(cs); zE.push({ S: Sv, E: es });
+    zm.push([{ x: Sh.x, z: side * ghZ, r: Math.sqrt(Math.max(0, Rm * Rm - (Sh.y - yc) ** 2)) }]);
   }
-  G.zones = { normal: zonePolys(zn), max: zonePolys(zm), zn, zm, yc };
-  const out1 = (p, c) => Math.hypot(p.x - c.x, p.z - c.z) - c.r, ci = side => side < 0 ? 0 : 1;
+  G.zones = { normal: zoneUnion(zn), max: zonePolys(zm.flat()), zn, zm, yc };
+  // an object's zone is judged in 3D at its own reach point (a handle at its grip height): normal if a hand can reach it
+  // from an elbow position inside the shoulder's green ranges, maximum if the outstretched arm reaches it from the shoulder
+  const ci = side => side < 0 ? 0 : 1;
+  const dist3 = (p, side) => ({ n: Math.min(...zE[ci(side)].E.map(E => E.distanceTo(p) - Rn)), m: zE[ci(side)].S.distanceTo(p) - Rm });
+  const outN = (p, side) => dist3(p, side).n, outM = (p, side) => dist3(p, side).m;
   R.objects = objs.map(ob => {
     let dn, dm;
-    if (ob.reachPts) { dn = Math.max(...[-1, 1].map(sd => out1(ob.reachPts[sd], zn[ci(sd)]))); dm = Math.max(...[-1, 1].map(sd => out1(ob.reachPts[sd], zm[ci(sd)]))); }
+    if (ob.reachPts) { dn = Math.max(...[-1, 1].map(sd => outN(ob.reachPts[sd], sd))); dm = Math.max(...[-1, 1].map(sd => outM(ob.reachPts[sd], sd))); }
     else {
       const sides = [-1, 1].filter(sd => W.hands[sd < 0 ? 'L' : 'R'] === ob.o.id), use = sides.length ? sides : [-1, 1];
-      dn = Math.min(...use.map(sd => out1(ob.reachPt, zn[ci(sd)]))); dm = Math.min(...use.map(sd => out1(ob.reachPt, zm[ci(sd)])));
+      dn = Math.min(...use.map(sd => outN(ob.reachPt, sd))); dm = Math.min(...use.map(sd => outM(ob.reachPt, sd)));
     }
     const zone = dn <= 0 ? 'normal' : dm <= 0 ? 'max' : 'beyond';
     return { id: ob.o.id, dn, dm, zone, use: ob.o.use };
@@ -2166,16 +2244,35 @@ function solve(M, W, ov) {
   Object.assign(G, { arms, ghZ, reachH });
   return { G, R };
 }
-function ik2(S, T, L1, L2, pole) {
-  const d = new V3().subVectors(T, S); const full = d.length(); const dir = d.clone().normalize();
+// Arm IK. The wrist goes to the target (or as close as the arm reaches); the elbow then lies on a circle round the
+// shoulder-wrist line. Of the elbow positions on that circle, take the lowest (the arm hangs under gravity, the least
+// shoulder effort) that keeps the upper arm outside the trunk; then the elbow falls to the side of the body, and points
+// outwards and back when the hand works out to the side.
+function insideTrunk(P, env) {
+  // the trunk's cross-section as an ellipse round its own axis, at the height of P (sagittal frame turned with the trunk)
+  const c = Math.cos(-env.dR), s_ = Math.sin(-env.dR), o = env.T({ x: env.cx, y: 0 });
+  const lx = (P.x - o.x) * c - (P.y - o.y) * s_;
+  return (lx / (env.a + env.ru)) ** 2 + (P.z / (env.b + env.ru)) ** 2 < 1;
+}
+function armIK(S, T, L1, L2, side, env) {
+  const d = new V3().subVectors(T, S), full = d.length(), dir = d.clone().normalize();
   let dist = full, short = 0;
   if (dist > L1 + L2 - 0.5) { short = full - (L1 + L2); dist = L1 + L2 - 0.5; }
   dist = Math.max(dist, Math.abs(L1 - L2) + 0.5);
-  const a = (L1 * L1 - L2 * L2 + dist * dist) / (2 * dist); const h = Math.sqrt(Math.max(L1 * L1 - a * a, 0));
-  const pp = pole.clone().sub(dir.clone().multiplyScalar(pole.dot(dir))).normalize();
-  const E = S.clone().addScaledVector(dir, a).addScaledVector(pp, h);
-  const W = S.clone().addScaledVector(dir, dist);
-  return { E, W, short: Math.max(0, short) };
+  const a = (L1 * L1 - L2 * L2 + dist * dist) / (2 * dist), h = Math.sqrt(Math.max(L1 * L1 - a * a, 0));
+  const C = S.clone().addScaledVector(dir, a), W = S.clone().addScaledVector(dir, dist);
+  // basis of the circle's plane: u towards the bottom of the circle (or outwards when the arm points straight down)
+  let u = new V3(0, -1, 0).addScaledVector(dir, dir.y); if (u.lengthSq() < 1e-6) u = new V3(0, 0, side).addScaledVector(dir, -dir.z);
+  u.normalize(); const v = new V3().crossVectors(dir, u).normalize();
+  const at = th => C.clone().addScaledVector(u, h * Math.cos(th)).addScaledVector(v, h * Math.sin(th));
+  const cost = th => { const E = at(th), mid = S.clone().lerp(E, 0.6); return E.y + (insideTrunk(E, env) || insideTrunk(mid, env) ? 1e4 : 0) + (side * E.z < side * S.z - 0.35 * L1 ? 1e4 : 0); };
+  let best = 0, bc = Infinity;
+  for (let k = 0; k < 144; k++) { const th = (k / 144) * 2 * Math.PI, c = cost(th); if (c < bc - 1e-9) { bc = c; best = th; } }
+  // refine round the best sample, staying on the same side of any boundary
+  let lo = best - Math.PI / 144, hi = best + Math.PI / 144;
+  for (let it = 0; it < 30; it++) { const m1 = lo + (hi - lo) / 3, m2 = hi - (hi - lo) / 3; if (cost(m1) <= cost(m2)) hi = m2; else lo = m1; }
+  const th = cost((lo + hi) / 2) <= bc ? (lo + hi) / 2 : best;
+  return { E: at(th), W, short: Math.max(0, short) };
 }
 
 /* ---------------- whole-body solver, clearance and range of motion ---------------- */
@@ -2212,7 +2309,7 @@ function bodyPose(M, W, G0) {
   });
   const q0 = SV.qOf(sk, init), pref = [...q0];
   pref[ix['trunk.flex']] = 0;
-  const REG = { trunk: 400, neck: 30, shoulder: 100, elbow: 20, forearm: 20, wrist: 40, hip: 20, knee: 20, ankle: 60 };
+  const REG = { trunk: 400, neck: 30, shoulder: 40, elbow: 20, forearm: 20, wrist: 40, hip: 20, knee: 20, ankle: 60 };
   const regW = sk.dofs.map(d => REG[d.joint] || 0);
   const lim = { 'trunk.flex': [chair.back ? 0 : SV.ROM.trunk.flex[0] * SV.D2R, SV.ROM.trunk.flex[1] * SV.D2R] };
   const T = [], boxes = deskBoxes(W, G0);
@@ -2220,8 +2317,18 @@ function bodyPose(M, W, G0) {
     const k = side < 0 ? 'L' : 'R', a = G0.arms[side], t = a.hand;
     const aim = new V3().subVectors(t.tip, t.Wt).normalize();
     T.push({ type: 'point', seg: 'hand' + k, local: [0, 0, 0], world: [t.Wt.x, t.Wt.y, t.Wt.z], w: 3 });
-    T.push({ type: 'aim', seg: 'hand' + k, local: [0, -1, 0], world: [aim.x, aim.y, aim.z], w: 1 });
-    T.push({ type: 'aim', seg: 'hand' + k, local: [1, 0, 0], world: [0, -1, 0], w: 0.15 });
+    if (t.basis) {
+      // a gripped handle: fingers and palm as the grip frame has them (thumb uppermost)
+      const fy = t.basis.y, fx = t.basis.x;
+      T.push({ type: 'aim', seg: 'hand' + k, local: [0, -1, 0], world: [-fy.x, -fy.y, -fy.z], w: 1 });
+      T.push({ type: 'aim', seg: 'hand' + k, local: [1, 0, 0], world: [fx.x, fx.y, fx.z], w: 1 });
+    } else {
+      T.push({ type: 'aim', seg: 'hand' + k, local: [0, -1, 0], world: [aim.x, aim.y, aim.z], w: 1 });
+      T.push({ type: 'aim', seg: 'hand' + k, local: [1, 0, 0], world: [0, -1, 0], w: 0.15 });
+    }
+    // the elbow stays outside the trunk's cross-section (as armIK)
+    const ru = 0.12 * M.shoulderelbowlength;
+    T.push({ type: 'outside', seg: 'forearm' + k, local: [0, 0, 0], ref: 'trunk', c: [0.5 * M.chestdepth - sk.ref.H0.x, 0], r: [0.5 * M.chestdepth + ru, 0.37 * M.biacromialbreadth + ru], w: 10 });
     T.push({ type: 'point', seg: 'foot' + k, local: [0, 0, 0], world: [0, G0.soleY + M.lateralmalleolusheight, 0], axes: [0, 1, 0], w: 3 });
     T.push({ type: 'aim', seg: 'shank' + k, local: [0, -1, 0], world: [Math.sin(G0.psi), -Math.cos(G0.psi), 0], w: 0.3 });
     T.push({ type: 'aim', seg: 'foot' + k, local: [1, 0, 0], world: [1, 0, 0], w: 1 });
@@ -2858,7 +2965,7 @@ const BODY = (() => {
       limbs[k].fingers = [1, 2, 3, 4, 5].map(n => {
         const j = [1, 2, 3].map(i => toH(J(`f${n}${i}${k}`))), tip = toH(J(`f${n}tip${k}`));
         const dirs = [new V().subVectors(j[1], j[0]), new V().subVectors(j[2], j[1]), new V().subVectors(tip, j[2])].map(d => d.normalize());
-        return { j, ax: dirs.map(d => new V().crossVectors(d, X).normalize()) };
+        return { j, tip, ax: dirs.map(d => new V().crossVectors(d, X).normalize()) };
       });
     }
     // 3. per-vertex local coordinates for each of its four bones
@@ -2918,7 +3025,9 @@ const BODY = (() => {
         const F0 = new V(tip.x - W.x, 0, tip.z - W.z); if (F0.lengthSq() < 1) F0.set(1, 0, 0); F0.normalize();
         const Fd = F0.clone().multiplyScalar(Math.cos(tilt)).addScaledVector(Yv, Math.sin(tilt)).normalize();
         const Lz = new V().crossVectors(Fd, Yv).normalize(), U = new V().crossVectors(Lz, Fd).normalize();
-        const yh = Fd.clone().negate(), xh = U.clone().negate(), zh = new V().crossVectors(xh, yh);
+        let yh = Fd.clone().negate(), xh = U.clone().negate(), zh = new V().crossVectors(xh, yh);
+        // a gripped handle gives the hand's whole frame (x out of the palm, y towards the elbow)
+        if (a.hand.basis) { xh = v3(a.hand.basis.x).normalize(); yh = perp(v3(a.hand.basis.y), xh); zh = new V().crossVectors(xh, yh); }
         fr['hand' + k] = { o: W, q: basisQ(xh, yh, zh) };
         fr['forearm' + k] = { o: E, q: limbQ(E, W, xh) };
         const z = s * G.legZ, Hs = v3(G.H, z), K = v3(G.K, z), A = v3(G.A, z);
@@ -2932,6 +3041,54 @@ const BODY = (() => {
   /* ---------- skinning ---------- */
   const FING = /^f(\d)(\d)([LR])$/;
   const POSES = { keyboard: [24, 48, 24, 14], mouse: [14, 30, 16, 8], tbThumb: [18, 38, 20, 22], tbFinger: [10, 36, 22, 10], phone: [52, 68, 38, 30], doc: [6, 12, 6, 6], rest: [14, 28, 14, 10] };
+  // Grasp: each finger closes on the object, joint by joint from the knuckle, each joint stopping when the finger beyond it
+  // touches the object (or the surface it stands on) or the joint reaches its limit, as hand models in DHM tools close on
+  // an object. Shapes, in world mm: a handle { c, a, r } (cylinder: a point, axis direction and radius), or a body
+  // { kind: 'ellipsoid', c, u: [x, y, z axes], r: [3 radii] } such as a mouse; `floor` is the height of the surface below.
+  // Contact is a finger pad (4.5% of hand length) on the surface. Returns degrees per finger and joint.
+  const GRASP_MAX = [[50, 60, 70], [90, 110, 80], [90, 110, 80], [90, 110, 80], [90, 110, 80]];
+  function shapeDist(g, floor) {
+    const sdf = g.kind === 'ellipsoid'
+      ? p => { const d = new V(p.x - g.c.x, p.y - g.c.y, p.z - g.c.z), l = g.u.map((u, i) => d.dot(u) / g.r[i]), k = Math.hypot(...l); return (k - 1) * Math.min(...g.r); }
+      : p => { const d = new V(p.x - g.c.x, p.y - g.c.y, p.z - g.c.z), a = v3w(g.a).normalize(); return d.addScaledVector(a, -d.dot(a)).length() - g.r; };
+    return floor == null ? sdf : p => Math.min(sdf(p), p.y - floor);
+  }
+  // nearest approach of the moving part of a finger (joint n onwards) to the shape: sampled along each phalanx, not only
+  // at the joints, so a long proximal phalanx cannot pass through a thin handle between its two ends
+  function segDist(pts, n, dist) {
+    let d = Infinity;
+    for (let k = n; k < pts.length - 1; k++)
+      for (let f = 0.25; f <= 1; f += 0.25) d = Math.min(d, dist(pts[k].clone().lerp(pts[k + 1], f)));
+    return d;
+  }
+  function graspAngles(Lk, hd, g, HL, floor, limits) {
+    const dist = shapeDist(g, floor), pad = 0.06 * HL, W = p => hd.o.clone().add(p.clone().applyQuaternion(hd.q));
+    return Lk.fingers.map((fg, i) => {
+      const ang = [0, 0, 0], max = limits ? limits[i] : GRASP_MAX[i];
+      const chain = () => {
+        const pts = [fg.j[0].clone()]; let q = new Q();
+        for (let n = 0; n < 3; n++) {
+          q = q.clone().multiply(qAxis(fg.ax[n], rad(ang[n])));
+          pts.push(pts[n].clone().add((n < 2 ? fg.j[n + 1] : fg.tip).clone().sub(fg.j[n]).applyQuaternion(q)));
+        }
+        return pts.map(W);
+      };
+      for (let n = 0; n < 3; n++) {
+        const top = Math.max(0, max[n]);
+        let was = null;
+        for (let a = 0; a <= top; a += 2) {
+          ang[n] = a;
+          // stop on first contact; a finger that starts nearer than the pad, or already inside (a hand set low), may
+          // not get any nearer
+          const d = segDist(chain(), n, dist);
+          if (was == null) was = d;
+          if (d < Math.min(pad, was) - 0.5) { ang[n] = Math.max(0, a - 2); break; }
+        }
+      }
+      return ang;
+    });
+  }
+  const v3w = p => new V(p.x, p.y, p.z);
   function bonePoses(M, G, F, fr) {
     const out = new Array(D.bones.length), set = (n, o, q) => { out[decode().B[n]] = { o, q }; };
     const P = fr.pelvis, T = fr.trunk, Hd = fr.head;
@@ -2950,10 +3107,13 @@ const BODY = (() => {
       set('hand' + k, hd.o, hd.q);
       set('thigh' + k, th.o, th.q); set('shank' + k, fr['shank' + k].o, fr['shank' + k].q); set('foot' + k, fr['foot' + k].o, fr['foot' + k].q);
       set('buttock' + k, th.o, P.q.clone().slerp(th.q.clone().multiply(Lk.thigh.qi), 0.3));
-      // fingers: flexion at each joint in the hand frame, distal joints first
-      const [mcp, pip, dip, thf] = POSES[(G.arms && G.arms[s] && G.arms[s].pose) || 'rest'] || POSES.rest;
+      // fingers: flexion at each joint in the hand frame, distal joints first; round a gripped handle they close until they touch it
+      const arm = G.arms && G.arms[s], [mcp, pip, dip, thf] = POSES[(arm && arm.pose) || 'rest'] || POSES.rest;
+      const wrap = arm && arm.hand && arm.hand.grasp ? graspAngles(Lk, hd, arm.hand.grasp, M.handlength, arm.hand.floor)
+        : arm && arm.hand && arm.hand.floor != null ? graspAngles(Lk, hd, { kind: 'ellipsoid', c: { x: 0, y: -1e6, z: 0 }, u: [X, Yv, Zv], r: [1, 1, 1] }, M.handlength, arm.hand.floor,
+          [0, 1, 2, 3, 4].map(i => i === 0 ? [thf * 0.6, thf, thf * 0.8] : [mcp, pip, dip].map(a => a * (1 + (i - 2) * 0.04)))) : null;
       Lk.fingers.forEach((fg, i) => {
-        const ang = i === 0 ? [thf * 0.6, thf, thf * 0.8] : [mcp, pip, dip].map(a => a * (1 + (i - 2) * 0.04));
+        const ang = wrap ? wrap[i] : i === 0 ? [thf * 0.6, thf, thf * 0.8] : [mcp, pip, dip].map(a => a * (1 + (i - 2) * 0.04));
         for (let n = 1; n <= 3; n++) {
           // local -> rotated about joints n..1 (distal first): p' = q (p - j) + j, composed
           let q = new Q(), t = new V();
