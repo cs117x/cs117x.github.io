@@ -754,6 +754,7 @@ textarea{width:100%;min-height:90px;font-size:11px;border:1px solid var(--rule);
       </ul>
       <h3 style="font-size:13px;margin-top:12px">Model assumptions</h3>
       <ul>
+        <li>Stance (Posture solver, whole body): standing, crouching, kneeling, half kneeling (right knee down) and prone are solved by the whole-body solver with the chair removed. The body rests on the floor at its contacts, its centre of mass (segment masses from de Leva, 1996) is kept at least 20 mm inside the support, the hands go to their controls (except prone) and the gaze to the main screen. Seat, chair, hip, knee and recline checks are not shown off the seat; the joint range-of-motion check covers every joint. The trunk keeps its seated shape, so standing height comes out within about 3 % of stature. Crouching keeps the heels down, so it is as deep as the ankle's average dorsiflexion range allows.</li>
         <li>The body is a link-segment model built from the selected record's measurements. It has no soft-tissue compression, the seat is treated as a hard flat surface (as in the survey seated measurements), and posture is set by the workstation geometry, not by a validated posture-prediction model.</li>
         <li>Hip joint: half buttock depth forward of the back of the buttock, half thigh clearance above the seat. Knee joint: midway between buttock–popliteal and buttock–knee lengths, and halfway between popliteal height and knee height. Ankle joint: lateral malleolus height.</li>
         <li>Shoulder joint: 11% of shoulder–elbow length below the acromion. Upper-arm link: 82% of shoulder–elbow length. Forearm link: radiale–stylion (or elbow–wrist) length. On a keyboard the fingertips reach the home row at 75% of hand length from the wrist, wrist 30 mm above the key tops.</li>
@@ -1514,7 +1515,7 @@ const WS_DEFAULT = {
   seatH: 450, seatDepth: 450, seatWidth: 480, seatGap: -100, recline: 8, footFwd: 5, footrest: 0, shoe: 25, armrests: false, armH: 220,
   deskSize: '1600x800', deskType: 'fixed', deskMin: 620, deskMax: 1270,
   deskH: 720, deskT: 25, deskDepth: 800, deskWidth: 1600, legroom: 650, deskStyle: 'desk',
-  headMode: 'auto', eyeDep: 15, neckFlex: 10, solver: 'classic',
+  headMode: 'auto', eyeDep: 15, neckFlex: 10, solver: 'classic', stance: 'seated',
   screens: { count: 1, layout: 'row', centreOn: 'array', wrap: 20, gap: 10, align: 'bottom', dist: 450, bottom: 110, tilt: 8, stackGap: 15, stackTilt: -12, list: [SCREEN_DEFAULT(), SCREEN_DEFAULT(), SCREEN_DEFAULT(), SCREEN_DEFAULT()] },
   objects: [
     { id: 'o1', type: 'keyboard', kb: 'full', x: 170, z: 84, yaw: 0, homeRowH: 30, tilt: 4, use: 'frequent' },
@@ -1794,7 +1795,16 @@ const HFE_SOLVER = (() => {
   /* ---- sources and range-of-motion limits ---- */
   const SOURCES = {
     AAOS: 'American Academy of Orthopaedic Surgeons (1965) Joint Motion: Method of Measuring and Recording; average adult values as tabulated in Botman et al. (2020) Plast Reconstr Surg Glob Open 8(7):e2907, Tables 1 and 3. The upper value is used where a range is quoted.',
-    VA: 'US Department of Veterans Affairs, 38 CFR § 4.71a, General Rating Formula for Diseases and Injuries of the Spine, Note (2): normal ranges of motion of the cervical and thoracolumbar spine.'
+    VA: 'US Department of Veterans Affairs, 38 CFR § 4.71a, General Rating Formula for Diseases and Injuries of the Spine, Note (2): normal ranges of motion of the cervical and thoracolumbar spine.',
+    SPINE: 'The VA thoracolumbar ranges split between the lumbar and thoracic spine in the proportions of the representative segmental ranges in White A.A., Panjabi M.M. (1990) Clinical Biomechanics of the Spine, 2nd ed., Lippincott: the lumbar spine takes most of flexion and extension, the thoracic spine most of axial rotation, and lateral bend is shared. A tool convention, to be verified.',
+    DELEVA: 'de Leva P. (1996) Adjustments to Zatsiorsky–Seluyanov\'s segment inertia parameters. J Biomech 29(9):1223–1230, Table 4: segment mass as a share of body mass and centre-of-mass position along the segment, young adult men and women.'
+  };
+  // de Leva (1996) Table 4: [mass % of body mass, centre of mass % along the segment from its proximal end] for men and
+  // women. Head from the vertex to C7, trunk from C7 to the hip-joint midpoint, hand from the wrist to the third
+  // knuckle, foot from the heel to the toe tip. Totals: 100.0 % (men), 99.99 % (women).
+  const SEGMENT_MASS = {
+    male:   { head: [6.94, 50.02], trunk: [43.46, 51.38], upperarm: [2.71, 57.72], forearm: [1.62, 45.74], hand: [0.61, 79.00], thigh: [14.16, 40.95], shank: [4.33, 44.59], foot: [1.37, 44.15] },
+    female: { head: [6.68, 48.41], trunk: [42.57, 49.64], upperarm: [2.55, 57.54], forearm: [1.38, 45.59], hand: [0.56, 74.74], thigh: [14.78, 36.12], shank: [4.81, 44.16], foot: [1.29, 40.14] }
   };
   // [min, max] in degrees for each degree of freedom, positive direction named by the key:
   // flex = flexion (forward), lat = lateral bend to the right, rot = rotation (trunk and neck: to the right;
@@ -1802,7 +1812,9 @@ const HFE_SOLVER = (() => {
   // (negative is supination), ext = wrist extension (negative is flexion), dev = ulnar deviation (negative is
   // radial), dorsi = ankle dorsiflexion (negative is plantarflexion).
   const ROM = {
-    trunk:    { flex: [-30, 90, 'VA'], lat: [-30, 30, 'VA'], rot: [-30, 30, 'VA'] },
+    trunk:    { flex: [-30, 90, 'VA'], lat: [-30, 30, 'VA'], rot: [-30, 30, 'VA'] },     // whole thoracolumbar spine (lumbar + thorax)
+    lumbar:   { flex: [-19.5, 58.5, 'SPINE'], lat: [-15, 15, 'SPINE'], rot: [-6, 6, 'SPINE'] },
+    thorax:   { flex: [-10.5, 31.5, 'SPINE'], lat: [-15, 15, 'SPINE'], rot: [-24, 24, 'SPINE'] },
     neck:     { flex: [-45, 45, 'VA'], lat: [-45, 45, 'VA'], rot: [-80, 80, 'VA'] },
     shoulder: { flex: [-60, 180, 'AAOS'], abd: [-30, 180, 'AAOS'], rot: [-70, 90, 'AAOS'] },
     elbow:    { flex: [0, 150, 'AAOS'] },
@@ -1812,7 +1824,13 @@ const HFE_SOLVER = (() => {
     knee:     { flex: [0, 135, 'AAOS'] },
     ankle:    { dorsi: [-50, 20, 'AAOS'] }
   };
-  const JOINT_NAME = { trunk: 'Trunk', neck: 'Neck', shoulder: 'Shoulder', elbow: 'Elbow', forearm: 'Forearm', wrist: 'Wrist', hip: 'Hip', knee: 'Knee', ankle: 'Ankle' };
+  // the share of each thoracolumbar motion taken by the lumbar and thoracic spine (SPINE): the limits above are the VA
+  // totals times these shares, and the solver's stiffness for each level follows them so a trunk motion divides this way
+  const SPINE_SHARE = { lumbar: { flex: 0.65, lat: 0.5, rot: 0.2 }, thorax: { flex: 0.35, lat: 0.5, rot: 0.8 } };
+  // regularisation weight for a DOF from per-joint weights; the two spine levels split the trunk's weight so that together
+  // they are as stiff as one trunk joint of that weight
+  const jointReg = (d, REG) => d.joint === 'lumbar' || d.joint === 'thorax' ? (REG.trunk || 0) / Math.sqrt(SPINE_SHARE[d.joint][d.name]) : (REG[d.joint] || 0);
+  const JOINT_NAME = { trunk: 'Trunk', lumbar: 'Lumbar spine', thorax: 'Thoracic spine', neck: 'Neck', shoulder: 'Shoulder', elbow: 'Elbow', forearm: 'Forearm', wrist: 'Wrist', hip: 'Hip', knee: 'Knee', ankle: 'Ankle' };
   const DOF_NAME = { flex: 'flexion', lat: 'lateral bend', rot: 'rotation', abd: 'abduction', pron: 'pronation', ext: 'extension', dev: 'ulnar deviation', dorsi: 'dorsiflexion' };
   const NEG_NAME = { flex: 'extension', lat: 'lateral bend', rot: 'rotation', abd: 'adduction', pron: 'supination', ext: 'flexion', dev: 'radial deviation', dorsi: 'plantarflexion' };
 
@@ -1873,7 +1891,13 @@ const HFE_SOLVER = (() => {
     // pelvis: free root (translation in mm, rotation about z is backward tilt)
     seg('pelvis', null, v3(), [dof('root', 'tx', 't0', 1), dof('root', 'ty', 't1', 1), dof('root', 'tz', 't2', 1),
       dof('root', 'tilt', 'z', 1), dof('root', 'obliq', 'x', 1), dof('root', 'yaw', 'y', 1)]);
-    seg('trunk', 'pelvis', v3(), [dof('trunk', 'flex', 'z', -1), dof('trunk', 'lat', 'x', 1), dof('trunk', 'rot', 'y', -1)]);
+    // the spine in two levels: lumbar (turning about L5/S1) and thorax (about T12/L1). Both frames keep the hip-joint
+    // midpoint H0 as their origin in the seated reference, so trunk coordinates are relative to H0 as before; the
+    // rotations act about each level's pivot. Pivots lie on the line from H0 to C7 (a simplification): L5/S1 at 18 %
+    // and T12/L1 at 50 % of the way up.
+    const piv = f => [f * (R.C0.x - R.H0.x), f * (R.C0.y - R.H0.y), 0];
+    seg('lumbar', 'pelvis', v3(), [dof('lumbar', 'flex', 'z', -1), dof('lumbar', 'lat', 'x', 1), dof('lumbar', 'rot', 'y', -1)], { pivot: piv(0.18) });
+    seg('trunk', 'lumbar', v3(), [dof('thorax', 'flex', 'z', -1), dof('thorax', 'lat', 'x', 1), dof('thorax', 'rot', 'y', -1)], { pivot: piv(0.5) });
     seg('head', 'trunk', tr(R.C0), [dof('neck', 'flex', 'z', -1), dof('neck', 'lat', 'x', 1), dof('neck', 'rot', 'y', -1)]);
     for (const s of [-1, 1]) {
       const k = s < 0 ? 'L' : 'R';
@@ -1915,7 +1939,8 @@ const HFE_SOLVER = (() => {
     let k = 0;
     sk.segs.forEach((g, i) => {
       let p, Rw;
-      if (g.pi < 0) { p = v3(); Rw = I3; } else { const P = out[g.pi]; p = add(P.p, mv(P.R, g.off)); Rw = P.R; }
+      let R0 = I3;
+      if (g.pi < 0) { p = v3(); Rw = I3; } else { const P = out[g.pi]; p = add(P.p, mv(P.R, g.off)); Rw = R0 = P.R; }
       if (!g.restAt) Rw = mm(Rw, g.rest);
       for (let j = 0; j < g.dofs.length; j++) {
         const d = g.dofs[j];
@@ -1924,6 +1949,8 @@ const HFE_SOLVER = (() => {
         if (d.axis[0] === 't') { const t = v3(); t[+d.axis[1]] = a; p = add(p, t); }
         else Rw = mm(Rw, rotAxis(d.axis, a));
       }
+      // a segment that turns about a pivot (its own coordinates): the origin swings round the pivot
+      if (g.pivot) p = add(p, sub(mv(R0, g.pivot), mv(Rw, g.pivot)));
       out[i] = { p, R: Rw };
     });
     return out;
@@ -2019,6 +2046,48 @@ const HFE_SOLVER = (() => {
     return `${r.label}: ${val} (range ${lo} to ${r.hi}°, ${r.src})`;
   }
 
+  /* ---- mass distribution and centre of mass ----
+     Segment masses and centres of mass from de Leva (1996), placed on this skeleton's landmarks. The vertex is taken
+     above the head centre by half the head height, and the third knuckle at 46 % of hand length from the wrist
+     (both approximations: the skeleton has no such landmarks). */
+  function comParts(sk, F, sex) {
+    const T = SEGMENT_MASS[sex === 'female' ? 'female' : 'male'], R = sk.ref, L = landmarks(sk, F), parts = [];
+    const along = (name, a, b) => { const [m, c] = T[name.replace(/[LR]$/, '')]; parts.push({ name, m: m / 100, p: add(a, scl(sub(b, a), c / 100)) }); };
+    along('head', point(sk, F, 'head', [R.Hc0.x - R.C0.x, R.Hc0.y - R.C0.y + R.headRy, 0]), L.c7);
+    along('trunk', L.c7, L.hipMid);
+    for (const k of ['L', 'R']) {
+      along('upperarm' + k, L['shoulder' + k], L['elbow' + k]); along('forearm' + k, L['elbow' + k], L['wrist' + k]);
+      along('hand' + k, L['wrist' + k], point(sk, F, 'hand' + k, [0, -0.46 * R.HL, 0]));
+      along('thigh' + k, L['hip' + k], L['knee' + k]); along('shank' + k, L['knee' + k], L['ankle' + k]); along('foot' + k, L['heel' + k], L['toe' + k]);
+    }
+    return parts;
+  }
+  function com(sk, F, sex) {
+    const parts = comParts(sk, F, sex), m = parts.reduce((a, p) => a + p.m, 0);
+    return scl(parts.reduce((a, p) => add(a, scl(p.p, p.m)), v3()), 1 / m);
+  }
+  // convex hull of [x, z] points, anticlockwise seen from above (+Y), as the support polygon
+  function hull(pts) {
+    const P = [...pts].sort((a, b) => a[0] - b[0] || a[1] - b[1]), cr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+    const lo = [], hi = [];
+    for (const p of P) { while (lo.length > 1 && cr(lo[lo.length - 2], lo[lo.length - 1], p) <= 0) lo.pop(); lo.push(p); }
+    for (const p of P.reverse()) { while (hi.length > 1 && cr(hi[hi.length - 2], hi[hi.length - 1], p) <= 0) hi.pop(); hi.push(p); }
+    return lo.slice(0, -1).concat(hi.slice(0, -1));
+  }
+  const supportPoly = (sk, F, contacts) => hull(contacts.map(([seg, loc]) => { const p = point(sk, F, seg, loc); return [p[0], p[2]]; }));
+  const polyCentre = poly => poly.reduce((a, p) => [a[0] + p[0] / poly.length, a[1] + p[1] / poly.length], [0, 0]);
+  // signed distance of [x, z] inside a convex polygon (positive inside); the order of the vertices does not matter
+  function insidePoly(p, poly) {
+    let d = Infinity, area = 0;
+    for (let i = 0; i < poly.length; i++) { const a = poly[i], b = poly[(i + 1) % poly.length]; area += a[0] * b[1] - b[0] * a[1]; }
+    const s = area < 0 ? 1 : -1;   // the interior lies on the same side of every edge; the shoelace sign says which
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i], b = poly[(i + 1) % poly.length], e = [b[0] - a[0], b[1] - a[1]], l = Math.hypot(e[0], e[1]) || 1;
+      d = Math.min(d, s * ((p[0] - a[0]) * e[1] - (p[1] - a[1]) * e[0]) / l);
+    }
+    return d;
+  }
+
   /* ---- solver ----
      q: vector of DOF values (radians; mm for root translations). Targets, each with weight w:
        { type: 'point', seg, local, world, axes? }      a point on a segment to a world point (axes masks x, y, z)
@@ -2029,6 +2098,13 @@ const HFE_SOLVER = (() => {
        { type: 'outside', seg, local, ref, c, r }       keep a point outside the elliptic cylinder along ref's y axis,
                                                         centre c = [x, z] and radii r = [x, z] in ref's frame (one-sided)
        { type: 'avoid', caps: [ids], boxes, margin }    keep capsules at least margin from boxes (one-sided)
+       { type: 'com', poly | contacts, margin, centre | pull, sex }
+                                                        keep the centre of mass over the support polygon at least margin
+                                                        inside (one-sided). poly is fixed [x, z] points; contacts are
+                                                        [seg, local] points on the body whose hull is the support as the
+                                                        body moves. centre [x, z], or pull towards the hull's centre, adds a
+                                                        soft pull
+       { type: 'above', y, caps? }                      keep every body capsule (or those named) above the floor at y
      opts: { q0, pref, regW (per DOF weight, mm per radian), lock (set of DOF keys), lim (overrides by DOF
      key: [lo, hi] radians), iters } */
   function residuals(sk, q, targets, opts, F) {
@@ -2057,6 +2133,16 @@ const HFE_SOLVER = (() => {
         if (!L) L = capsLandmarks(sk, F);
         const caps = capsules(sk.M, L).filter(c => t.caps.some(p => c.id.startsWith(p)));
         for (const B of t.boxes) for (const C of caps) r.push(w * Math.min(0, capsuleBox(C, B).d - (t.margin || 0)));
+      } else if (t.type === 'com') {
+        const c = com(sk, F, t.sex), poly = t.contacts ? supportPoly(sk, F, t.contacts) : t.poly;
+        if (poly) r.push(w * Math.min(0, insidePoly([c[0], c[2]], poly) - (t.margin || 0)));
+        const ctr = t.contacts && t.pull ? polyCentre(poly) : t.centre;
+        if (ctr) { const k = w * (t.pull == null ? 0.2 : t.pull); r.push(k * (c[0] - ctr[0]), k * (c[2] - ctr[1])); }
+      } else if (t.type === 'above') {
+        if (!L) L = capsLandmarks(sk, F);
+        for (const C of capsules(sk.M, L)) if (!t.caps || t.caps.some(p => C.id.startsWith(p)))
+          // the foot's capsule runs along the sole (heel to toe), so its axis is the underside of the foot
+          r.push(w * Math.min(0, (C.id.startsWith('foot') ? Math.min(C.a[1], C.b[1]) : Math.min(C.a[1] - C.ra, C.b[1] - C.rb)) - t.y));
       }
     }
     const pref = opts.pref || [], regW = opts.regW || [];
@@ -2066,7 +2152,7 @@ const HFE_SOLVER = (() => {
   // landmarks named as capsules() expects
   function capsLandmarks(sk, F) {
     const L = landmarks(sk, F), R = sk.ref;
-    L.trunkLow = point(sk, F, 'trunk', [0.5 * sk.M.abdominalextensiondepthsitting - R.H0.x, 1.15 * R.hipU - R.H0.y, 0]);
+    L.trunkLow = point(sk, F, 'lumbar', [0.5 * sk.M.abdominalextensiondepthsitting - R.H0.x, 1.15 * R.hipU - R.H0.y, 0]);
     L.trunkHigh = point(sk, F, 'trunk', [0.5 * sk.M.chestdepth - R.H0.x, R.S0.y - R.H0.y, 0]);
     return L;
   }
@@ -2105,7 +2191,14 @@ const HFE_SOLVER = (() => {
       let improved = false;
       for (let tries = 0; tries < 8; tries++) {
         const A = JTJ.map((row, a) => row.map((v, b) => a === b ? v + lambda * (1 + v * 1e-3) : v));
-        const dq = solveLinear(A, JTr.map(v => -v));
+        let dq = solveLinear(A, JTr.map(v => -v));
+        // a joint already at a limit that the step would push further is held there, and the step is solved again
+        // without it, so the other joints do the work instead of the step being clipped (an active-set step)
+        const held = free.map((i, a) => (q[i] <= lim[i][0] + 1e-9 && dq[a] < 0) || (q[i] >= lim[i][1] - 1e-9 && dq[a] > 0));
+        if (held.some(Boolean)) {
+          const keep = free.map((_, a) => a).filter(a => !held[a]), dk = solveLinear(keep.map(a => keep.map(b => A[a][b])), keep.map(a => -JTr[a]));
+          dq = free.map(() => 0); keep.forEach((a, j) => { dq[a] = dk[j]; });
+        }
         const qn = [...q]; free.forEach((i, a) => { qn[i] = clamp(q[i] + dq[a], lim[i][0], lim[i][1]); });
         const rn = residuals(sk, qn, targets, opts), cn = cost(rn);
         if (cn < c) {
@@ -2124,13 +2217,145 @@ const HFE_SOLVER = (() => {
     return { q, F, cost: c, iters: it, active, L: landmarks(sk, F), lim };
   }
   // joint angles in degrees from a solved q, for romReport
+  // the spine is reported as the whole thoracolumbar motion (lumbar + thorax) against the VA totals, which are the
+  // primary limits; the per-level limits are a split of them (SPINE) that the solver enforces but does not report
   function angles(sk, q, skipLocked) {
-    return sk.dofs.map((d, i) => ({ d, i })).filter(({ d }) => d.joint !== 'root' && !(skipLocked && skipLocked.has(d.key)))
+    const out = sk.dofs.map((d, i) => ({ d, i })).filter(({ d }) => d.joint !== 'root' && d.joint !== 'lumbar' && d.joint !== 'thorax' && !(skipLocked && skipLocked.has(d.key)))
       .map(({ d, i }) => ({ joint: d.joint, name: d.name, side: d.side, value: q[i] * R2D, key: d.key }));
+    for (const n of ['flex', 'lat', 'rot']) {
+      const a = sk.dofIndex['lumbar.' + n], b = sk.dofIndex['trunk.' + n];
+      if (a != null && b != null && !(skipLocked && skipLocked.has('lumbar.' + n) && skipLocked.has('trunk.' + n))) out.push({ joint: 'trunk', name: n, side: 0, value: (q[a] + q[b]) * R2D, key: 'spine.' + n });
+    }
+    return out;
+  }
+  // whole-trunk angle (degrees) of one motion: lumbar + thorax
+  const trunkAngle = (sk, q, n) => (q[sk.dofIndex['lumbar.' + n]] + q[sk.dofIndex['trunk.' + n]]) * R2D;
+  /* ---- stances (ENV-09) ----
+     Postures off the seat: the pelvis is free, the body rests on the floor at the stance's contacts, the centre of mass
+     stays over the support polygon, nothing passes below the floor, and joints stay inside their ranges. Hands and gaze
+     can be given targets; otherwise the arms and head take the stance's preferred posture.
+       standing      feet flat under the hips, knees soft
+       crouching     feet flat, hips and knees flexed, heels down (a full squat with the heels down needs more ankle
+                     dorsiflexion than the average range, so the crouch is as deep as that range allows)
+       kneeling      both knees and the tucked toes on the floor, trunk upright
+       halfKneeling  right knee and toes down, left foot flat in front
+       prone         lying face down on the pelvis and thighs, propped on the elbows, head up
+     spec: { stance, floor (y, default 0), x (default 0: ankles for standing and crouching, knees for kneeling, hip joint
+     for prone; a preference held with weight place per mm, default 1, or fixed when place is 0), width (ankle or knee spacing, default the hip-joint spacing), hands: { L, R } (world wrist points),
+     gaze (world point), sex (for the mass distribution), margin (mm the centre of mass keeps inside the support,
+     default 20), lim, extra (more targets) } */
+  const STANCES = ['standing', 'crouching', 'kneeling', 'halfKneeling', 'prone'];
+  // preferred joint angles (degrees), the pelvis's starting pitch, and how firmly the centre of mass is drawn to the middle
+  // of the support (feet: to mid-foot; kneeling: none, as the body rests over the knees, not between the knees and toes)
+  const STANCE_PREF = {
+    standing:     { tilt: 0, pull: 0.2, j: { 'shank*.flex': 5, 'forearm*.flex': 10, 'upperarm*.abd': 5 } },
+    crouching:    { tilt: -30, pull: 0.2, j: { 'lumbar.flex': 20, 'trunk.flex': 10, 'thigh*.flex': 80, 'shank*.flex': 85, 'foot*.dorsi': 15, 'forearm*.flex': 60, 'upperarm*.flex': 30, 'upperarm*.abd': 10, 'head.flex': -20 } },
+    kneeling:     { tilt: 0, pull: 0, j: { 'shank*.flex': 90, 'foot*.dorsi': 0, 'forearm*.flex': 10, 'upperarm*.abd': 5 } },
+    halfKneeling: { tilt: 0, pull: 0.02, j: { 'thighL.flex': 90, 'shankL.flex': 90, 'shankR.flex': 90, 'forearm*.flex': 10, 'upperarm*.abd': 5 } },
+    prone:        { tilt: -90, j: { 'lumbar.flex': -10, 'trunk.flex': -5, 'head.flex': -40, 'upperarm*.flex': 150, 'upperarm*.abd': 20, 'forearm*.flex': 100, 'foot*.dorsi': -45, 'thigh*.flex': -5 } }
+  };
+  function stance(sk, spec = {}) {
+    const st = spec.stance || 'standing';
+    if (!STANCES.includes(st)) throw new Error('unknown stance ' + st);
+    const M = sk.M, R = sk.ref, y0 = spec.floor || 0, x0 = spec.x || 0, rr = capsuleRadii(M), ix = sk.dofIndex;
+    const wz = spec.width != null ? spec.width / 2 : R.legZ, fb = 0.5 * (M.footbreadthhorizontal || 0.38 * M.footlength);
+    const pd = STANCE_PREF[st], prefD = {};
+    for (const [k, v] of Object.entries(pd.j)) for (const s_ of k.includes('*') ? ['L', 'R'] : ['']) prefD[k.replace('*', s_)] = v;
+    const init = { 'pelvis.tilt': pd.tilt * D2R };
+    for (const [k, v] of Object.entries(prefD)) init[k] = v * D2R;
+
+    const T = [], contacts = [];
+    const on = (seg, local, world, axes, w = 3) => T.push({ type: 'point', seg, local, world, axes, w });
+    // where the body rests is a preference, not fixed: the person may shift a little to reach or balance (spec.place
+    // is the weight per mm; 0 fixes the contacts where they are put)
+    const place = spec.place == null ? 1 : spec.place;
+    const at = (seg, local, x, z) => { if (place) on(seg, local, [x, 0, z], [1, 0, 1], place); else on(seg, local, [x, 0, z], [1, 0, 1], 3); };
+    const footFlat = (k, ax, az) => {
+      // ankle above the floor by the malleolus height, sole level and pointing forward
+      on('foot' + k, [0, 0, 0], [0, y0 + R.Hm, 0], [0, 1, 0]); at('foot' + k, [0, 0, 0], ax, az);
+      T.push({ type: 'aim', seg: 'foot' + k, local: [1, 0, 0], world: [1, 0, 0], w: 10 });
+      on('foot' + k, [-0.24 * R.FL, -R.Hm, 0], [0, y0, 0], [0, 1, 0], 5); on('foot' + k, [0.76 * R.FL, -R.Hm, 0], [0, y0, 0], [0, 1, 0], 5);
+      for (const x of [-0.24 * R.FL, 0.76 * R.FL]) for (const z of [-fb, fb]) contacts.push(['foot' + k, [x, -R.Hm, z]]);
+    };
+    const kneeDown = (k, kx, kz) => {
+      // the front of the knee on the floor (the shank's capsule, just below the joint), the toes tucked under
+      on('shank' + k, [0, -0.08 * R.Lshank, 0], [0, y0 + rr.shank[0], 0], [0, 1, 0]); at('shank' + k, [0, -0.08 * R.Lshank, 0], kx, kz);
+      on('foot' + k, [0.76 * R.FL, -R.Hm, 0], [0, y0, 0], [0, 1, 0]);
+      // the contact patch: under the joint and the front of the knee (the shank's front, +x, faces the floor), and the toes
+      for (const y of [0, -0.1 * R.Lshank]) for (const z of [-30, 30]) contacts.push(['shank' + k, [rr.shank[0], y, z]]);
+      for (const z of [-0.8 * fb, 0.8 * fb]) contacts.push(['foot' + k, [0.76 * R.FL, -R.Hm, z]]);
+    };
+    let pelvisY;
+    if (st === 'standing' || st === 'crouching') {
+      for (const [k, s_] of [['L', -1], ['R', 1]]) footFlat(k, x0, s_ * wz);
+      pelvisY = y0 + R.Hm + R.Lshank + R.Lthigh;
+    } else if (st === 'kneeling') {
+      for (const [k, s_] of [['L', -1], ['R', 1]]) kneeDown(k, x0, s_ * wz);
+      pelvisY = y0 + rr.shank[0] + R.Lthigh;
+    } else if (st === 'halfKneeling') {
+      kneeDown('R', x0, wz);
+      footFlat('L', x0 + R.Lthigh, -wz);
+      pelvisY = y0 + rr.shank[0] + R.Lthigh;
+    } else {
+      // prone: on the abdomen, thighs and knees, propped on the elbows
+      // the abdomen rests on the floor (the lower end of the trunk's capsule), the hip joint placed at x0
+      on('lumbar', [0.5 * M.abdominalextensiondepthsitting - R.H0.x, 1.15 * R.hipU - R.H0.y, 0], [0, y0 + rr.trunk[0], 0], [0, 1, 0], 3); at('pelvis', [0, 0, 0], x0, 0);
+      for (const [k, s_] of [['L', -1], ['R', 1]]) {
+        on('shank' + k, [0, 0, 0], [0, y0 + rr.shank[0], 0], [0, 1, 0]);
+        on('forearm' + k, [0, 0, 0], [0, y0 + rr.forearm[0], 0], [0, 1, 0]);
+        T.push({ type: 'aim', seg: 'forearm' + k, local: [0, -1, 0], world: [0.94, 0, -0.34 * s_], w: 0.3 });
+      }
+      pelvisY = y0 + rr.trunk[0];
+    }
+    init['pelvis.tx'] = st === 'prone' ? x0 : x0 + (st === 'halfKneeling' ? 0.3 * R.Lthigh : st === 'crouching' ? -0.3 * R.Lthigh : 0);
+    init['pelvis.ty'] = st === 'crouching' ? y0 + R.Hm + 0.45 * (R.Lshank + R.Lthigh) : pelvisY;
+    // an arm with a hand target starts raised forward, so it comes to a control from in front rather than from below
+    for (const k of ['L', 'R']) if (spec.hands && spec.hands[k] && st !== 'prone') Object.assign(init, { [`upperarm${k}.flex`]: 45 * D2R, [`upperarm${k}.abd`]: 10 * D2R, [`forearm${k}.flex`]: 70 * D2R, [`forearm${k}.pron`]: 60 * D2R });
+    const q0 = qOf(sk, init);
+    const pref = qOf(sk, { 'pelvis.tilt': init['pelvis.tilt'], ...Object.fromEntries(Object.entries(prefD).map(([k, v]) => [k, v * D2R])) });
+    // regularisation: the root is free; the trunk is stiff, the arms and neck follow their preferences more softly
+    const REG = { trunk: 300, neck: 60, shoulder: 30, elbow: 20, forearm: 20, wrist: 40, hip: 40, knee: 40, ankle: 40 };
+    const regW = sk.dofs.map(d => d.joint === 'neck' && d.name === 'lat' ? 300 : jointReg(d, REG));
+    // prone: the pelvis lies flat, facing down and forward (no roll or turn)
+    // and the head does not roll onto its side when the gaze cannot be met (neck side bend locked)
+    const lock = st === 'prone' ? ['pelvis.obliq', 'pelvis.yaw', 'head.lat'] : [];
+    // the hands: to world points, or hanging (standing, kneeling) or forward on the floor (prone) by the preferences
+    for (const k of ['L', 'R']) {
+      const h = spec.hands && spec.hands[k];
+      if (h) { T.push({ type: 'point', seg: 'hand' + k, local: [0, 0, 0], world: h, w: 3 }); regW[ix[`upperarm${k}.flex`]] = regW[ix[`upperarm${k}.abd`]] = 5; }
+      T.push({ type: 'outside', seg: 'forearm' + k, local: [0, 0, 0], ref: 'trunk', c: [0.5 * M.chestdepth - R.H0.x, 0], r: [0.5 * M.chestdepth + 0.12 * R.SEL, 0.37 * M.biacromialbreadth + 0.12 * R.SEL], w: 10 });
+    }
+    // gaze: to a world point, or for prone forward along the floor 3 m ahead
+    const gaze = spec.gaze || (st === 'prone' ? [x0 + 3000, y0, 0] : null);
+    if (gaze) {
+      const ed = (spec.eyeDep == null ? 15 : spec.eyeDep) * D2R;
+      T.push({ type: 'look', seg: 'head', origin: sk.lm.eye[1], local: [Math.cos(-ed), Math.sin(-ed), 0], world: gaze, w: st === 'prone' ? 0.5 : 2, scale: 300 });   // prone, the body stays on the floor rather than straining to look up
+    } else T.push({ type: 'aim', seg: 'head', local: [0, 1, 0], world: [0, 1, 0], w: st === 'prone' ? 0 : 0.5 });
+    if (contacts.length) T.push({ type: 'com', contacts, margin: spec.margin == null ? 20 : spec.margin, sex: spec.sex, w: 5, pull: STANCE_PREF[st].pull });
+    T.push({ type: 'above', y: y0, w: 5 });
+    if (spec.extra) T.push(...spec.extra);
+    // the trunk may extend from the seated reference (which is slightly reclined) when standing up straight
+    const lim = { ...(spec.lim || {}) };
+    return { targets: T, opts: { q0, pref, regW, lock, lim, iters: spec.iters || 150 }, contacts };
+  }
+  // solve a stance: the solver's result plus the centre of mass, support polygon and stability margin (mm)
+  function pose(sk, spec = {}) {
+    // in two steps: the stance alone first (balanced, on its contacts), then from there with the hands, gaze and obstacles,
+    // which keeps the solver out of the contorted local minima a cold start can fall into
+    const S = stance(sk, spec);
+    let q0 = S.opts.q0;
+    if ((spec.hands && (spec.hands.L || spec.hands.R)) || spec.gaze || (spec.extra && spec.extra.length)) {
+      const A = stance(sk, { ...spec, hands: null, gaze: null, extra: null }), qa = solve(sk, A.targets, A.opts).q;
+      // an arm with a hand target starts raised forward again (see stance()); everything else from the first step
+      const reach = new Set(['L', 'R'].filter(k => spec.hands && spec.hands[k]));
+      q0 = qa.map((v, i) => { const m = /^(upperarm|forearm|hand)([LR])$/.exec(sk.dofs[i].seg); return m && reach.has(m[2]) && spec.stance !== 'prone' ? S.opts.q0[i] : v; });
+    }
+    const res = solve(sk, S.targets, { ...S.opts, q0 }), c = com(sk, res.F, spec.sex), poly = S.contacts.length ? supportPoly(sk, res.F, S.contacts) : null;
+    return { ...res, stance: spec.stance || 'standing', com: c, support: poly, stability: poly ? insidePoly([c[0], c[2]], poly) : null, targets: S.targets };
   }
   const qOf = (sk, obj) => { const q = new Array(sk.dofs.length).fill(0); for (const [k, v] of Object.entries(obj)) if (k in sk.dofIndex) q[sk.dofIndex[k]] = v; return q; };
 
-  return { SOURCES, ROM, reference, skeleton, fk, point, dir, landmarks, capsLandmarks, capsuleRadii, capsules, partName, box, boxFromMinMax, pointBox, capsuleBox, clearance, romReport, romText, solve, angles, qOf, rotAxis, mv, mtv, D2R, R2D };
+  return { SOURCES, ROM, SPINE_SHARE, jointReg, trunkAngle, SEGMENT_MASS, STANCES, residuals, reference, comParts, com, hull, insidePoly, stance, pose, skeleton, fk, point, dir, landmarks, capsLandmarks, capsuleRadii, capsules, partName, box, boxFromMinMax, pointBox, capsuleBox, clearance, romReport, romText, solve, angles, qOf, rotAxis, mv, mtv, D2R, R2D };
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = HFE_SOLVER;
 
@@ -2171,9 +2396,10 @@ function solve(M, W, ov) {
   const headRy = 0.5 * (M.tragiontopofhead + 105);
   const Hc0 = { x: eyeF + 15 - M.headlength / 2, y: M.sittingheight - headRy };
   const rho0 = Math.atan2(-(S0.x - H0.x), S0.y - H0.y);
-  const dR = rad(W.recline) - rho0;
+  // off the seat (a stance from the whole-body solver) the hip joint and the trunk's pitch come from the solved posture
+  const dR = ov && ov.base ? ov.base.dR : rad(W.recline) - rho0;
   const base = { x: seatRearX, y: seatY };
-  const H = add2(base, H0);
+  const H = ov && ov.base ? ov.base.H : add2(base, H0);
   const T = q => add2(H, rot(sub2(q, H0), dR));
   const Sh = T(S0), C = T(C0);
   Object.assign(G, { seatY, deskY, deskUnder, seatFrontX, seatRearX, base, H, Sh, C, dR, rho0, hipU, dk, Lthigh, Lshank, Lu, Lf, H0, S0, C0, T, SEL });
@@ -2191,17 +2417,19 @@ function solve(M, W, ov) {
       phi = rad(clamp(los - W.eyeDep, -10, 45)) + dR;
     }
   } else phi = rad(W.neckFlex);
-  const E = Hd(E0, phi), Hc = Hd(Hc0, phi);
-  const Ev = new V3(E.x, E.y, 0);
+  let E = Hd(E0, phi), Hc = Hd(Hc0, phi);
+  // whole-body solver: the eye and head centre in 3D (the neck may turn and bend sideways, the trunk twist)
+  if (ov && ov.eye) { E = ov.eye; Hc = ov.headC; }
+  const Ez = E.z || 0, Ev = new V3(E.x, E.y, Ez);
   let edgeMax = 0, angL = 0, angR = 0;
   R.screens = scr.list.map(s => {
     const P = s.P, toEye = new V3().subVectors(Ev, P.centre);
-    const hd = Math.hypot(P.centre.x - E.x, P.centre.z);
+    const hd = Math.hypot(P.centre.x - E.x, P.centre.z - Ez);
     const res = {
-      viewDist: toEye.length(), losCentre: deg(Math.atan2(E.y - P.centre.y, hd)), gazeH: deg(Math.atan2(P.centre.z, P.centre.x - E.x)),
+      viewDist: toEye.length(), losCentre: deg(Math.atan2(E.y - P.centre.y, hd)), gazeH: deg(Math.atan2(P.centre.z - Ez, P.centre.x - E.x)),
       topVsEye: P.top.y - E.y, losNormal: deg(toEye.normalize().angleTo(P.normal))
     };
-    for (const e of [P.left, P.right]) { const a = deg(Math.atan2(e.z, e.x - E.x)); edgeMax = Math.max(edgeMax, Math.abs(a)); angL = Math.min(angL, a); angR = Math.max(angR, a); }
+    for (const e of [P.left, P.right]) { const a = deg(Math.atan2(e.z - Ez, e.x - E.x)); edgeMax = Math.max(edgeMax, Math.abs(a)); angL = Math.min(angL, a); angR = Math.max(angR, a); }
     return res;
   });
   R.arrayEdge = edgeMax; R.arraySpan = angR - angL;
@@ -2214,7 +2442,7 @@ function solve(M, W, ov) {
 
   // legs
   let floorY = W.footrest, psi = rad(W.footFwd);
-  if ((CHAIRS[W.chair] || {}).ring) {
+  if ((CHAIRS[W.chair] || {}).ring && !(ov && ov.base)) {
     // foot ring follows the seat: ball of the foot on the front of the ring, thigh on the seat
     const ky = seatY + dk, dyr = clamp(ky - H.y, -Lthigh * 0.97, Lthigh * 0.97), kx = H.x + Math.sqrt(Lthigh * Lthigh - dyr * dyr);
     const ringFront = seatRearX + W.seatDepth / 2 + 10 + 235, ax = ringFront - 0.3 * M.footlength;
@@ -2272,15 +2500,15 @@ function solve(M, W, ov) {
     const ob = id === '' ? null : (objs.find(x => x.o.id === id) || kbFirst || null);
     const t0 = ob ? ob.hand(side, Sv) : null, t = t0 ? { ...t0, floor: ob.o.base != null ? ob.o.base : deskY } : { Wt: new V3(Sh.x + 260, deskY + 30, side * 150), tip: new V3(Sh.x + 260 + 0.6 * HL, deskY + 20, side * 150), tilt: 0 };
     const ik = ov && ov.arms ? ov.arms[side] : armIK(Sv, t.Wt, Lu, Lf, side, trunkEnv);
-    const El = ik.E, Wr = ik.W;
-    const elbow = deg(new V3().subVectors(Sv, El).angleTo(new V3().subVectors(Wr, El)));
-    const shFlex = deg(Math.atan2(El.x - Sv.x, Sv.y - El.y));
-    const shAbd = deg(Math.atan2((El.z - Sv.z) * side, Sv.y - El.y));
+    const El = ik.E, Wr = ik.W, Sa = ik.S || Sv;   // the whole-body solver's shoulder follows trunk twist and side bend
+    const elbow = deg(new V3().subVectors(Sa, El).angleTo(new V3().subVectors(Wr, El)));
+    const shFlex = deg(Math.atan2(El.x - Sa.x, Sa.y - El.y));
+    const shAbd = deg(Math.atan2((El.z - Sa.z) * side, Sa.y - El.y));
     const slope = deg(Math.atan2(Wr.y - El.y, Math.hypot(Wr.x - El.x, Wr.z - El.z)));
     // wrist extension: for a gripped handle, from the hand's frame (fingers rotated towards the back of the hand)
     const fa = new V3().subVectors(Wr, El).normalize();
     const wrist = t.basis ? deg(Math.atan2(fa.dot(t.basis.x), -fa.dot(t.basis.y))) : deg(t.tilt) - slope;
-    arms[side] = { S: Sv, E: El, W: Wr, hand: t, elbow, shFlex, shAbd, wrist, reach: ik.short, obj: ob ? ob.o.id : null, pose: ob ? ob.o.type : 'rest' };
+    arms[side] = { S: Sa, E: El, W: Wr, hand: t, elbow, shFlex, shAbd, wrist, reach: ik.short, obj: ob ? ob.o.id : null, pose: ob ? ob.o.type : 'rest' };
   }
   R.homeVsElbow = kbFirst ? (deskY + kbFirst.o.homeRowH) - (seatY + M.elbowrestheight) : null;
   for (const k of ['elbow', 'shFlex', 'shAbd', 'wrist', 'reach']) R[k] = { L: arms[-1][k], R: arms[1][k] };
@@ -2353,11 +2581,12 @@ function armIK(S, T, L1, L2, side, env) {
 }
 
 /* ---------------- whole-body solver, clearance and range of motion ---------------- */
-// Stage 1 of the general solver (core/solver.js). In the seated workstation it keeps the pelvis on the seat,
-// tilted with the backrest, and solves the trunk lean, neck, both arms (shoulder, elbow, forearm, wrist) and
-// legs (hip, knee, ankle) to the hand, gaze and foot targets within joint range-of-motion limits, keeping the
-// arms clear of the desk. Out-of-plane trunk, neck and hip motions are locked for now. The skinned body surface
-// (core/bodylib.js) follows them, so unlocking them is a solver change only (stage 3).
+// The general solver (core/solver.js) in the seated workstation. It keeps the pelvis on the seat, tilted with the
+// backrest, and solves the trunk (lean, side bend and twist), neck (flexion, side bend and turn), both arms (shoulder,
+// elbow, forearm, wrist) and each leg on its own (hip flexion, abduction and rotation, knee, ankle) to the hand, gaze
+// and foot targets within joint range-of-motion limits, keeping the arms clear of the desk. The trunk is stiff, so it
+// leans, bends or twists only when the arms cannot reach otherwise; the gaze goes to the main screen in 3D, so the
+// head turns to a screen off to the side. The skinned body surface (core/bodylib.js) follows every joint.
 let skCache = { M: null, sk: null };
 const bodySkeleton = M => { if (skCache.M !== M) skCache = { M, sk: HFE_SOLVER.skeleton(M) }; return skCache.sk; };
 const deskBoxes = (W, G) => {
@@ -2375,9 +2604,8 @@ const screenBoxes = G => G.scr.list.map(s => {
 function bodyPose(M, W, G0) {
   const SV = HFE_SOLVER, sk = bodySkeleton(M), Rf = sk.ref, ix = sk.dofIndex;
   const dRback = rad(W.recline) - Rf.rho0, chair = CHAIRS[W.chair] || {};
-  const lock = ['pelvis.tx', 'pelvis.ty', 'pelvis.tz', 'pelvis.tilt', 'pelvis.obliq', 'pelvis.yaw', 'trunk.lat', 'trunk.rot', 'head.lat', 'head.rot',
-    'thighL.abd', 'thighL.rot', 'thighR.abd', 'thighR.rot'];
-  if (W.headMode !== 'auto') lock.push('head.flex');
+  const lock = ['pelvis.tx', 'pelvis.ty', 'pelvis.tz', 'pelvis.tilt', 'pelvis.obliq', 'pelvis.yaw'];
+  if (W.headMode !== 'auto') lock.push('head.flex', 'head.lat', 'head.rot');
   const thigh0 = Math.atan2(G0.K.x - G0.H.x, G0.H.y - G0.K.y) - dRback, knee0 = Math.PI - rad(G0.R.knee);
   const init = { 'pelvis.tx': G0.H.x, 'pelvis.ty': G0.H.y, 'pelvis.tilt': dRback, 'head.flex': W.headMode === 'auto' ? G0.phi : rad(W.neckFlex) };
   for (const k of ['L', 'R']) Object.assign(init, {
@@ -2385,10 +2613,12 @@ function bodyPose(M, W, G0) {
     [`thigh${k}.flex`]: thigh0, [`shank${k}.flex`]: knee0, [`foot${k}.dorsi`]: -G0.psi
   });
   const q0 = SV.qOf(sk, init), pref = [...q0];
-  pref[ix['trunk.flex']] = 0;
+  pref[ix['lumbar.flex']] = pref[ix['trunk.flex']] = 0;
   const REG = { trunk: 400, neck: 30, shoulder: 40, elbow: 20, forearm: 20, wrist: 40, hip: 20, knee: 20, ankle: 60 };
-  const regW = sk.dofs.map(d => REG[d.joint] || 0);
-  const lim = { 'trunk.flex': [chair.back ? 0 : SV.ROM.trunk.flex[0] * SV.D2R, SV.ROM.trunk.flex[1] * SV.D2R] };
+  // out-of-plane motions: the neck's side bend and the hip's rotation are held a little more firmly than flexion
+  const regW = sk.dofs.map(d => (d.joint === 'neck' && d.name === 'lat' ? 120 : d.joint === 'hip' && d.name !== 'flex' ? 40 : SV.jointReg(d, REG)) || 0);
+  // a backrest stops either level of the spine reclining further than the backrest (flexion from the reference >= 0)
+  const lim = Object.fromEntries([['lumbar.flex', 'lumbar'], ['trunk.flex', 'thorax']].map(([k, j]) => [k, [chair.back ? 0 : SV.ROM[j].flex[0] * SV.D2R, SV.ROM[j].flex[1] * SV.D2R]]));
   const T = [], boxes = deskBoxes(W, G0);
   for (const side of [-1, 1]) {
     const k = side < 0 ? 'L' : 'R', a = G0.arms[side], t = a.hand;
@@ -2407,6 +2637,8 @@ function bodyPose(M, W, G0) {
     const ru = 0.12 * M.shoulderelbowlength;
     T.push({ type: 'outside', seg: 'forearm' + k, local: [0, 0, 0], ref: 'trunk', c: [0.5 * M.chestdepth - sk.ref.H0.x, 0], r: [0.5 * M.chestdepth + ru, 0.37 * M.biacromialbreadth + ru], w: 10 });
     T.push({ type: 'point', seg: 'foot' + k, local: [0, 0, 0], world: [0, G0.soleY + M.lateralmalleolusheight, 0], axes: [0, 1, 0], w: 3 });
+    // each foot under its own hip (the legs are solved separately, so they no longer have to mirror each other)
+    T.push({ type: 'point', seg: 'foot' + k, local: [0, 0, 0], world: [0, 0, side * Rf.legZ], axes: [0, 0, 1], w: 1 });
     T.push({ type: 'aim', seg: 'shank' + k, local: [0, -1, 0], world: [Math.sin(G0.psi), -Math.cos(G0.psi), 0], w: 0.3 });
     T.push({ type: 'aim', seg: 'foot' + k, local: [1, 0, 0], world: [1, 0, 0], w: 1 });
     T.push({ type: 'half', seg: 'shank' + k, local: [0, 0, 0], n: [0, 1, 0], d: G0.seatY + G0.dk, w: 10 });
@@ -2414,15 +2646,48 @@ function bodyPose(M, W, G0) {
   T.push({ type: 'avoid', caps: ['upperarm', 'forearm'], boxes: boxes.slice(0, 1), margin: 0, w: 5 });
   if (W.headMode === 'auto') {
     const Pc = G0.scr.list[G0.scr.primary].P.centre, ed = rad(W.eyeDep);
-    T.push({ type: 'look', seg: 'head', origin: sk.lm.eye[1], local: [Math.cos(-ed), Math.sin(-ed), 0], world: o => [o[0] + Math.hypot(Pc.x - o[0], Pc.z), Pc.y, 0], w: 3, scale: 300 });
+    T.push({ type: 'look', seg: 'head', origin: sk.lm.eye[1], local: [Math.cos(-ed), Math.sin(-ed), 0], world: [Pc.x, Pc.y, Pc.z], w: 3, scale: 300 });
   }
   const res = SV.solve(sk, T, { q0, pref, regW, lock, lim });
   const L = res.L, q = res.q, V = p => new V3(p[0], p[1], p[2]);
   const arms = {};
-  for (const side of [-1, 1]) { const k = side < 0 ? 'L' : 'R'; arms[side] = { E: V(L['elbow' + k]), W: V(L['wrist' + k]), short: (d => d > 2 ? d : 0)(V(L['wrist' + k]).distanceTo(G0.arms[side].hand.Wt)) }; }
+  for (const side of [-1, 1]) { const k = side < 0 ? 'L' : 'R'; arms[side] = { S: V(L['shoulder' + k]), E: V(L['elbow' + k]), W: V(L['wrist' + k]), short: (d => d > 2 ? d : 0)(V(L['wrist' + k]).distanceTo(G0.arms[side].hand.Wt)) }; }
   const locked = new Set(lock), rom = SV.romReport(SV.angles(sk, q, locked));
-  return { q, arms, legs: { K: { x: L.kneeR[0], y: L.kneeR[1] }, A: { x: L.ankleR[0], y: L.ankleR[1] } }, trunkFlex: q[ix['trunk.flex']], neckFlex: q[ix['head.flex']],
-    rom, active: res.active, cost: res.cost, iters: res.iters, sk };
+  const deg_ = k => q[ix[k]] * SV.R2D;
+  return { q, arms, legs: { K: { x: L.kneeR[0], y: L.kneeR[1] }, A: { x: L.ankleR[0], y: L.ankleR[1] } }, trunkFlex: q[ix['lumbar.flex']] + q[ix['trunk.flex']], neckFlex: q[ix['head.flex']],
+    eye: V(L.eye), headC: V(L.headC), twist: { trunkLat: deg_('lumbar.lat') + deg_('trunk.lat'), trunkRot: deg_('lumbar.rot') + deg_('trunk.rot'), neckLat: deg_('head.lat'), neckRot: deg_('head.rot') },
+    rom, active: res.active, cost: res.cost, iters: res.iters, sk, F: res.F };
+}
+// Stances off the seat (ENV-09): the general solver's standing, crouching, kneeling, half-kneeling and prone postures
+// (core/solver.js stance()), placed in front of the desk edge with the chair taken away. The hands go to their
+// controls and the gaze to the main screen (except prone, propped on the elbows and looking ahead), and the centre of
+// mass stays over the feet, knees or toes on the floor. The arms, trunk and legs are kept clear of the desk.
+const offSeat = W => (W.stance && W.stance !== 'seated' && HFE_SOLVER.STANCES.includes(W.stance)) ? W.stance : null;
+// where the stance's reference point goes relative to the desk edge (x = 0): standing and crouching, the toes 50 mm back
+// from it; kneeling, the knee (under the hip) with the abdomen 50 mm back from it; prone, the elbows about 150 mm back
+function stanceX(sk, st) {
+  const R = sk.ref, M = sk.M, abd = M.abdominalextensiondepthsitting - R.H0.x;
+  return { standing: -(0.76 * R.FL + 50), crouching: -(0.76 * R.FL + 50), kneeling: -(abd + 50), halfKneeling: -(abd + 50), prone: -(R.S0.y - R.H0.y + 0.5 * R.Lu + 150) }[st];
+}
+function stancePose(M, W, G0, st) {
+  const SV = HFE_SOLVER, sk = bodySkeleton(M), ix = sk.dofIndex, V = p => new V3(p[0], p[1], p[2]);
+  const hands = {};
+  if (st !== 'prone') for (const side of [-1, 1]) { const k = side < 0 ? 'L' : 'R'; if (W.hands[k] !== '') { const t = G0.arms[side].hand.Wt; hands[k] = [t.x, t.y, t.z]; } }
+  const Pc = G0.scr.list[G0.scr.primary].P.centre, boxes = deskBoxes(W, G0);
+  const extra = [{ type: 'avoid', caps: ['upperarm', 'forearm'], boxes: boxes.slice(0, 1), margin: 0, w: 5 },
+    { type: 'avoid', caps: ['trunk', 'thigh', 'shank', 'head'], boxes, margin: 0, w: 5 }];
+  const sex = String(S.pop || '').endsWith('f') ? 'female' : 'male';
+  const floor = st === 'standing' || st === 'crouching' ? W.shoe : 0;   // standing on the soles; knees and the prone body on the floor
+  const res = SV.pose(sk, { stance: st, floor, x: stanceX(sk, st), hands, gaze: W.headMode === 'auto' && st !== 'prone' ? [Pc.x, Pc.y, Pc.z] : null, eyeDep: W.eyeDep, sex, extra });
+  const L = res.L, q = res.q, Rt = res.F[sk.index.trunk].R;
+  const arms = {};
+  for (const side of [-1, 1]) { const k = side < 0 ? 'L' : 'R'; arms[side] = { S: V(L['shoulder' + k]), E: V(L['elbow' + k]), W: V(L['wrist' + k]), short: hands[k] ? (d => d > 2 ? d : 0)(V(L['wrist' + k]).distanceTo(G0.arms[side].hand.Wt)) : 0 }; }
+  const deg_ = k => q[ix[k]] * SV.R2D;
+  return { q, arms, legs: { K: { x: L.kneeR[0], y: L.kneeR[1] }, A: { x: L.ankleR[0], y: L.ankleR[1] } }, trunkFlex: q[ix['lumbar.flex']] + q[ix['trunk.flex']], neckFlex: q[ix['head.flex']],
+    eye: V(L.eye), headC: V(L.headC), base: { H: { x: L.hipMid[0], y: L.hipMid[1] }, dR: Math.atan2(Rt[3], Rt[0]) },
+    twist: { trunkLat: deg_('lumbar.lat') + deg_('trunk.lat'), trunkRot: deg_('lumbar.rot') + deg_('trunk.rot'), neckLat: deg_('head.lat'), neckRot: deg_('head.rot') },
+    stance: st, com: res.com, support: res.support, stability: res.stability,
+    rom: SV.romReport(SV.angles(sk, q)), active: res.active, cost: res.cost, iters: res.iters, sk, F: res.F };
 }
 // world landmarks of the drawn posture, in the set core/solver.js uses for capsules
 function postureLandmarks(M, G) {
@@ -2450,19 +2715,23 @@ function classicAngles(G, R) {
 }
 function solvePosture(M, W) {
   let out = solve(M, W), body = null;
-  if (W.solver === 'body') {
+  const stance = offSeat(W);
+  if (W.solver === 'body' || stance) {
     out.G.R = out.R;
-    body = bodyPose(M, W, out.G);
-    const W2 = { ...W, recline: W.recline - deg(body.trunkFlex), headMode: 'manual', neckFlex: deg(body.neckFlex) };
+    body = stance ? stancePose(M, W, out.G, stance) : bodyPose(M, W, out.G);
+    const W2 = { ...W, recline: stance ? deg(body.base.dR + body.sk.ref.rho0) : W.recline - deg(body.trunkFlex), headMode: 'manual', neckFlex: deg(body.neckFlex) };
+    if (stance) W2.footrest = 0;
     out = solve(M, W2, body);
     out.R.lean = deg(body.trunkFlex);
+    if (stance) { out.R.footGap = null; out.R.stability = body.stability; }
   }
   const { G, R } = out, SV = HFE_SOLVER;
   G.body = body;
   R.romList = body ? body.rom : SV.romReport(classicAngles(G, R));
   R.rom = R.romList.length ? R.romList[0].margin : null;
   // clearance capsules grow by the thickest kit item over each segment (core/kit.js `segs`)
-  const kfx = kitFx(), caps = SV.capsules(M, postureLandmarks(M, G)).map(c => { const t = kfx.segs[c.id.replace(/[LR]$/, '')] || 0; return t ? { ...c, ra: c.ra + t, rb: c.rb + t } : c; });
+  // clearance capsules: from the whole-body solver's own segment frames (twist, side bend and each leg), or the classic posture
+  const kfx = kitFx(), caps = SV.capsules(M, body ? SV.capsLandmarks(body.sk, body.F) : postureLandmarks(M, G)).map(c => { const t = kfx.segs[c.id.replace(/[LR]$/, '')] || 0; return t ? { ...c, ra: c.ra + t, rb: c.rb + t } : c; });
   const cl = SV.clearance(caps, [...deskBoxes(W, G), ...screenBoxes(G)]);
   G.clear = cl;
   R.clearDesk = cl.byGroup.desk ? cl.byGroup.desk.d : null;
@@ -2476,6 +2745,11 @@ function rate(v, lim) { if (v == null || !isFinite(v)) return 'info'; if (inR(v,
 const RANK = { info: 0, ok: 1, warn: 2, bad: 3 };
 const worst = arr => arr.reduce((a, b) => RANK[b] > RANK[a] ? b : a, 'info');
 const unitTxt = (v, u) => fmt(v) + (u === '°' ? '°' : ` ${u}`);
+// checks about the seat, the chair and seated legroom, and the seated comfort ranges for the trunk, hip and knee, do not
+// apply when the stance takes the person off the seat (the joint range-of-motion check still covers every joint); prone,
+// the hands are not on the controls, so the arm and reach checks do not apply either
+const OFF_SEAT_NA = new Set(['homeVsElbow', 'seatDepth', 'seatWidth', 'armrest', 'seatPop', 'thigh', 'legroom', 'seatRange', 'headrest', 'depthRange', 'lumbarRange', 'armRange', 'recline', 'hip', 'knee']);
+const PRONE_NA = new Set(['elbow', 'shFlex', 'shAbd', 'wrist', 'reach']);
 function evaluate(R, W, G) {
   const rows = [], nS = G.scr.list.length;
   const push = (c, key, name, v, extra = {}) => {
@@ -2500,11 +2774,12 @@ function evaluate(R, W, G) {
     if ((c.id === 'depthRange' || c.id === 'armRange' || c.id === 'lumbarRange') && R[c.id] == null) continue;
     if (c.id === 'homeVsElbow' && R.homeVsElbow == null) continue;
     if ((c.id === 'rom' || c.id === 'clearDesk' || c.id === 'clearScreens' || c.id === 'clearExact') && R[c.id] == null) continue;
+    if (offSeat(W) && (OFF_SEAT_NA.has(c.id) || offSeat(W) === 'prone' && PRONE_NA.has(c.id))) continue;
     push(c, c.id, c.name, R[c.id]);
   }
   rows.forEach(r => { if (r.key === 'thigh' && R.thigh == null) { r.status = 'info'; r.text = 'n/a'; r.note = 'Thighs do not reach under the desk.'; } });
-  // desk objects
-  for (const ob of R.objects) {
+  // desk objects (not reached for when prone)
+  if (offSeat(W) !== 'prone') for (const ob of R.objects) {
     const o = W.objects.find(x => x.id === ob.id), name = objName(o, W.objects);
     let status, text;
     if (o.use === 'occasional') { status = ob.dm <= 0 ? 'ok' : ob.dm <= 100 ? 'warn' : 'bad'; }
@@ -2555,7 +2830,7 @@ function noteFor(id, key, R, W, G, st) {
       return lean + (CHAIRS[W.chair] && !CHAIRS[W.chair].back ? 'No backrest on this chair: the trunk is unsupported.' : '');
     }
     case 'rom': {
-      const r = R.romList[0], act = G.body && G.body.active.length ? ' Joints at a limit: ' + G.body.active.map(k => k.replace(/^(\w+?)([LR]?)\.(\w+)$/, (m, sg, sd, d) => `${sd === 'L' ? 'left ' : sd === 'R' ? 'right ' : ''}${{ upperarm: 'shoulder', forearm: d === 'flex' ? 'elbow' : 'forearm', hand: 'wrist', thigh: 'hip', shank: 'knee', foot: 'ankle', head: 'neck', trunk: 'trunk' }[sg] || sg} ${d}`)).join(', ') + ': a target could not be met inside the range.' : '';
+      const r = R.romList[0], act = G.body && G.body.active.length ? ' Joints at a limit: ' + G.body.active.map(k => k.replace(/^(\w+?)([LR]?)\.(\w+)$/, (m, sg, sd, d) => `${sd === 'L' ? 'left ' : sd === 'R' ? 'right ' : ''}${{ upperarm: 'shoulder', forearm: d === 'flex' ? 'elbow' : 'forearm', hand: 'wrist', thigh: 'hip', shank: 'knee', foot: 'ankle', head: 'neck', trunk: 'thoracic spine', lumbar: 'lumbar spine' }[sg] || sg} ${d}`)).join(', ') + ': a target could not be met inside the range.' : '';
       return `${HFE_SOLVER.romText(r)}.${act} Ranges are average adult values; the 5° green margin is a tool convention.${G.body ? '' : ' Classic solver: shoulder angles are plane projections.'}`;
     }
     case 'clearDesk': case 'clearScreens': {
@@ -3087,6 +3362,8 @@ const BODY = (() => {
       const sk = G.body.sk, FK = SV.fk(sk, G.body.q), m = new THREE.Matrix4();
       const get = n => { const f = FK[sk.index[n]], r = f.R; m.set(r[0], r[1], r[2], 0, r[3], r[4], r[5], 0, r[6], r[7], r[8], 0, 0, 0, 0, 1); return { o: new V(...f.p), q: new Q().setFromRotationMatrix(m) }; };
       for (const n of ['pelvis', 'trunk', 'head']) fr[n] = get(n);
+      // the spine in two levels: each turns about its pivot (L5/S1, T12/L1), kept for the blend bones along the spine
+      if (sk.index.lumbar != null) { fr.lumbar = get('lumbar'); fr.pivL5 = new V(...sk.segs[sk.index.lumbar].pivot); fr.pivT12 = new V(...sk.segs[sk.index.trunk].pivot); }
       for (const k of ['L', 'R']) for (const n of ['upperarm', 'forearm', 'hand', 'thigh', 'shank', 'foot']) fr[n + k] = get(n + k);
       // the solver's forearm and hand frames match ours: +X out of the palm, +Y towards the elbow (its forearm rest is a
       // quarter turn about Y, so with the arm hanging and the thumbs forward +X points medially)
@@ -3170,7 +3447,12 @@ const BODY = (() => {
     const out = new Array(D.bones.length), set = (n, o, q) => { out[decode().B[n]] = { o, q }; };
     const P = fr.pelvis, T = fr.trunk, Hd = fr.head;
     set('pelvis', P.o, P.q); set('trunk', T.o, T.q);
-    [0.25, 0.5, 0.75].forEach((f, i) => set('spine' + (i + 1), T.o, P.q.clone().slerp(T.q, f)));
+    if (fr.lumbar) {
+      // a frame part way from A to B that turns about the pivot B turns about relative to A (local coordinates)
+      const about = (A, B, f, piv) => { const q = A.q.clone().slerp(B.q, f), pw = B.o.clone().add(piv.clone().applyQuaternion(B.q)); return [pw.sub(piv.clone().applyQuaternion(q)), q]; };
+      const Lu = fr.lumbar;
+      set('spine1', ...about(P, Lu, 0.5, fr.pivL5)); set('spine2', Lu.o, Lu.q); set('spine3', ...about(Lu, T, 0.5, fr.pivT12));
+    } else [0.25, 0.5, 0.75].forEach((f, i) => set('spine' + (i + 1), T.o, P.q.clone().slerp(T.q, f)));
     set('head', Hd.o, Hd.q); set('neck1', Hd.o, T.q.clone().slerp(Hd.q, 0.3)); set('neck2', Hd.o, T.q.clone().slerp(Hd.q, 0.65));
     for (const s of [-1, 1]) {
       const k = s < 0 ? 'L' : 'R', Lk = F.limbs[k], ua = fr['upperarm' + k], fa = fr['forearm' + k], hd = fr['hand' + k], th = fr['thigh' + k];
@@ -3217,8 +3499,9 @@ const BODY = (() => {
       }
       pos[3 * v] = x; pos[3 * v + 1] = y; pos[3 * v + 2] = z;
     }
-    // soft tissue on the seat: buttocks and thighs flatten on the seat surface instead of passing through it
-    if (G.seatY != null) {
+    // soft tissue on the seat: buttocks and thighs flatten on the seat surface instead of passing through it (not when a
+    // stance has taken the body off the seat, where it would leave a sheet of skin at seat height)
+    if (G.seatY != null && !(G.body && G.body.stance)) {
       const x1 = G.seatFrontX != null ? G.seatFrontX + 25 : G.H.x + 600, re = /^(pelvis|spine1|buttock|thigh)/;
       for (let v = 0; v < nv; v++) if (pos[3 * v + 1] < G.seatY && pos[3 * v] < x1 && re.test(D.bones[dec.dom[v]])) pos[3 * v + 1] = G.seatY;
     }
@@ -3818,7 +4101,8 @@ function buildWorkstation(M, G, W) {
   // objects
   G.objs.forEach(ob => { buildObject(g, ob, W.deskH); node('ws.obj.' + ob.o.id); });
   tagNew(g, 'OBJECTS');
-  // chair
+  // chair (taken away when the stance is off the seat)
+  if (offSeat(W)) { tagNew(g, 'CHAIR'); return; }
   const CH = CHAIRS[W.chair] || CHAIRS.task;
   const sx = G.seatRearX + W.seatDepth / 2;
   const mdl = chairModelMeshes(W);
@@ -3922,7 +4206,8 @@ function buildAnnotations(M, G, R, W, rows) {
   const armSt = (id, side) => rate(R[id][side < 0 ? 'L' : 'R'], S.lim[id]);
   const backX = G.seatRearX - 170;
   annNode = 'ann.dims';
-  dimV(backX, 0, W.seatH, 0, `${fmt(W.seatH)} mm`, 'Seat', 'info', -10);
+  const seated = !offSeat(W);   // off the seat, the seat, hip, knee and thigh annotations do not apply
+  if (seated) dimV(backX, 0, W.seatH, 0, `${fmt(W.seatH)} mm`, 'Seat', 'info', -10);
   dimV(backX - 120, 0, G.E.y, 0, `${fmt(G.E.y)} mm`, 'Eye', 'info', -10);
   dimV(W.deskDepth + 90, 0, W.deskH, 0, `${fmt(W.deskH)} mm`, 'Desk', 'info');
   if (W.footrest > 0) dimV(G.A.x + 260, 0, W.footrest, 0, `${fmt(W.footrest)} mm`, 'Footrest');
@@ -3951,14 +4236,17 @@ function buildAnnotations(M, G, R, W, rows) {
   else tag('0°', st('neckFlex'), C.clone().add(new V3(-60, 60, 0)), 'Neck');
   const z = G.legZ;
   const Hh = v3(G.H, z), Kk = v3(G.K, z), Aa = v3(G.A, z), Ss = v3(G.Sh, z);
-  arc(Hh, new V3().subVectors(Ss, Hh), new V3().subVectors(Kk, Hh), 120, `${fmt(R.hip)}°`, st('hip'), 'Hip');
-  arc(Kk, new V3().subVectors(Hh, Kk), new V3().subVectors(Aa, Kk), 95, `${fmt(R.knee)}°`, st('knee'), 'Knee');
+  if (seated) {
+    arc(Hh, new V3().subVectors(Ss, Hh), new V3().subVectors(Kk, Hh), 120, `${fmt(R.hip)}°`, st('hip'), 'Hip');
+    arc(Kk, new V3().subVectors(Hh, Kk), new V3().subVectors(Aa, Kk), 95, `${fmt(R.knee)}°`, st('knee'), 'Knee');
+  }
   const a = G.arms[1];
+  if (offSeat(W) === 'prone') return;
   arc(a.E, new V3().subVectors(a.S, a.E), new V3().subVectors(a.W, a.E), 80, `${fmt(a.elbow)}°`, armSt('elbow', 1), 'Elbow');
   const ue = new V3(a.E.x - a.S.x, a.E.y - a.S.y, 0);
   if (Math.abs(a.shFlex) > 1) arc(a.S, new V3(0, -1, 0), ue, 110, `${fmt(a.shFlex)}°`, armSt('shFlex', 1), 'Shoulder');
   else tag(`${fmt(a.shFlex)}°`, armSt('shFlex', 1), a.S.clone().add(new V3(-70, -60, 0)), 'Shoulder');
-  if (R.thigh != null) {
+  if (R.thigh != null && seated) {
     const x = Math.max(G.maxTopX, 15), y1 = G.maxTop, y2 = G.deskUnder, s = st('thigh');
     line([new V3(x, y1, 0), new V3(x, y2, 0)], MATS['arc_' + s]);
     for (const y of [y1, y2]) line([new V3(x - 12, y - 12, 0), new V3(x + 12, y + 12, 0)], MATS['arc_' + s]);
@@ -4157,6 +4445,7 @@ const WS_SPEC = [
   { id: 'neckFlex', label: 'Neck flexion (manual)', min: -20, max: 60, step: 1, u: '°' },
   { sec: 'Posture solver' },
   { id: 'solver', label: 'Solver', type: 'select', opts: [['classic', 'Seated workstation (classic)'], ['body', 'Whole body with joint limits (beta)']] },
+  { id: 'stance', label: 'Stance (whole body)', type: 'select', opts: [['seated', 'Seated'], ['standing', 'Standing'], ['crouching', 'Crouching'], ['kneeling', 'Kneeling'], ['halfKneeling', 'Half kneeling (right knee down)'], ['prone', 'Prone']] },
 ];
 function renderWsControls() {
   let open = false;

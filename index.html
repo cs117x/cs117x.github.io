@@ -437,6 +437,8 @@ const BODY = (() => {
       const sk = G.body.sk, FK = SV.fk(sk, G.body.q), m = new THREE.Matrix4();
       const get = n => { const f = FK[sk.index[n]], r = f.R; m.set(r[0], r[1], r[2], 0, r[3], r[4], r[5], 0, r[6], r[7], r[8], 0, 0, 0, 0, 1); return { o: new V(...f.p), q: new Q().setFromRotationMatrix(m) }; };
       for (const n of ['pelvis', 'trunk', 'head']) fr[n] = get(n);
+      // the spine in two levels: each turns about its pivot (L5/S1, T12/L1), kept for the blend bones along the spine
+      if (sk.index.lumbar != null) { fr.lumbar = get('lumbar'); fr.pivL5 = new V(...sk.segs[sk.index.lumbar].pivot); fr.pivT12 = new V(...sk.segs[sk.index.trunk].pivot); }
       for (const k of ['L', 'R']) for (const n of ['upperarm', 'forearm', 'hand', 'thigh', 'shank', 'foot']) fr[n + k] = get(n + k);
       // the solver's forearm and hand frames match ours: +X out of the palm, +Y towards the elbow (its forearm rest is a
       // quarter turn about Y, so with the arm hanging and the thumbs forward +X points medially)
@@ -520,7 +522,12 @@ const BODY = (() => {
     const out = new Array(D.bones.length), set = (n, o, q) => { out[decode().B[n]] = { o, q }; };
     const P = fr.pelvis, T = fr.trunk, Hd = fr.head;
     set('pelvis', P.o, P.q); set('trunk', T.o, T.q);
-    [0.25, 0.5, 0.75].forEach((f, i) => set('spine' + (i + 1), T.o, P.q.clone().slerp(T.q, f)));
+    if (fr.lumbar) {
+      // a frame part way from A to B that turns about the pivot B turns about relative to A (local coordinates)
+      const about = (A, B, f, piv) => { const q = A.q.clone().slerp(B.q, f), pw = B.o.clone().add(piv.clone().applyQuaternion(B.q)); return [pw.sub(piv.clone().applyQuaternion(q)), q]; };
+      const Lu = fr.lumbar;
+      set('spine1', ...about(P, Lu, 0.5, fr.pivL5)); set('spine2', Lu.o, Lu.q); set('spine3', ...about(Lu, T, 0.5, fr.pivT12));
+    } else [0.25, 0.5, 0.75].forEach((f, i) => set('spine' + (i + 1), T.o, P.q.clone().slerp(T.q, f)));
     set('head', Hd.o, Hd.q); set('neck1', Hd.o, T.q.clone().slerp(Hd.q, 0.3)); set('neck2', Hd.o, T.q.clone().slerp(Hd.q, 0.65));
     for (const s of [-1, 1]) {
       const k = s < 0 ? 'L' : 'R', Lk = F.limbs[k], ua = fr['upperarm' + k], fa = fr['forearm' + k], hd = fr['hand' + k], th = fr['thigh' + k];
@@ -567,8 +574,9 @@ const BODY = (() => {
       }
       pos[3 * v] = x; pos[3 * v + 1] = y; pos[3 * v + 2] = z;
     }
-    // soft tissue on the seat: buttocks and thighs flatten on the seat surface instead of passing through it
-    if (G.seatY != null) {
+    // soft tissue on the seat: buttocks and thighs flatten on the seat surface instead of passing through it (not when a
+    // stance has taken the body off the seat, where it would leave a sheet of skin at seat height)
+    if (G.seatY != null && !(G.body && G.body.stance)) {
       const x1 = G.seatFrontX != null ? G.seatFrontX + 25 : G.H.x + 600, re = /^(pelvis|spine1|buttock|thigh)/;
       for (let v = 0; v < nv; v++) if (pos[3 * v + 1] < G.seatY && pos[3 * v] < x1 && re.test(D.bones[dec.dom[v]])) pos[3 * v + 1] = G.seatY;
     }
