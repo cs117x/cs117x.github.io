@@ -349,6 +349,9 @@ textarea{width:100%;min-height:90px;font-size:11px;border:1px solid var(--rule);
 .popa-t tr.nc td{color:var(--faint)}
 .popa-groups{display:flex;flex-direction:column;gap:3px}
 #popa-prog{width:100%}
+.vis-plot{display:block;width:100%;height:auto;border:1px solid var(--rule);border-radius:4px;background:var(--panel-2)}
+.vis-legend{display:flex;flex-wrap:wrap;gap:4px 14px;margin:6px 0 0;font-size:11.5px;color:var(--muted)}
+.vis-key i{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:5px;vertical-align:-1px;border:1px solid var(--rule-strong)}
 .drw-prev svg{width:100%;height:auto;display:block;background:#fff;box-shadow:0 1px 6px rgba(0,0,0,.14)}
 .about-card{width:min(780px,100%)}
 /* ---- environment library and tab ---- */
@@ -470,6 +473,7 @@ textarea{width:100%;min-height:90px;font-size:11px;border:1px solid var(--rule);
     <div class="menu"><button class="menu-btn" aria-haspopup="menu" aria-expanded="false">Analyse</button>
       <div class="menu-pop" role="menu" hidden>
         <button role="menuitem" data-click="#popa-open">Population accommodation…</button>
+        <button role="menuitem" data-click="#vis-open">Vision plot and obscuration…</button>
       </div>
     </div>
     <div class="menu"><button class="menu-btn" aria-haspopup="menu" aria-expanded="false">View</button>
@@ -536,6 +540,7 @@ textarea{width:100%;min-height:90px;font-size:11px;border:1px solid var(--rule);
     <div class="rb-grp"><div class="rb-row">
       <button class="rb" data-act="checks" id="ana-open" aria-pressed="false" aria-controls="ana" title="Analysis: the checks against limits, worst first (pop-out pane)"><svg class="i"><use href="#i-ana"/></svg><span>Analysis</span></button>
       <button class="rb" id="popa-open" title="Population accommodation: run every person in the dataset"><svg class="i"><use href="#i-pop"/></svg><span>Population</span></button>
+      <button class="rb" id="vis-open" title="Vision: projected vision plot, obscuration and display occlusion from the eye point, with kit field-of-view masks"><svg class="i"><use href="#i-eye"/></svg><span>Vision</span></button>
     </div><div class="rb-lbl">Analyse</div></div>
     <div class="rb-grp"><div class="rb-row">
       <button class="rb" data-click="#exp-drw" title="Export drawing: PDF, SVG, PNG or DXF"><svg class="i"><use href="#i-draw"/></svg><span>Drawing</span></button>
@@ -813,6 +818,13 @@ textarea{width:100%;min-height:90px;font-size:11px;border:1px solid var(--rule);
       </div>
       <div class="popa-out" id="popa-out"></div>
     </div>
+  </div>
+</div>
+
+<div class="modal" id="vis" hidden>
+  <div class="modal-card drw-card" role="dialog" aria-modal="true" aria-labelledby="vis-h">
+    <div class="modal-head"><h2 id="vis-h">Vision plot and obscuration</h2><span class="help" id="vis-status" role="status"></span><span class="tb-spacer"></span><button class="icon-btn" id="vis-close" aria-label="Close">×</button></div>
+    <div class="drw-body"><div class="drw-opts" id="vis-form"></div><div class="popa-out" id="vis-out"></div></div>
   </div>
 </div>
 
@@ -5777,6 +5789,574 @@ function popOverall(run, counted) {
   }
   return { n, pass, green, sole, passed, keys: cs.map(c => c.key) };
 }
+
+/* ---------------- vision: projected vision plots, obscuration, display occlusion, kit field-of-view masks ----------------
+   Pure JavaScript with no dependencies (no DOM, no three.js), so it runs in the browser (inlined by tools/build.py at
+   __VISION__) and in Node for unit tests (tests/vision.test.js). ENV-05 and KIT-05 in docs/REQUIREMENTS.md.
+
+   Frame: millimetres, Y up, +X forward, +Z to the manikin's right, as everywhere else. Directions are given as
+   azimuth and elevation in degrees: azimuth is positive to the right (towards +Z), elevation positive upwards.
+   A head rotation R is a row-major 3×3 matrix taking head coordinates to world coordinates; in head coordinates +X is
+   straight ahead with the Frankfurt plane level, which is how core/solver.js defines the head segment.
+
+   What it does:
+   - scene(): packs triangles (9 floats each) with an object index per triangle into a bounding volume hierarchy, so
+     tens of thousands of rays can be cast against the posed manikin, the workstation and the environment in well
+     under a second. Exact ray–triangle tests (Möller–Trumbore), both faces, deterministic: the same scene gives the
+     same plot, which the evidence trail needs. This is the CPU stand-in for "render to cubemap" in the plan; it is
+     testable in Node and needs no GPU.
+   - sphere(): casts a ray from the eye point through the centre of every cell of an azimuth–elevation grid and keeps
+     the object hit first. That grid is the projected vision plot: what the eye sees in every direction.
+   - coverage(): samples a target (a display face) over its own angular extent, finely, and reports the share of its
+     solid angle that each eye sees unobscured, what obscures the rest, and the share inside each field (eye rotation,
+     kit masks). Sampling is on a plane tangent to the direction of the target's centre (gnomonic), weighted by the
+     solid angle of each sample, so the result does not depend on where the target is and never meets a seam.
+   - fields and masks as data: visual field and eye rotation limits, and kit field-of-view masks (helmet brim,
+     protective spectacles, goggles, respirator, night vision goggles). Each is a union of shapes in head azimuth and
+     elevation; a shape is four quarter-ellipses about a centre (limits up, down, left and right). A loadout's field is
+     the intersection of its masks.
+*/
+const HFE_VISION = (() => {
+  const D2R = Math.PI / 180, R2D = 180 / Math.PI;
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+  /* ---- sources ---- */
+  const SOURCES = {
+    FIELD: 'Spector RH (1990) Visual fields. In: Walker HK, Hall WD, Hurst JW (eds) Clinical Methods, 3rd edn, ch. 116 (NCBI Bookshelf NBK220): the normal monocular field extends about 60° nasally, 100° temporally, 60° up and 75° down from fixation.',
+    EYE: 'MIL-STD-1472 (Department of Defense Design Criteria Standard: Human Engineering), visual field figure: eye rotation optimum ±15°, maximum ±35° horizontally; maximum 40° up and 20° down. Check the values against the revision your project is bound to.',
+    NVG: 'Public specifications of in-service image intensifier goggles and monoculars, which give a 40° circular field of view (for example AN/PVS-7 and AN/PVS-14 technical manuals and manufacturer data sheets).',
+    KIT: 'Indicative: typical frame, brim and eyepiece limits from public product descriptions and photographs, not measured. Replace with measured values per item (for example from a perimeter or a head-form survey) before using a result as evidence.',
+    IPD: 'Dodgson NA (2004) Variation and extrema of human interpupillary distance. Proc SPIE 5291: mean adult interpupillary distance about 63 mm.'
+  };
+  const IPD = 63;
+
+  /* ---- fields (head frame) ----
+     A shape: c = [azimuth, elevation] of its centre, and limits up, down, left, right (degrees from the centre; null
+     means no limit that way). Inside when ((Δaz/h)² + (Δel/v)²) <= 1, with h and v the limits of the point's quadrant. */
+  const shape = (up, down, left, right, c = [0, 0], label) => ({ c, up, down, left, right, label });
+  const FIELDS = {
+    monoL: { name: 'Visual field, left eye', shapes: [shape(60, 75, 100, 60)], src: 'FIELD' },
+    monoR: { name: 'Visual field, right eye', shapes: [shape(60, 75, 60, 100)], src: 'FIELD' },
+    eyeOpt: { name: 'Eye rotation, optimum', shapes: [shape(15, 15, 15, 15)], src: 'EYE' },
+    eyeMax: { name: 'Eye rotation, maximum', shapes: [shape(40, 20, 35, 35)], src: 'EYE' }
+  };
+  // kit field-of-view masks: what the item leaves open, in the head frame (worn as designed, eyes at the eye point)
+  const MASKS = {
+    helmet: { name: 'Combat helmet brim', shapes: [shape(35, null, null, null)], src: 'KIT', status: 'indicative',
+      note: 'The brim limits the view upwards; the sides of a combat helmet sit behind the eyes.' },
+    spectacles: { name: 'Ballistic spectacles', shapes: [shape(50, 60, 90, 90)], src: 'KIT', status: 'indicative',
+      note: 'Wrap-around frame: little lateral loss, some loss up and down at the frame.' },
+    goggles: { name: 'Ballistic goggles', shapes: [shape(45, 50, 80, 80)], src: 'KIT', status: 'indicative',
+      note: 'The frame and foam seal limit the field all round.' },
+    respirator: { name: 'Respirator, twin eyepieces', shapes: [shape(40, 45, 60, 60)], src: 'KIT', status: 'indicative',
+      note: 'Eyepiece rims and the mask body limit the field all round, most of all downwards and to the side.' },
+    nvg: { name: 'Night vision goggles, 40°', src: 'NVG', status: 'indicative',
+      shapes: [shape(20, 20, 20, 20, [0, 0], 'Image intensified (40° circle)'), shape(10, 40, 45, 45, [0, -40], 'Look-under, unaided')],
+      note: 'Aided view in a 40° circle straight ahead; unaided view only under the housing. The look-under region is indicative.' }
+  };
+
+  function inShape(s, az, el) {
+    const dx = az - s.c[0], dy = el - s.c[1];
+    const h = dx >= 0 ? s.right : s.left, v = dy >= 0 ? s.up : s.down;
+    const a = h == null ? 0 : dx / Math.max(h, 1e-9), b = v == null ? 0 : dy / Math.max(v, 1e-9);
+    return a * a + b * b <= 1 + 1e-12;
+  }
+  const inField = (f, az, el) => f.shapes.some(s => inShape(s, az, el));
+  // a list of fields or masks, all of which must contain the direction
+  const inAll = (list, az, el) => list.every(f => inField(f, az, el));
+  // boundary of a shape as [az, el] points (n per quadrant); open sides (null limits) are closed far outside
+  function outline(s, n = 24) {
+    const big = 400, pts = [];
+    for (let q = 0; q < 4; q++) for (let i = 0; i < n; i++) {
+      const t = (q + i / n) * Math.PI / 2, ca = Math.cos(t), sa = Math.sin(t);
+      const h = ca >= 0 ? s.right : s.left, v = sa >= 0 ? s.up : s.down;
+      pts.push([s.c[0] + ca * (h == null ? big : h), s.c[1] + sa * (v == null ? big : v)]);
+    }
+    pts.push(pts[0]);
+    return pts;
+  }
+
+  /* ---- directions ---- */
+  const dirOf = (az, el) => { const a = az * D2R, e = el * D2R, c = Math.cos(e); return [c * Math.cos(a), Math.sin(e), c * Math.sin(a)]; };
+  const angOf = d => { const l = Math.hypot(d[0], d[1], d[2]) || 1; return [Math.atan2(d[2], d[0]) * R2D, Math.asin(clamp(d[1] / l, -1, 1)) * R2D]; };
+  const mv = (R, v) => [R[0] * v[0] + R[1] * v[1] + R[2] * v[2], R[3] * v[0] + R[4] * v[1] + R[5] * v[2], R[6] * v[0] + R[7] * v[1] + R[8] * v[2]];
+  const mtv = (R, v) => [R[0] * v[0] + R[3] * v[1] + R[6] * v[2], R[1] * v[0] + R[4] * v[1] + R[7] * v[2], R[2] * v[0] + R[5] * v[1] + R[8] * v[2]];
+  const I3 = [1, 0, 0, 0, 1, 0, 0, 0, 1];
+  const rotZ = a => { const c = Math.cos(a * D2R), s = Math.sin(a * D2R); return [c, -s, 0, s, c, 0, 0, 0, 1]; };
+  // a world direction in the head frame, as [az, el]
+  const toHead = (R, d) => angOf(mtv(R, d));
+  const fromHead = (R, az, el) => mv(R, dirOf(az, el));
+  // the eye points: mid-eye (cyclopean) and each eye, ipd apart along the head's Z axis
+  function eyes(mid, R, ipd = IPD) {
+    const z = mv(R, [0, 0, 1]), h = ipd / 2;
+    return { mid, L: [mid[0] - z[0] * h, mid[1] - z[1] * h, mid[2] - z[2] * h], R: [mid[0] + z[0] * h, mid[1] + z[1] * h, mid[2] + z[2] * h] };
+  }
+
+  /* ---- projections for plots: rectangular (azimuth, elevation) and Hammer–Aitoff equal-area ----
+     project gives plot units: rect x = az, y = el (degrees); hammer x in [-2√2, 2√2], y in [-√2, √2]. */
+  const PROJ = {
+    rect: { project: (az, el) => [az, el], unproject: (x, y) => (Math.abs(y) <= 90 && Math.abs(x) <= 180 ? [x, y] : null) },
+    hammer: {
+      project(az, el) {
+        const l = az * D2R, p = el * D2R, d = Math.sqrt(1 + Math.cos(p) * Math.cos(l / 2));
+        return [2 * Math.SQRT2 * Math.cos(p) * Math.sin(l / 2) / d, Math.SQRT2 * Math.sin(p) / d];
+      },
+      unproject(x, y) {
+        if ((x * x) / 8 + (y * y) / 2 > 1) return null;
+        const z = Math.sqrt(1 - (x / 4) ** 2 - (y / 2) ** 2);
+        return [2 * Math.atan2(z * x, 2 * (2 * z * z - 1)) * R2D, Math.asin(clamp(z * y, -1, 1)) * R2D];
+      }
+    }
+  };
+
+  /* ---- bounding volume hierarchy over triangles ----
+     tris: Float32Array or array, 9 numbers per triangle; ids: object index per triangle. */
+  function scene(tris, ids) {
+    const n = (tris.length / 9) | 0, T = tris instanceof Float64Array ? tris : Float64Array.from(tris);
+    const cen = new Float64Array(n * 3), lo = new Float64Array(n * 3), hi = new Float64Array(n * 3);
+    for (let i = 0; i < n; i++) for (let k = 0; k < 3; k++) {
+      const a = T[i * 9 + k], b = T[i * 9 + 3 + k], c = T[i * 9 + 6 + k];
+      lo[i * 3 + k] = Math.min(a, b, c); hi[i * 3 + k] = Math.max(a, b, c); cen[i * 3 + k] = (a + b + c) / 3;
+    }
+    const order = new Int32Array(n); for (let i = 0; i < n; i++) order[i] = i;
+    const nb = [], LEAF = 6;   // nodes: [minx,miny,minz,maxx,maxy,maxz, left (or -1-start), right (or count)]
+    function build(s, e) {
+      const node = nb.length / 8; nb.push(0, 0, 0, 0, 0, 0, 0, 0);
+      let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
+      let cx0 = Infinity, cy0 = Infinity, cz0 = Infinity, cx1 = -Infinity, cy1 = -Infinity, cz1 = -Infinity;
+      for (let i = s; i < e; i++) {
+        const t = order[i] * 3;
+        x0 = Math.min(x0, lo[t]); y0 = Math.min(y0, lo[t + 1]); z0 = Math.min(z0, lo[t + 2]);
+        x1 = Math.max(x1, hi[t]); y1 = Math.max(y1, hi[t + 1]); z1 = Math.max(z1, hi[t + 2]);
+        cx0 = Math.min(cx0, cen[t]); cy0 = Math.min(cy0, cen[t + 1]); cz0 = Math.min(cz0, cen[t + 2]);
+        cx1 = Math.max(cx1, cen[t]); cy1 = Math.max(cy1, cen[t + 1]); cz1 = Math.max(cz1, cen[t + 2]);
+      }
+      const o = node * 8; nb[o] = x0; nb[o + 1] = y0; nb[o + 2] = z0; nb[o + 3] = x1; nb[o + 4] = y1; nb[o + 5] = z1;
+      const ex = [cx1 - cx0, cy1 - cy0, cz1 - cz0], ax = ex[0] >= ex[1] && ex[0] >= ex[2] ? 0 : ex[1] >= ex[2] ? 1 : 2;
+      if (e - s <= LEAF || ex[ax] < 1e-9) { nb[o + 6] = -1 - s; nb[o + 7] = e - s; return node; }
+      // split at the middle of the centroid extent; fall back to the median if one side would be empty
+      const mid = [cx0, cy0, cz0][ax] + ex[ax] / 2;
+      let i = s, j = e - 1;
+      while (i <= j) { if (cen[order[i] * 3 + ax] < mid) i++; else { const t = order[i]; order[i] = order[j]; order[j] = t; j--; } }
+      let m = i;
+      if (m === s || m === e) {
+        m = (s + e) >> 1;
+        const sub = Array.from(order.subarray(s, e)).sort((p, q) => cen[p * 3 + ax] - cen[q * 3 + ax]);
+        order.set(sub, s);
+      }
+      const l = build(s, m), r = build(m, e);
+      nb[o + 6] = l; nb[o + 7] = r;
+      return node;
+    }
+    if (n) build(0, n);
+    // triangles reordered to leaf order, as edges for Möller–Trumbore
+    const P = new Float64Array(n * 9), oid = new Int32Array(n);
+    for (let i = 0; i < n; i++) {
+      const t = order[i] * 9, o = i * 9;
+      P[o] = T[t]; P[o + 1] = T[t + 1]; P[o + 2] = T[t + 2];
+      P[o + 3] = T[t + 3] - T[t]; P[o + 4] = T[t + 4] - T[t + 1]; P[o + 5] = T[t + 5] - T[t + 2];
+      P[o + 6] = T[t + 6] - T[t]; P[o + 7] = T[t + 7] - T[t + 1]; P[o + 8] = T[t + 8] - T[t + 2];
+      oid[i] = ids ? ids[order[i]] : 0;
+    }
+    return { n, nodes: Float64Array.from(nb), P, oid, stack: new Int32Array(128) };
+  }
+
+  // nearest hit along o + t d for t in (tmin, tmax); returns its t (tmax if none) and sets sc.hitId (-1 if none).
+  // skip: optional Uint8Array by object index, true to ignore that object.
+  function cast(sc, o, d, tmax = Infinity, skip = null, tmin = 1e-6) {
+    sc.hitId = -1;
+    if (!sc.n) return Infinity;
+    const N = sc.nodes, P = sc.P, st = sc.stack;
+    const ox = o[0], oy = o[1], oz = o[2], dx = d[0], dy = d[1], dz = d[2];
+    const ix = 1 / dx, iy = 1 / dy, iz = 1 / dz;
+    let best = tmax, sp = 0; st[sp++] = 0;
+    while (sp) {
+      const k = st[--sp] * 8;
+      let t0 = (N[k] - ox) * ix, t1 = (N[k + 3] - ox) * ix; if (t0 > t1) { const t = t0; t0 = t1; t1 = t; }
+      let u0 = (N[k + 1] - oy) * iy, u1 = (N[k + 4] - oy) * iy; if (u0 > u1) { const t = u0; u0 = u1; u1 = t; }
+      if (u0 > t0) t0 = u0; if (u1 < t1) t1 = u1;
+      let w0 = (N[k + 2] - oz) * iz, w1 = (N[k + 5] - oz) * iz; if (w0 > w1) { const t = w0; w0 = w1; w1 = t; }
+      if (w0 > t0) t0 = w0; if (w1 < t1) t1 = w1;
+      if (!(t1 >= t0) || t1 < tmin || t0 > best) continue;   // NaN-safe: a miss when the slabs don't overlap
+      const a = N[k + 6], b = N[k + 7];
+      if (a < 0) {
+        for (let i = -1 - a, e = i + b; i < e; i++) {
+          if (skip && skip[sc.oid[i]]) continue;
+          const p = i * 9, e1x = P[p + 3], e1y = P[p + 4], e1z = P[p + 5], e2x = P[p + 6], e2y = P[p + 7], e2z = P[p + 8];
+          const px = dy * e2z - dz * e2y, py = dz * e2x - dx * e2z, pz = dx * e2y - dy * e2x;
+          const det = e1x * px + e1y * py + e1z * pz;
+          if (det > -1e-12 && det < 1e-12) continue;
+          const inv = 1 / det, sx = ox - P[p], sy = oy - P[p + 1], sz = oz - P[p + 2];
+          const u = (sx * px + sy * py + sz * pz) * inv; if (u < 0 || u > 1) continue;
+          const qx = sy * e1z - sz * e1y, qy = sz * e1x - sx * e1z, qz = sx * e1y - sy * e1x;
+          const v = (dx * qx + dy * qy + dz * qz) * inv; if (v < 0 || u + v > 1) continue;
+          const t = (e2x * qx + e2y * qy + e2z * qz) * inv;
+          if (t > tmin && t < best) { best = t; sc.hitId = sc.oid[i]; }
+        }
+      } else {
+        if (sp + 2 > st.length) { const s2 = new Int32Array(st.length * 2); s2.set(st); sc.stack = s2; return cast(sc, o, d, tmax, skip, tmin); }
+        st[sp++] = a; st[sp++] = b;
+      }
+    }
+    return best;
+  }
+
+  /* ---- the projected vision plot: first hit per cell of an azimuth–elevation grid ----
+     opts: R (frame of the grid; world axes by default), step (degrees), az [from, to], el [from, to], tmax (mm).
+     Returns ids (Int32Array, -1 where nothing is hit within tmax) and distances (Float32Array, mm), row by row from
+     the lowest elevation, each row from the lowest azimuth; cell (i, j) is centred on az0 + (i + ½) step. */
+  function sphere(sc, eye, opts = {}) {
+    const step = opts.step || 1, R = opts.R || I3, az = opts.az || [-180, 180], el = opts.el || [-90, 90], tmax = opts.tmax || 2e4;
+    const nAz = Math.max(1, Math.round((az[1] - az[0]) / step)), nEl = Math.max(1, Math.round((el[1] - el[0]) / step));
+    const ids = new Int32Array(nAz * nEl), dist = new Float32Array(nAz * nEl);
+    for (let j = 0; j < nEl; j++) for (let i = 0; i < nAz; i++) {
+      const d = mv(R, dirOf(az[0] + (i + 0.5) * step, el[0] + (j + 0.5) * step));
+      const t = cast(sc, eye, d, tmax), k = j * nAz + i;
+      ids[k] = sc.hitId; dist[k] = sc.hitId < 0 ? -1 : t;
+    }
+    return { step, az: az.slice(), el: el.slice(), nAz, nEl, ids, dist, R };
+  }
+  // the grid cell a direction (in the grid's frame) falls in, or -1
+  function cellOf(g, az, el) {
+    const i = Math.floor((az - g.az[0]) / g.step), j = Math.floor((el - g.el[0]) / g.step);
+    return i < 0 || j < 0 || i >= g.nAz || j >= g.nEl ? -1 : j * g.nAz + i;
+  }
+  // solid angle per object in a grid (steradians); a cell spans Δaz × (sin el₁ − sin el₀)
+  function solidAngles(g) {
+    const out = new Map(), s = g.step * D2R;
+    for (let j = 0; j < g.nEl; j++) {
+      const w = s * (Math.sin((g.el[0] + (j + 1) * g.step) * D2R) - Math.sin((g.el[0] + j * g.step) * D2R));
+      for (let i = 0; i < g.nAz; i++) { const id = g.ids[j * g.nAz + i]; out.set(id, (out.get(id) || 0) + w); }
+    }
+    return out;
+  }
+
+  /* ---- display occlusion: how much of a target each eye sees ----
+     target: { id, tris } (the target's own triangles, world, 9 per triangle; also present in sc under the same id).
+     eyesIn: { name: point }, the first is where samples are cast from (the mid-eye); fields: { name: test(worldDir) }
+     against the mid-eye direction. n: samples along the longer side (default 48).
+     Returns for each eye: share visible (solid-angle weighted), share obscured by each object id; for each field, the
+     share of the target inside it and the share both inside it and visible to the first eye; and `either`, the share
+     visible to at least one eye other than the first (ambinocular, when they are the left and right eyes). */
+  function coverage(sc, target, eyesIn, fields = {}, opts = {}) {
+    const names = Object.keys(eyesIn), E0 = eyesIn[names[0]], tri = target.tris, nt = (tri.length / 9) | 0;
+    if (!nt) return null;
+    // the target's centre direction and a tangent basis
+    let cx = 0, cy = 0, cz = 0;
+    for (let i = 0; i < nt * 3; i++) { cx += tri[i * 3]; cy += tri[i * 3 + 1]; cz += tri[i * 3 + 2]; }
+    const c = norm([cx / (nt * 3) - E0[0], cy / (nt * 3) - E0[1], cz / (nt * 3) - E0[2]]);
+    const up = Math.abs(c[1]) > 0.95 ? [1, 0, 0] : [0, 1, 0], u = norm(cross(c, up)), v = cross(u, c);
+    // the target's extent on the tangent plane at unit distance (vertices in front of the eye only)
+    let a0 = Infinity, a1 = -Infinity, b0 = Infinity, b1 = -Infinity;
+    for (let i = 0; i < nt * 3; i++) {
+      const p = [tri[i * 3] - E0[0], tri[i * 3 + 1] - E0[1], tri[i * 3 + 2] - E0[2]], z = dot(p, c);
+      if (z <= 1e-6) continue;
+      const a = dot(p, u) / z, b = dot(p, v) / z;
+      a0 = Math.min(a0, a); a1 = Math.max(a1, a); b0 = Math.min(b0, b); b1 = Math.max(b1, b);
+    }
+    if (!(a1 > a0) || !(b1 > b0)) return null;
+    const n = opts.n || 48, h = Math.max(a1 - a0, b1 - b0) / n, na = Math.max(2, Math.ceil((a1 - a0) / h)), nb = Math.max(2, Math.ceil((b1 - b0) / h));
+    const own = scene(tri, null), out = { total: 0, eyes: {}, fields: {}, either: 0, samples: 0 };
+    for (const e of names) out.eyes[e] = { visible: 0, by: {} };
+    for (const f of Object.keys(fields)) out.fields[f] = { inside: 0, visible: 0 };
+    for (let j = 0; j < nb; j++) for (let i = 0; i < na; i++) {
+      const a = a0 + (i + 0.5) * (a1 - a0) / na, b = b0 + (j + 0.5) * (b1 - b0) / nb;
+      const d = norm([c[0] + a * u[0] + b * v[0], c[1] + a * u[1] + b * v[1], c[2] + a * u[2] + b * v[2]]);
+      const tt = cast(own, E0, d);
+      if (!isFinite(tt)) continue;   // this sample is beside the target
+      const w = Math.pow(1 + a * a + b * b, -1.5);   // solid angle of a tangent-plane cell
+      const P = [E0[0] + d[0] * tt, E0[1] + d[1] * tt, E0[2] + d[2] * tt];
+      out.total += w; out.samples++;
+      let first = false, other = false;
+      names.forEach((e, k) => {
+        const o = eyesIn[e], dv = [P[0] - o[0], P[1] - o[1], P[2] - o[2]], L = Math.hypot(dv[0], dv[1], dv[2]);
+        const t = cast(sc, o, [dv[0] / L, dv[1] / L, dv[2] / L], L - 0.5);
+        const hit = sc.hitId, seen = hit < 0 || hit === target.id;
+        if (seen) { out.eyes[e].visible += w; if (!k) first = true; else other = true; }
+        else out.eyes[e].by[hit] = (out.eyes[e].by[hit] || 0) + w;
+      });
+      if (other) out.either += w;
+      for (const [f, test] of Object.entries(fields)) if (test(d)) { out.fields[f].inside += w; if (first) out.fields[f].visible += w; }
+    }
+    if (!out.total) return null;
+    const T = out.total, r = x => x / T;
+    for (const e of names) { const E = out.eyes[e]; E.visible = r(E.visible); for (const k of Object.keys(E.by)) E.by[k] = r(E.by[k]); }
+    for (const f of Object.keys(fields)) { out.fields[f].inside = r(out.fields[f].inside); out.fields[f].visible = r(out.fields[f].visible); }
+    out.either = r(out.either);
+    out.solidAngle = T * ((a1 - a0) / na) * ((b1 - b0) / nb);   // steradians
+    out.centre = angOf(c);
+    return out;
+  }
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const norm = a => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
+
+  return { SOURCES, IPD, FIELDS, MASKS, inShape, inField, inAll, outline, dirOf, angOf, toHead, fromHead, eyes, rotZ, mv, mtv, I3,
+    PROJ, scene, cast, sphere, cellOf, solidAngles, coverage, D2R, R2D };
+})();
+if (typeof module !== 'undefined' && module.exports) module.exports = HFE_VISION;
+/* ---------------- vision plot, obscuration and display occlusion (ENV-05, KIT-05) ----------------
+   The Vision dialog (Analyse group). The maths is in core/vision.js; this part gathers the visible scene as triangles,
+   finds the eye point and head frame of the posture on screen, draws the projected vision plot and tabulates how much of
+   each display each eye sees. State is kept in VISN, not in S, so saved setups and every other output are unchanged.
+   Left out of the obscuring geometry: the head itself and what is worn on it (appearance items, eyewear), which the
+   visual field and the kit masks stand for, plus annotations, reach zones and see-through materials (glass). */
+const VISN = { pol: { eye: 'mid', frame: 'world', proj: 'rect', extent: 'fwd', step: 1, ipd: HFE_VISION.IPD, field: true, rot: true, masks: {} }, last: null };
+try { const v = JSON.parse(localStorage.getItem('hfe-vision') || 'null'); if (v && typeof v === 'object') Object.assign(VISN.pol, v, { masks: { ...(v.masks || {}) } }); } catch { /* storage blocked */ }
+const saveVisn = () => { try { localStorage.setItem('hfe-vision', JSON.stringify(VISN.pol)); } catch { /* storage blocked */ } };
+// one fixed palette in both themes, so a plot reads the same on screen, in a PNG and in a report
+const VIS_CLS = {
+  display: { label: 'Display face', col: '#2f6fd0' },
+  body: { label: 'Manikin', col: '#e08a5b' },
+  kit: { label: 'Clothing and kit', col: '#6b7a3a' },
+  workstation: { label: 'Workstation', col: '#9aa5b1' },
+  equipment: { label: 'Environment equipment', col: '#cbbf9a' },
+  structure: { label: 'Walls, floor and structure', col: '#6d747c' },
+  none: { label: 'Nothing within 20 m', col: '#f2f4f7' }
+};
+
+// eye point (mid-eye) and head rotation (row-major, head to world) of the posture on screen
+function visEyeFrame(G) {
+  const SV = HFE_SOLVER;
+  if (G.body && G.body.sk) {
+    const sk = G.body.sk, F = SV.fk(sk, G.body.q), f = F[sk.index.head];
+    return { mid: SV.point(sk, F, sk.lm.eye[0], sk.lm.eye[1]), R: f.R.slice(), solver: 'whole-body' };
+  }
+  return { mid: [G.E.x, G.E.y, 0], R: HFE_VISION.rotZ(deg(G.dR - G.phi)), solver: 'classic' };
+}
+
+// the visible scene as triangles in world coordinates, an object table and the display faces to assess
+function visGather() {
+  const tris = [], ids = [], objs = [], keyIx = new Map(), targets = new Map(), v = new THREE.Vector3(), m = new THREE.Matrix4(), mi = new THREE.Matrix4();
+  let envDisp = 0;
+  const shown = o => { for (let p = o; p; p = p.parent) if (!p.visible) return false; return true; };
+  const nodeOfObj = o => { for (let p = o; p; p = p.parent) if (p.userData && p.userData.node) return p.userData.node; return ''; };
+  for (const g of [groups.body, groups.ws, groups.env]) {
+    g.updateMatrixWorld(true);
+    g.traverse(o => {
+      if (!o.isMesh || !shown(o)) return;
+      const node = nodeOfObj(o);
+      if (!node || /^(man\.(head|look|links)|ann|zones|grid)(\.|$)/.test(node)) return;
+      const mat = Array.isArray(o.material) ? o.material[0] : o.material;
+      if (!mat || mat.visible === false || (mat.transparent && mat.opacity < 0.5)) return;
+      const face = mat === MATS.screen || mat === MATS.envDisplay;
+      let key = node, cls, label = node, target = false;
+      if (face && /^ws\.scr\.\d+$/.test(node)) { key = node + '#face'; cls = 'display'; label = 'Screen ' + (+node.split('.')[2] + 1); target = true; }
+      else if (face && node === 'env.fixtures') { key = 'env.disp.' + envDisp; cls = 'display'; label = 'Environment display ' + (++envDisp); target = true; }
+      else if (face) { key = node + '#face'; cls = 'display'; label = 'Display, ' + node; }
+      else cls = node.startsWith('man.kit') ? 'kit' : node.startsWith('man') ? 'body' : node.startsWith('env.shell') ? 'structure' : node.startsWith('env') ? 'equipment' : 'workstation';
+      if (!face) label = treeLabel(node);
+      if (!keyIx.has(key)) { keyIx.set(key, objs.length); objs.push({ key, node, cls, label }); }
+      const id = keyIx.get(key), geo = o.geometry, pos = geo.attributes.position, idx = geo.index;
+      if (!pos) return;
+      const nTri = idx ? idx.count / 3 : pos.count / 3, inst = o.isInstancedMesh ? o.count : 1;
+      const own = target ? (targets.get(id) || targets.set(id, { id, label, tris: [] }).get(id)).tris : null;
+      for (let k = 0; k < inst; k++) {
+        m.copy(o.matrixWorld); if (o.isInstancedMesh) { o.getMatrixAt(k, mi); m.multiply(mi); }
+        for (let t = 0; t < nTri; t++) {
+          for (let c = 0; c < 3; c++) {
+            const vi = idx ? idx.getX(t * 3 + c) : t * 3 + c;
+            v.fromBufferAttribute(pos, vi).applyMatrix4(m); tris.push(v.x, v.y, v.z); if (own) own.push(v.x, v.y, v.z);
+          }
+          ids.push(id);
+        }
+      }
+    });
+  }
+  return { tris: Float64Array.from(tris), ids: Int32Array.from(ids), objs, targets: [...targets.values()] };
+}
+function treeLabel(node) {
+  const n = treeNodes().find(x => x.id === node);
+  if (n) return n.label;
+  if (node.startsWith('env.station.')) return 'Other seat, ' + node.slice(12);
+  return ({ 'env.fixtures': 'Environment fixtures', 'env.shell.walls': 'Walls', 'env.shell.floor': 'Floor' })[node] || node;
+}
+
+function visRun() {
+  const L = window.__last; if (!L) return null;
+  const V = HFE_VISION, P = VISN.pol, t0 = performance.now();
+  const ef = visEyeFrame(L.G), E = V.eyes(ef.mid, ef.R, P.ipd), from = P.eye === 'L' ? E.L : P.eye === 'R' ? E.R : E.mid;
+  const gat = visGather(), t1 = performance.now(), sc = V.scene(gat.tris, gat.ids), t2 = performance.now();
+  const Rf = P.frame === 'head' ? ef.R : V.I3, az = P.extent === 'all' ? [-180, 180] : [-120, 120];
+  const grid = V.sphere(sc, from, { step: P.step, R: Rf, az, el: [-90, 90], tmax: 2e4 });
+  const masks = Object.keys(V.MASKS).filter(k => P.masks[k]).map(k => V.MASKS[k]);
+  const fields = { eyeMax: d => V.inField(V.FIELDS.eyeMax, ...V.toHead(ef.R, d)) };
+  if (masks.length) fields.kit = d => V.inAll(masks, ...V.toHead(ef.R, d));
+  const rows = gat.targets.map(t => ({ id: t.id, label: t.label, c: V.coverage(sc, { id: t.id, tris: Float64Array.from(t.tris) }, { mid: E.mid, L: E.L, R: E.R }, fields) })).filter(r => r.c);
+  const sa = V.solidAngles(grid), t3 = performance.now();
+  const fwd = V.angOf(V.mv(ef.R, [1, 0, 0]));
+  VISN.last = { when: new Date(), pol: JSON.parse(JSON.stringify(P)), ef, E, from, grid, objs: gat.objs, rows, masks, sa, fwd, nTri: sc.n,
+    ms: { gather: t1 - t0, bvh: t2 - t1, rays: t3 - t2, total: t3 - t0 } };
+  window.__vision = VISN;
+  return VISN.last;
+}
+
+/* ---- drawing the plot ---- */
+function visColours() {
+  const cs = getComputedStyle(document.documentElement), out = {};
+  for (const [k, c] of Object.entries(VIS_CLS)) { const h = parseInt(c.col.slice(1), 16); out[k] = { r: (h >> 16) / 255, g: ((h >> 8) & 255) / 255, b: (h & 255) / 255 }; }
+  for (const t of ['--ink', '--muted', '--panel', '--rule-strong', '--bad', '--warn', '--ok', '--accent', '--f-sans']) out[t] = cs.getPropertyValue(t).trim();
+  return out;
+}
+function visDraw(cv, R) {
+  const V = HFE_VISION, P = R.pol, proj = V.PROJ[VISN.pol.proj], C = visColours(), g = R.grid;
+  const hammer = VISN.pol.proj === 'hammer', azr = g.az, pad = 34;
+  // plot extent in projected units
+  const ext = hammer ? (() => { const a = proj.project(azr[1], 0)[0]; return { x0: -a, x1: a, y0: -Math.SQRT2, y1: Math.SQRT2 }; })() : { x0: azr[0], x1: azr[1], y0: -90, y1: 90 };
+  const Wd = 1000, sx = (Wd - 2 * pad) / (ext.x1 - ext.x0), Hd = Math.round((ext.y1 - ext.y0) * sx) + 2 * pad;
+  cv.width = Wd; cv.height = Hd;
+  const ctx = cv.getContext('2d'), img = ctx.createImageData(Wd, Hd), px = img.data;
+  const X = x => pad + (x - ext.x0) * sx, Y = y => Hd - pad - (y - ext.y0) * sx;
+  const masks = R.masks, Rf = g.R, idAt = new Int32Array(Wd * Hd).fill(-2), inK = new Uint8Array(Wd * Hd);
+  for (let j = 0; j < Hd; j++) for (let i = 0; i < Wd; i++) {
+    const u = ext.x0 + (i + 0.5 - pad) / sx, w = ext.y0 + (Hd - pad - j - 0.5) / sx, a = proj.unproject(u, w);
+    if (!a || a[0] < azr[0] || a[0] > azr[1]) continue;
+    const k = V.cellOf(g, a[0], a[1]); if (k < 0) continue;
+    const id = g.ids[k], o = id >= 0 ? R.objs[id] : null, col = C[o ? o.cls : 'none'];
+    // nearer surfaces are drawn darker, so depth reads without lighting
+    const d = g.dist[k], f = id < 0 ? 1 : 0.78 + 0.22 * Math.min(1, Math.max(0, (d - 300) / 2500));
+    let r = col.r * f, gg = col.g * f, b = col.b * f;
+    if (masks.length) { const h = V.toHead(R.ef.R, V.mv(Rf, V.dirOf(a[0], a[1]))); if (V.inAll(masks, h[0], h[1])) inK[j * Wd + i] = 1; else { r *= 0.35; gg *= 0.35; b *= 0.35; } }
+    const p = (j * Wd + i) * 4; px[p] = r * 255; px[p + 1] = gg * 255; px[p + 2] = b * 255; px[p + 3] = 255; idAt[j * Wd + i] = id;
+  }
+  // object edges
+  for (let j = 1; j < Hd; j++) for (let i = 1; i < Wd; i++) {
+    const k = j * Wd + i, a = idAt[k];
+    if (a === -2) continue;
+    const l = idAt[k - 1], u = idAt[k - Wd];
+    if ((l !== -2 && l !== a) || (u !== -2 && u !== a)) { const p = k * 4; px[p] *= 0.55; px[p + 1] *= 0.55; px[p + 2] *= 0.55; }
+  }
+  // the edge of what the kit masks leave open, traced on the pixels (a mask can be open on some sides)
+  if (masks.length) for (let j = 1; j < Hd - 1; j++) for (let i = 1; i < Wd - 1; i++) {
+    const k = j * Wd + i; if (idAt[k] === -2) continue;
+    const a = inK[k];
+    if ((idAt[k - 1] !== -2 && inK[k - 1] !== a) || (idAt[k - Wd] !== -2 && inK[k - Wd] !== a) || (idAt[k + 1] !== -2 && inK[k + 1] !== a) || (idAt[k + Wd] !== -2 && inK[k + Wd] !== a)) {
+      const p = k * 4; px[p] = 214; px[p + 1] = 48; px[p + 2] = 39;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  ctx.font = `11px ${C['--f-sans'] || 'system-ui'}`; ctx.lineJoin = 'round';
+  // graticule every 30°
+  ctx.strokeStyle = 'rgba(128,128,128,0.45)'; ctx.lineWidth = 0.75; ctx.fillStyle = C['--muted'];
+  const poly = (pts, close) => { // pts in plot-frame [az, el]; split where the line jumps (wrap or off the plot)
+    ctx.beginPath(); let prev = null;
+    for (const p of pts) {
+      if (!p || p[0] < azr[0] - 1e-9 || p[0] > azr[1] + 1e-9) { prev = null; continue; }
+      const q = proj.project(p[0], p[1]), x = X(q[0]), y = Y(q[1]);
+      if (prev && Math.hypot(x - prev[0], y - prev[1]) < Wd / 4) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+      prev = [x, y];
+    }
+    if (close) ctx.closePath(); ctx.stroke();
+  };
+  for (let a = Math.ceil(azr[0] / 30) * 30; a <= azr[1]; a += 30) { const pts = []; for (let e = -90; e <= 90; e += 2) pts.push([a, e]); poly(pts); const q = proj.project(a, -90 + (hammer ? 0 : 0)); ctx.fillText(`${a > 0 ? '+' : a < 0 ? '−' : ''}${Math.abs(a)}°`, X(proj.project(a, 0)[0]) + 2, Hd - pad + 14); void q; }
+  for (let e = -60; e <= 60; e += 30) { const pts = []; for (let a = azr[0]; a <= azr[1]; a += 2) pts.push([a, e]); poly(pts); const q = proj.project(azr[0], e); ctx.fillText(`${e > 0 ? '+' : e < 0 ? '−' : ''}${Math.abs(e)}°`, Math.max(2, X(q[0]) - 30), Y(q[1]) + 4); }
+  // head-fixed fields drawn in the plot frame
+  const toPlot = (az, el) => V.angOf(V.mtv(Rf, V.fromHead(R.ef.R, az, el)));
+  const field = (f, colour, dash, width = 1.5) => { ctx.strokeStyle = colour; ctx.setLineDash(dash); ctx.lineWidth = width; for (const s of f.shapes) poly(V.outline(s, 48).map(p => toPlot(...p))); ctx.setLineDash([]); };
+  if (VISN.pol.field) { field(V.FIELDS.monoL, C['--ink'], [6, 4]); field(V.FIELDS.monoR, C['--ink'], [2, 3]); }
+  if (VISN.pol.rot) { field(V.FIELDS.eyeOpt, C['--ok'], []); field(V.FIELDS.eyeMax, C['--warn'], []); }
+  // straight ahead of the head, and display labels
+  const fa = toPlot(0, 0), fq = proj.project(fa[0], fa[1]);
+  ctx.strokeStyle = C['--ink']; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(X(fq[0]) - 7, Y(fq[1])); ctx.lineTo(X(fq[0]) + 7, Y(fq[1])); ctx.moveTo(X(fq[0]), Y(fq[1]) - 7); ctx.lineTo(X(fq[0]), Y(fq[1]) + 7); ctx.stroke();
+  ctx.font = `600 11px ${C['--f-sans'] || 'system-ui'}`;
+  R.rows.forEach((r, n) => {
+    const c = V.angOf(V.mtv(Rf, V.dirOf(...r.c.centre))); if (c[0] < azr[0] || c[0] > azr[1]) return;
+    const q = proj.project(c[0], c[1]), t = visShort(r.label), x = X(q[0]), y = Y(q[1]);
+    ctx.fillStyle = 'rgba(0,0,0,0.55)'; const w = ctx.measureText(t).width + 8; ctx.fillRect(x - w / 2, y - 8, w, 16);
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.fillText(t, x, y + 4); ctx.textAlign = 'start'; void n;
+  });
+  ctx.fillStyle = C['--muted']; ctx.font = `11px ${C['--f-sans'] || 'system-ui'}`;
+  ctx.fillText(`Azimuth (+ right) and elevation from the ${({ mid: 'mid-eye point', L: 'left eye', R: 'right eye' })[P.eye]}, ${P.frame === 'head' ? 'head axes' : 'workstation axes'}; ${hammer ? 'Hammer–Aitoff equal-area' : 'rectangular'} projection`, pad, 16);
+}
+const visShort = l => l.replace(/^Screen /, 'S').replace(/^Environment display /, 'D');
+
+/* ---- dialog ---- */
+const pctTxt = v => v == null ? '—' : `${fmt(100 * v, v > 0.995 && v < 1 ? 1 : 0)} %`;
+function visForm() {
+  const P = VISN.pol, V = HFE_VISION, sel = (id, label, opts, val) => `<div class="field"><label for="${id}">${label}</label><select id="${id}">${opts.map(([v, t]) => `<option value="${v}"${String(v) === String(val) ? ' selected' : ''}>${t}</option>`).join('')}</select></div>`;
+  $('#vis-form').innerHTML =
+    sel('vis-eye', 'Plot from', [['mid', 'Mid-eye point (cyclopean)'], ['L', 'Left eye'], ['R', 'Right eye']], P.eye) +
+    sel('vis-frame', 'Axes', [['world', 'Workstation (forward, level)'], ['head', 'Head (moves with the head)']], P.frame) +
+    sel('vis-proj', 'Projection', [['rect', 'Rectangular, azimuth and elevation'], ['hammer', 'Hammer–Aitoff, equal area']], P.proj) +
+    sel('vis-extent', 'Extent', [['fwd', 'Forward, ±120°'], ['all', 'All round, ±180°']], P.extent) +
+    sel('vis-step', 'Resolution', [[2, '2° (fast)'], [1, '1°'], [0.5, '0.5° (slow)']], P.step) +
+    `<div class="field"><label for="vis-ipd">Interpupillary distance</label><div class="numin"><input type="number" id="vis-ipd" min="40" max="80" step="1" value="${P.ipd}"><span class="u">mm</span></div></div>` +
+    `<div class="sec">Overlays</div>` +
+    `<label class="chk"><input type="checkbox" id="vis-field"${P.field ? ' checked' : ''}> Visual field of each eye (dashed left, dotted right)</label>` +
+    `<label class="chk"><input type="checkbox" id="vis-rot"${P.rot ? ' checked' : ''}> Eye rotation, optimum (green) and maximum (amber)</label>` +
+    `<div class="sec">Kit field-of-view masks</div>` +
+    Object.entries(V.MASKS).map(([k, m]) => `<label class="chk" title="${esc(m.note)}"><input type="checkbox" data-mask="${k}"${P.masks[k] ? ' checked' : ''}> ${esc(m.name)}</label>`).join('') +
+    `<p class="help">Masks are indicative until measured per item. Outside the masks the plot is darkened and their edge is drawn in red; together they leave only what every mask leaves open.</p>` +
+    `<div class="btnrow"><button class="btn primary" id="vis-png">Save PNG</button><button class="btn" id="vis-csv">Save CSV</button></div>` +
+    `<p class="help">The plot is what the eye sees in every direction: a ray from the eye point through each cell, coloured by the first thing it meets. The head and anything worn on it are left out; the visual field and kit masks stand for them. Glass is see-through.</p>`;
+}
+function visRender() {
+  const R = VISN.last, out = $('#vis-out');
+  if (!R) { out.innerHTML = '<p class="popa-empty">Nothing to show yet.</p>'; return; }
+  const V = HFE_VISION, kit = R.masks.length;
+  const occ = r => { const by = Object.entries(r.c.eyes.mid.by).sort((a, b) => b[1] - a[1]); return by.length ? by.slice(0, 2).map(([id, w]) => `${esc(R.objs[id] ? R.objs[id].label : '?')} ${pctTxt(w)}`).join(', ') : '—'; };
+  const legend = Object.entries(VIS_CLS).map(([k, c]) => `<span class="vis-key"><i style="background:${c.col}"></i>${c.label}</span>`).join('');
+  out.innerHTML = `<canvas id="vis-cv" class="vis-plot" aria-label="Projected vision plot"></canvas><div class="vis-legend">${legend}</div>
+    <h3>Displays</h3>
+    <div class="table-wrap"><table class="popa-t"><thead><tr><th>Display</th><th class="num" title="Solid angle the display face subtends at the mid-eye point">Size</th><th class="num" title="Share of the display face seen unobscured from the mid-eye point">Visible</th><th class="num" title="Share seen by at least one eye: ambinocular">Either eye</th><th class="num" title="Share both visible and within the maximum eye rotation, head still">In eye rotation</th>${kit ? '<th class="num" title="Share both visible and inside every chosen kit mask">Through kit</th>' : ''}<th>Obscured by (mid-eye)</th></tr></thead><tbody>` +
+    (R.rows.length ? R.rows.map(r => `<tr><td>${esc(r.label)}</td><td class="num">${fmt(r.c.solidAngle * (180 / Math.PI) ** 2)} deg²</td><td class="num">${pctTxt(r.c.eyes.mid.visible)}</td><td class="num">${pctTxt(Math.max(r.c.either, r.c.eyes.mid.visible))}</td><td class="num">${pctTxt(r.c.fields.eyeMax.visible)}</td>${kit ? `<td class="num">${pctTxt(r.c.fields.kit.visible)}</td>` : ''}<td>${occ(r)}</td></tr>`).join('')
+      : `<tr><td colspan="${kit ? 7 : 6}">No display faces are shown.</td></tr>`) + `</tbody></table></div>
+    <p class="help">From the posture on screen (${R.ef.solver} solver). Mid-eye point ${R.ef.mid.map(v => fmt(v)).join(', ')} mm; head straight ahead ${fmt(R.fwd[0])}° azimuth, ${fmt(R.fwd[1])}° elevation; interpupillary distance ${R.pol.ipd} mm. Shares are by solid angle. "In eye rotation" uses ${esc(V.FIELDS.eyeMax.name.toLowerCase())} (${esc(V.SOURCES.EYE.split(':')[0])}); the visual field is from ${esc(V.SOURCES.FIELD.split('. In:')[0])}. ${kit ? 'Kit masks are indicative: ' + R.masks.map(m => esc(m.name)).join(', ') + '.' : ''}</p>`;
+  visDraw($('#vis-cv'), R);
+  $('#vis-status').textContent = `${R.nTri.toLocaleString('en-GB')} triangles, ${(R.grid.nAz * R.grid.nEl).toLocaleString('en-GB')} rays, ${fmt(R.ms.total)} ms`;
+}
+function visRefresh() { $('#vis-status').textContent = 'Casting rays…'; setTimeout(() => { visRun(); visRender(); }, 20); }
+function visCsv(R) {
+  const V = HFE_VISION, q = s => `"${String(s).replace(/"/g, '""')}"`, lines = [];
+  lines.push('# HFE Lab Workspace Visualisation, vision plot and display occlusion');
+  lines.push(`# Run,${R.when.toISOString()}`, `# Manikin,${q($('#who').textContent.trim())}`, `# Environment,${q(S.env || '')}`, `# Clothing and kit,${q(S.kit || 'none')}`);
+  lines.push(`# Solver,${R.ef.solver}`, `# Mid-eye point (mm),${R.ef.mid.map(v => v.toFixed(1)).join(',')}`, `# Head straight ahead (az el deg),${R.fwd.map(v => v.toFixed(2)).join(',')}`, `# Interpupillary distance (mm),${R.pol.ipd}`);
+  lines.push(`# Kit masks (indicative),${q(R.masks.map(m => m.name).join('; ') || 'none')}`, `# Eye rotation,${q(V.SOURCES.EYE)}`, `# Visual field,${q(V.SOURCES.FIELD)}`);
+  lines.push('display,solid_angle_deg2,visible_mid_eye,visible_left,visible_right,visible_either_eye,in_eye_rotation,through_kit,obscured_by');
+  for (const r of R.rows) {
+    const by = Object.entries(r.c.eyes.mid.by).sort((a, b) => b[1] - a[1]).map(([id, w]) => `${R.objs[id] ? R.objs[id].label : id} ${(100 * w).toFixed(1)}%`).join('; ');
+    lines.push([q(r.label), (r.c.solidAngle * (180 / Math.PI) ** 2).toFixed(1), r.c.eyes.mid.visible.toFixed(4), r.c.eyes.L.visible.toFixed(4), r.c.eyes.R.visible.toFixed(4), Math.max(r.c.either, r.c.eyes.mid.visible).toFixed(4),
+      r.c.fields.eyeMax.visible.toFixed(4), r.c.fields.kit ? r.c.fields.kit.visible.toFixed(4) : '', q(by)].join(','));
+  }
+  return lines.join('\n') + '\n';
+}
+async function visPng(R) {
+  const src = $('#vis-cv'), cap = 46, cv = document.createElement('canvas'); cv.width = src.width; cv.height = src.height + cap;
+  const ctx = cv.getContext('2d'), cs = getComputedStyle(document.documentElement);
+  ctx.fillStyle = cs.getPropertyValue('--panel').trim() || '#fff'; ctx.fillRect(0, 0, cv.width, cv.height); ctx.drawImage(src, 0, 0);
+  ctx.fillStyle = cs.getPropertyValue('--ink').trim() || '#000'; ctx.font = '11px system-ui, sans-serif';
+  ctx.fillText(`HFE Lab · ${$('#who').textContent.trim()} · ${S.env || ''} · kit ${S.kit || 'none'} · masks: ${R.masks.map(m => m.name).join(', ') || 'none'} (indicative)`, 34, src.height + 16);
+  ctx.fillText(`Mid-eye ${R.ef.mid.map(v => v.toFixed(0)).join(', ')} mm · IPD ${R.pol.ipd} mm · ${R.pol.step}° cells · ${R.ef.solver} solver · ${R.when.toISOString()}`, 34, src.height + 32);
+  const blob = await new Promise(r => cv.toBlob(r, 'image/png'));
+  saveFile(`vision-plot-${stamp()}.png`, blob);
+}
+function openVision() { visForm(); $('#vis').hidden = false; visRefresh(); }
+function bindVision() {
+  $('#vis-open').onclick = openVision;
+  const close = () => { $('#vis').hidden = true; };
+  $('#vis-close').onclick = close;
+  $('#vis').addEventListener('click', e => { if (e.target.id === 'vis') close(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#vis').hidden) close(); });
+  $('#vis-form').addEventListener('change', e => {
+    const t = e.target, P = VISN.pol;
+    if (t.dataset.mask) P.masks[t.dataset.mask] = t.checked;
+    else if (t.id === 'vis-ipd') P.ipd = clamp(+t.value || HFE_VISION.IPD, 40, 80);
+    else if (t.id === 'vis-step') P.step = +t.value;
+    else if (t.id === 'vis-field' || t.id === 'vis-rot') P[t.id.slice(4)] = t.checked;
+    else if (t.id.startsWith('vis-')) P[t.id.slice(4)] = t.value;
+    saveVisn();
+    // projection and overlays only redraw; everything else casts the rays again
+    if (['vis-proj', 'vis-field', 'vis-rot'].includes(t.id) && VISN.last) visRender(); else visRefresh();
+  });
+  $('#vis-form').addEventListener('click', e => {
+    const R = VISN.last; if (!R) return;
+    if (e.target.id === 'vis-csv') saveFile(`vision-displays-${stamp()}.csv`, visCsv(R));
+    else if (e.target.id === 'vis-png') visPng(R);
+  });
+}
+bindVision();
+VISN.run = () => { const R = visRun(); if (!$('#vis').hidden) visRender(); return R; };
+VISN.V = HFE_VISION; window.__vision = VISN;
 
 /* ---------------- population accommodation (POP-05, POP-06) ----------------
    Every record of the chosen dataset is fitted to the workstation with the same rules as the Quick fit buttons,
