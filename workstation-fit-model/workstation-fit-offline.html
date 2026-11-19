@@ -513,7 +513,7 @@ textarea{width:100%;min-height:90px;font-size:11px;border:1px solid var(--rule);
           </div></details>
           <details class="pnl" open><summary>Clothing and kit</summary><div class="pnl-body">
             <div class="row2"><label for="kit">Loadout</label><select id="kit"></select></div>
-            <p class="help" id="kit-help">Clothing is drawn over the body for appearance only. It changes no dimension, allowance or check; the shoe allowance is set under the workstation.</p>
+            <p class="help" id="kit-help"></p>
           </div></details>
           <details class="pnl" open><summary>Body dimensions</summary><div class="pnl-body">
             <p class="help">Edit any value to make a custom manikin. The percentile column shows where each value sits in the selected dataset.</p>
@@ -1325,6 +1325,14 @@ if (typeof module !== 'undefined' && module.exports) module.exports = HFE_SOLVER
 /* ---------------- posture solver ---------------- */
 // ov (optional, from the whole-body solver): { arms: { [side]: { E, W } }, legs: { K, A } } replaces the two-link
 // arm IK and the leg construction; everything else is computed as in the classic seated solver.
+// what the chosen loadout adds: mass, thickness over each capsule segment, and the footwear's shoe allowance (core/kit.js)
+function kitFx() { return (typeof HFE_KIT !== 'undefined' && HFE_KIT.effects(S.kit)) || { massKg: 0, segs: {}, shoe: null, items: [] }; }
+function kitHelp() {
+  const fx = kitFx(), lo = HFE_KIT.loadouts[S.kit];
+  if (!fx.items.length) return 'No clothing: the bare body is shown. Choose a loadout to dress the manikin.';
+  const segs = Object.entries(fx.segs).map(([k, t]) => `${HFE_SOLVER.partName(k)} ${t}`).join(', ');
+  return `${lo.note || ''} Adds ${fx.massKg.toFixed(2)} kg. Desk and screen clearance use a body thickened by the clothing (mm: ${segs}), and thigh clearance loses ${fx.segs.thigh || 0} mm.${fx.shoe != null ? ` Sets the shoe allowance to ${fx.shoe} mm.` : ''} Typical values from public descriptions.`;
+}
 function solve(M, W, ov) {
   const G = {}, R = {};
   const deskY = W.deskH, deskUnder = W.deskH - W.deskT, seatY = W.seatH;
@@ -1417,7 +1425,7 @@ function solve(M, W, ov) {
     if (x >= 0 && (maxTop == null || top > maxTop)) { maxTop = top; maxTopX = x; }
   }
   if (KF.x >= 0 && (maxTop == null || K.y + dk > maxTop)) { maxTop = K.y + dk; maxTopX = Math.max(K.x, 0); }
-  R.thigh = maxTop == null ? null : deskUnder - maxTop;
+  R.thigh = maxTop == null ? null : deskUnder - maxTop - (kitFx().segs.thigh || 0);   // less the thickness of clothing over the thigh
   R.legroom = W.legroom - KF.x;
   R.seatDepth = M.buttockpopliteallength - W.seatDepth;
   R.seatWidth = W.seatWidth - M.hipbreadthsitting;
@@ -1588,7 +1596,9 @@ function solvePosture(M, W) {
   G.body = body;
   R.romList = body ? body.rom : SV.romReport(classicAngles(G, R));
   R.rom = R.romList.length ? R.romList[0].margin : null;
-  const cl = SV.clearance(SV.capsules(M, postureLandmarks(M, G)), [...deskBoxes(W, G), ...screenBoxes(G)]);
+  // clearance capsules grow by the thickest kit item over each segment (core/kit.js `segs`)
+  const kfx = kitFx(), caps = SV.capsules(M, postureLandmarks(M, G)).map(c => { const t = kfx.segs[c.id.replace(/[LR]$/, '')] || 0; return t ? { ...c, ra: c.ra + t, rb: c.rb + t } : c; });
+  const cl = SV.clearance(caps, [...deskBoxes(W, G), ...screenBoxes(G)]);
   G.clear = cl;
   R.clearDesk = cl.byGroup.desk ? cl.byGroup.desk.d : null;
   R.clearScreens = cl.byGroup.screens ? cl.byGroup.screens.d : null;
@@ -1861,64 +1871,95 @@ const HFE_MANIKIN_MESH = {"v":1,"source":"MakeHuman 1.1 base mesh hm08, default 
    This is the first step of the kit model in docs/ENVIRONMENTS_AND_KIT.md (section 4). Each item is a geometric
    layer (tier 2) built on the manikin's own skin: the item names the body it covers by bone and by height relative
    to a joint, how far it stands off the skin (ease, mm) and how much it is smoothed (so it drapes over detail
-   instead of following it). Items get scene node IDs `man.kit.<id>`. A loadout is a named set of items.
+   instead of following it). Items get scene node IDs `man.kit.<id>`. A loadout is a named set of items, drawn in order,
+   each item layered outside the ones before it.
 
-   Today's items are appearance only: they change no dimension, allowance, mass or range of motion, and the checks
-   ignore them. Armour, helmets, gloves and eyewear will add those fields (allowances, massKg, rom, fov) when they
-   are added. All geometry and patterns here are original and illustrative, drawn from public descriptions; they are
-   not dimensioned in-service data, and the camouflage is an MTP-style pattern, not the Crown-copyright design.
+   What an item changes besides its appearance:
+   - massKg: its mass, summed per loadout and reported (it feeds balance and L5/S1 loading when they are modelled);
+   - segs: its thickness over each clearance capsule segment (mm; trunk, upperarm, forearm, thigh, shank, foot). The
+     capsules used for desk and screen clearance grow by the thickest item over each segment, and the thigh
+     clearance check loses the thigh thickness;
+   - shoe (footwear): heel-and-sole height (mm), which becomes the shoe allowance when the loadout is chosen.
+   Range of motion and field of view are not changed yet. Masses and thicknesses are typical values from public
+   descriptions, not measured in-service data; they are recorded per item in `source`.
 
    cover: a vertex is covered when its dominant bone matches `bones` and, where given, its rest height is above
    `above` or below `below` ([joint, offset mm]), and is `within` or `outside` a distance of a joint ([joint, mm]).
-   Joints: hip, neck, ankle, shoulder, wrist (sided joints use the midpoint of left and right for heights).
+   Joints: hip, neck, shoulder, elbow, wrist, knee, ankle. For a sided joint the vertex's own side is used.
    material: { colour } or { pattern: 'mtp', colours: [...] } (pattern colours from light to dark). Footwear also colours
    the shoe last, which is drawn whenever the shoe allowance is set. */
 const HFE_KIT = (() => {
-  const SRC_PUBLIC = 'Illustrative geometry and colours from public descriptions and photographs (no dimensioned in-service data).';
+  const SRC = 'Illustrative geometry from public descriptions and photographs; mass and thickness are typical values, not measured in-service data.';
+  // the shirt is tucked in: its hem (hip + 100) is under the belt (hip + 92 to 138) and the trousers (to hip + 155)
+  // the MTP colourway; the pattern itself is generated (core/bodylib.js) until the official artwork is supplied
   const MTP = ['#a79d78', '#7c7a52', '#5a5a3a', '#5b4a33', '#2f3125'];
+  const mtpMat = { pattern: 'mtp', colours: MTP, roughness: 0.9 };
+  const shirtCover = [{ bones: '^(pelvis|spine|trunk|shoulder|upperarm|forearm)', above: ['hip', 100] }, { bones: '^neck1', below: ['neck', 18] }];
   const items = {
     'mtp-shirt': {
-      name: 'Combat shirt, MTP-style', kind: 'garment', ease: 9, smooth: 14,
-      cover: [{ bones: '^(pelvis|spine|trunk|shoulder|upperarm|forearm)', above: ['hip', 70] }, { bones: '^neck1', below: ['neck', 18] }],
-      material: { pattern: 'mtp', colours: MTP, roughness: 0.9 }, source: SRC_PUBLIC,
+      name: 'Combat shirt, MTP', kind: 'garment', ease: 9, smooth: 14, massKg: 0.45, segs: { trunk: 9, upperarm: 9, forearm: 8 },
+      cover: shirtCover, material: mtpMat, source: SRC,
+    },
+    'mtp-shirt-rolled': {
+      name: 'Combat shirt, MTP, sleeves rolled', kind: 'garment', ease: 9, smooth: 14, massKg: 0.45, segs: { trunk: 9, upperarm: 12 },
+      cover: [{ bones: '^(pelvis|spine|trunk)', above: ['hip', 100] }, { bones: '^neck1', below: ['neck', 18] }, { bones: '^(shoulder|upperarm)', outside: ['elbow', 70] }],
+      material: mtpMat, source: SRC,
+    },
+    'mtp-sleeve-roll': {
+      name: 'Rolled sleeves', kind: 'garment', ease: 17, smooth: 5, massKg: 0, segs: {},
+      cover: [{ bones: '^upperarm', within: ['elbow', 118], outside: ['elbow', 52] }],
+      material: mtpMat, source: SRC,
     },
     'mtp-trousers': {
-      name: 'Combat trousers, MTP-style', kind: 'garment', ease: 7, smooth: 14,
-      cover: [{ bones: '^(pelvis|buttock|thigh|shank)' }, { bones: '^(spine|trunk)', below: ['hip', 140] }],
-      material: { pattern: 'mtp', colours: MTP, roughness: 0.9 }, source: SRC_PUBLIC,
+      name: 'Combat trousers, MTP', kind: 'garment', ease: 7, smooth: 14, massKg: 0.6, segs: { trunk: 7, thigh: 7, shank: 8 },
+      cover: [{ bones: '^(pelvis|buttock|thigh|shank)' }, { bones: '^(spine|trunk)', below: ['hip', 155] }],
+      material: mtpMat, source: SRC,
+    },
+    'belt-webbing': {
+      name: 'Belt, olive webbing', kind: 'garment', ease: 12, smooth: 6, massKg: 0.2, segs: {},
+      cover: [{ bones: '^(pelvis|spine|trunk|buttock)', above: ['hip', 92], below: ['hip', 138] }],
+      material: { colour: '#6e6a4c', roughness: 0.8 }, source: SRC,
     },
     'combat-boots': {
-      name: 'Combat boots, brown', kind: 'footwear', ease: 9, smooth: 6,
+      name: 'Combat boots, brown', kind: 'footwear', ease: 9, smooth: 6, massKg: 1.9, shoe: 35, segs: { shank: 9, foot: 10 },
       cover: [{ bones: '^shank', below: ['ankle', 150] }, { bones: '^foot', above: ['ankle', -30] }],
-      material: { colour: '#5e4a35', roughness: 0.6 }, source: SRC_PUBLIC,
+      material: { colour: '#5e4a35', roughness: 0.6 }, source: SRC,
     },
     'raf-shirt': {
-      name: 'Shirt collar, RAF light blue', kind: 'garment', ease: 4, smooth: 8,
+      name: 'Shirt, RAF light blue', kind: 'garment', ease: 4, smooth: 8, massKg: 0.25, segs: {},
       cover: [{ bones: '^(trunk|neck1|shoulder|spine3)', within: ['neck', 105], below: ['neck', 25] }],
-      material: { colour: '#a9bfd8', roughness: 0.8 }, source: SRC_PUBLIC,
+      material: { colour: '#a9bfd8', roughness: 0.8 }, source: SRC,
     },
     'raf-jumper': {
-      name: 'Jumper, RAF blue-grey', kind: 'garment', ease: 10, smooth: 16,
+      name: 'Jumper, RAF blue-grey', kind: 'garment', ease: 10, smooth: 16, massKg: 0.55, segs: { trunk: 12, upperarm: 11, forearm: 10 },
       cover: [{ bones: '^(pelvis|spine|trunk|shoulder|upperarm|forearm)', above: ['hip', 60], outside: ['neck', 80] }],
-      material: { colour: '#56637a', roughness: 0.95 }, source: SRC_PUBLIC,
+      material: { colour: '#56637a', roughness: 0.95 }, source: SRC,
     },
     'raf-trousers': {
-      name: 'Trousers, RAF blue-grey', kind: 'garment', ease: 6, smooth: 14,
+      name: 'Trousers, RAF blue-grey', kind: 'garment', ease: 6, smooth: 14, massKg: 0.5, segs: { trunk: 6, thigh: 6, shank: 6 },
       cover: [{ bones: '^(pelvis|buttock|thigh|shank)' }, { bones: '^(spine|trunk)', below: ['hip', 140] }, { bones: '^foot', above: ['ankle', -10] }],
-      material: { colour: '#3f4a5d', roughness: 0.85 }, source: SRC_PUBLIC,
+      material: { colour: '#3f4a5d', roughness: 0.85 }, source: SRC,
     },
     'black-shoes': {
-      name: 'Shoes, black', kind: 'footwear', cover: [],
-      material: { colour: '#1d1f22', roughness: 0.35 }, source: SRC_PUBLIC,
+      name: 'Shoes, black', kind: 'footwear', cover: [], massKg: 1.0, shoe: 25, segs: { foot: 6 },
+      material: { colour: '#1d1f22', roughness: 0.35 }, source: SRC,
     },
   };
   // listed in the order they are drawn: outer layers after the ones they cover
   const loadouts = {
     none: { name: 'None', items: [] },
-    mtp: { name: 'MTP-style combat clothing', items: ['mtp-trousers', 'combat-boots', 'mtp-shirt'], note: 'Land, temperate: MTP-style shirt and trousers with brown combat boots.' },
+    mtp: { name: 'MTP combat clothing', items: ['mtp-trousers', 'combat-boots', 'mtp-shirt', 'belt-webbing'], note: 'Land, temperate: MTP shirt (tucked in) and trousers, webbing belt, brown combat boots.' },
+    'mtp-rolled': { name: 'MTP, sleeves rolled up', items: ['mtp-trousers', 'combat-boots', 'mtp-shirt-rolled', 'mtp-sleeve-roll', 'belt-webbing'], note: 'As MTP combat clothing, with the sleeves rolled above the elbow.' },
     'raf-blues': { name: 'RAF blues (working dress)', items: ['raf-trousers', 'black-shoes', 'raf-shirt', 'raf-jumper'], note: 'RAF blue-grey jumper and trousers over a light blue shirt, with black shoes.' },
   };
-  return { items, loadouts };
+  // what a loadout adds: total mass, the thickest item over each capsule segment, and the footwear's shoe allowance
+  function effects(id) {
+    const lo = loadouts[id] || loadouts.none, segs = {}, list = lo.items.map(i => items[i]).filter(Boolean);
+    for (const it of list) for (const [k, t] of Object.entries(it.segs || {})) segs[k] = Math.max(segs[k] || 0, t);
+    const foot = list.find(it => it.kind === 'footwear');
+    return { massKg: Math.round(list.reduce((a, it) => a + (it.massKg || 0), 0) * 100) / 100, segs, shoe: foot ? foot.shoe : null, items: lo.items };
+  }
+  return { items, loadouts, effects };
 })();
 /* ---------------- manikin body (shared with the landing page) ----------------
    The body surface is the MakeHuman base mesh (CC0 1.0; data in core/manikin_mesh.js, built by
@@ -2294,13 +2335,18 @@ const BODY = (() => {
   function coverage(id, sex) {   // which vertices and quads an item covers, from the rest shape (cached)
     const key = id + '|' + sex; if (COVER.has(key)) return COVER.get(key);
     const dec = decode(), { nv, quads, dom } = dec, P = dec.pos[sex], it = KIT.items[id];
-    const jp = n => n in dec.J ? [0, 1, 2].map(c => P[3 * dec.J[n] + c]) : [0, 1, 2].map(c => 0.5 * (P[3 * dec.J[n + 'L'] + c] + P[3 * dec.J[n + 'R'] + c])), jy = n => jp(n)[1];
-    const dist = (v, n) => { const j = jp(n); return Math.hypot(P[3 * v] - j[0], P[3 * v + 1] - j[1], P[3 * v + 2] - j[2]); };
+    // a joint's rest position; a sided joint (elbowL, elbowR…) is taken on the vertex's own side, or midway for the trunk
+    const jp = (n, sd) => n in dec.J ? [0, 1, 2].map(c => P[3 * dec.J[n] + c])
+      : sd ? [0, 1, 2].map(c => P[3 * dec.J[n + sd] + c]) : [0, 1, 2].map(c => 0.5 * (P[3 * dec.J[n + 'L'] + c] + P[3 * dec.J[n + 'R'] + c]));
+    const sideOf = v => { const b = D.bones[dom[v]]; return /[LR]$/.test(b) && !/^(pelvis|spine|trunk|neck|head)/.test(b) ? b.slice(-1) : ''; };
+    const jy = (n, v) => jp(n, sideOf(v))[1];
+    const dist = (v, n) => { const j = jp(n, sideOf(v)); return Math.hypot(P[3 * v] - j[0], P[3 * v + 1] - j[1], P[3 * v + 2] - j[2]); };
     const m = new Uint8Array(nv);
     for (const r of it.cover || []) {
-      const re = new RegExp(r.bones), lo = r.above ? jy(r.above[0]) + r.above[1] : -1e9, hi = r.below ? jy(r.below[0]) + r.below[1] : 1e9;
+      const re = new RegExp(r.bones);
       for (let v = 0; v < nv; v++) {
-        const y = P[3 * v + 1]; if (y < lo || y > hi || !re.test(D.bones[dom[v]])) continue;
+        if (!re.test(D.bones[dom[v]])) continue;
+        const y = P[3 * v + 1]; if ((r.above && y < jy(r.above[0], v) + r.above[1]) || (r.below && y > jy(r.below[0], v) + r.below[1])) continue;
         if (r.within && dist(v, r.within[0]) > r.within[1]) continue; if (r.outside && dist(v, r.outside[0]) < r.outside[1]) continue;
         m[v] = 1;
       }
@@ -2314,10 +2360,15 @@ const BODY = (() => {
     const out = { m: inQ, verts: Uint16Array.from(verts), quads: Uint16Array.from(q), tris: new Uint16Array(tri), edges: new Uint16Array(edges) };
     COVER.set(key, out); return out;
   }
-  function drape(it, cov, pos, nrm) {   // the skin offset by the item's ease, smoothed so it hangs over detail, never inside the skin
+  // the skin offset by the item's ease, smoothed so it hangs over detail, never inside the skin. Items are layered:
+  // `under` holds, per vertex, how far the items already drawn stand off the skin, and each item stays at least 3 mm
+  // outside them (a belt over a shirt over trousers), then adds its own stand-off to `under`
+  function drape(it, cov, pos, nrm, under) {
     const { nbo, nbi } = decode(), m = cov.m, vs = cov.verts, e = it.ease || 5, minE = 0.6 * e;
     const out = new Float32Array(pos.length), tmp = new Float32Array(pos.length);
-    for (const v of vs) for (let c = 0; c < 3; c++) out[3 * v + c] = pos[3 * v + c] + e * nrm[3 * v + c];
+    const want = new Float32Array(m.length), floor = new Float32Array(m.length);
+    for (const v of vs) { want[v] = Math.max(e, under[v] + 3); floor[v] = Math.max(minE, under[v] + 2); }
+    for (const v of vs) for (let c = 0; c < 3; c++) out[3 * v + c] = pos[3 * v + c] + want[v] * nrm[3 * v + c];
     // hem vertices (with a neighbour outside the item) are smoothed along the hem only, which takes out the zigzag of
     // the mesh edges; the rest are smoothed over all their covered neighbours
     const hem = cov.hem || (cov.hem = (() => { const h = new Uint8Array(m.length); for (const v of vs) for (let j = nbo[v]; j < nbo[v + 1]; j++) if (!m[nbi[j]]) { h[v] = 1; break; } return h; })());
@@ -2328,13 +2379,18 @@ const BODY = (() => {
         if (it2 >= (it.smooth || 0) && !hem[v]) { tmp[3 * v] = out[3 * v]; tmp[3 * v + 1] = out[3 * v + 1]; tmp[3 * v + 2] = out[3 * v + 2]; continue; }
         for (let j = nbo[v]; j < nbo[v + 1]; j++) { const u = nbi[j]; if (!m[u] || (hem[v] && !hem[u])) continue; x += out[3 * u]; y += out[3 * u + 1]; z += out[3 * u + 2]; n++; }
         if (!n) { tmp[3 * v] = out[3 * v]; tmp[3 * v + 1] = out[3 * v + 1]; tmp[3 * v + 2] = out[3 * v + 2]; continue; }
-        tmp[3 * v] = 0.5 * (out[3 * v] + x / n); tmp[3 * v + 1] = 0.5 * (out[3 * v + 1] + y / n); tmp[3 * v + 2] = 0.5 * (out[3 * v + 2] + z / n);
+        // away from the hems the move is along the skin normal only, so the cloth bridges hollows without sliding over
+        // the body (a sliding hem would open gaps where two items overlap)
+        let dx = 0.5 * (x / n - out[3 * v]), dy = 0.5 * (y / n - out[3 * v + 1]), dz = 0.5 * (z / n - out[3 * v + 2]);
+        if (!hem[v]) { const i = 3 * v, k = dx * nrm[i] + dy * nrm[i + 1] + dz * nrm[i + 2]; dx = k * nrm[i]; dy = k * nrm[i + 1]; dz = k * nrm[i + 2]; }
+        tmp[3 * v] = out[3 * v] + dx; tmp[3 * v + 1] = out[3 * v + 1] + dy; tmp[3 * v + 2] = out[3 * v + 2] + dz;
       }
       for (const v of vs) {
-        const i = 3 * v, d = (tmp[i] - pos[i]) * nrm[i] + (tmp[i + 1] - pos[i + 1]) * nrm[i + 1] + (tmp[i + 2] - pos[i + 2]) * nrm[i + 2], k = d < minE ? minE - d : 0;
+        const i = 3 * v, d = (tmp[i] - pos[i]) * nrm[i] + (tmp[i + 1] - pos[i + 1]) * nrm[i + 1] + (tmp[i + 2] - pos[i + 2]) * nrm[i + 2], k = d < floor[v] ? floor[v] - d : 0;
         out[i] = tmp[i] + k * nrm[i]; out[i + 1] = tmp[i + 1] + k * nrm[i + 1]; out[i + 2] = tmp[i + 2] + k * nrm[i + 2];
       }
     }
+    for (const v of vs) { const i = 3 * v; under[v] = Math.max(under[v], (out[i] - pos[i]) * nrm[i] + (out[i + 1] - pos[i + 1]) * nrm[i + 1] + (out[i + 2] - pos[i + 2]) * nrm[i + 2]); }
     return out;
   }
   // MTP-style camouflage: layered 3D noise on the rest shape (so the pattern moves with the body), in the item's colours
@@ -2372,14 +2428,17 @@ const BODY = (() => {
   const HIDE = new Map();
   function hiddenTris(ids, sex) {   // body triangles by region, leaving out skin that is fully inside the kit (keeps a ring at each hem)
     const key = ids.join(',') + '|' + sex; if (HIDE.has(key)) return HIDE.get(key);
-    const dec = decode(), { nv, quads, qreg, nbo, nbi } = dec, U = new Uint8Array(nv);
-    for (const id of ids) { const c = coverage(id, sex); for (const v of c.verts) U[v] = 1; }
-    const In = new Uint8Array(nv);
-    for (let v = 0; v < nv; v++) { if (!U[v]) continue; let ok = 1; for (let j = nbo[v]; j < nbo[v + 1]; j++) if (!U[nbi[j]]) { ok = 0; break; } In[v] = ok; }
+    // a skin quad is hidden only when one item covers all its corners and their neighbours (so a seam between two
+    // items, where neither covers the whole quad, keeps its skin)
+    const dec = decode(), { nv, quads, qreg, nbo, nbi } = dec, In = ids.map(id => {
+      const U = coverage(id, sex).m, I = new Uint8Array(nv);
+      for (let v = 0; v < nv; v++) { if (!U[v]) continue; let ok = 1; for (let j = nbo[v]; j < nbo[v + 1]; j++) if (!U[nbi[j]]) { ok = 0; break; } I[v] = ok; }
+      return I;
+    });
     const tris = {};
     for (let f = 0, n = quads.length / 4; f < n; f++) {
       const a = quads[4 * f], b = quads[4 * f + 1], c = quads[4 * f + 2], d = quads[4 * f + 3];
-      if (In[a] && In[b] && In[c] && In[d]) continue;
+      if (In.some(I => I[a] && I[b] && I[c] && I[d])) continue;
       (tris[qreg[f]] = tris[qreg[f]] || []).push(a, b, c, a, c, d);
     }
     for (const r in tris) tris[r] = new Uint16Array(tris[r]);
@@ -2403,8 +2462,9 @@ const BODY = (() => {
     }
     if (worn.length) {
       const restA = new THREE.BufferAttribute(dec.pos[sex].subarray(0, 3 * dec.nv), 3);
+      const under = new Float32Array(dec.nv);
       for (const id of worn) {
-        const it = KIT.items[id], cov = coverage(id, sex), P = drape(it, cov, sk.pos, nrm), geo = new THREE.BufferGeometry();
+        const it = KIT.items[id], cov = coverage(id, sex), P = drape(it, cov, sk.pos, nrm, under), geo = new THREE.BufferGeometry();
         geo.setAttribute('position', new THREE.BufferAttribute(P, 3));
         if (mode === 'wire') { geo.setIndex(new THREE.BufferAttribute(cov.edges, 1)); const l = new THREE.LineSegments(geo, mats.wire); l.userData.node = 'man.kit.' + id; g.add(l); continue; }
         geo.setAttribute('normal', new THREE.BufferAttribute(normals(P, cov.quads), 3)); geo.setAttribute('rest', restA);
@@ -3061,7 +3121,9 @@ function renderResults(rows) {
 function csvText() {
   const q = s => `"${String(s).replace(/"/g, '""')}"`;
   const M = lastM, P = POPS[S.pop];
-  const lines = [['Manikin', S.custom ? 'Custom' : `${P.label}, ${ord(S.pct)} percentile stature, ${$('#method').selectedOptions[0].text}`], ['Stature (mm)', M.stature]].map(r => r.map(q).join(','));
+  const fx = kitFx(), lo = HFE_KIT.loadouts[S.kit] || HFE_KIT.loadouts.none;
+  const lines = [['Manikin', S.custom ? 'Custom' : `${P.label}, ${ord(S.pct)} percentile stature, ${$('#method').selectedOptions[0].text}`], ['Stature (mm)', M.stature],
+    ['Clothing and kit', fx.items.length ? `${lo.name}: ${fx.items.map(i => HFE_KIT.items[i].name).join('; ')}` : 'None'], ['Kit mass (kg)', fx.massKg]].map(r => r.map(q).join(','));
   lines.push(''); lines.push(['Group', 'Check', 'Value', 'Result', 'Green range', 'Amber range', 'Note'].map(q).join(','));
   for (const r of lastRows) { const L = r.base ? S.lim[r.base] : null; lines.push([r.group, r.name, r.text, STATUS[r.status].word, L ? limText(L.g) : r.gtxt || '', L ? limText(L.a) : r.atxt || '', r.note].map(q).join(',')); }
   lines.push(''); lines.push(['Workstation parameter', 'Value'].map(q).join(','));
@@ -3084,7 +3146,7 @@ function update() {
   window.__last = { M, G, R, rows };
   buildBody(M, G); buildWorkstation(M, G, W); buildZones(G, W); buildAnnotations(M, G, R, W, rows);
   applyVisibility(); renderTree(); syncProxies();
-  renderResults(rows); renderManikinPanel(M); syncWsControls();
+  renderResults(rows); renderManikinPanel(M); syncWsControls(); $('#kit-help').textContent = kitHelp();
   if (!$('#cfg').hidden) renderPlan();
   requestRender();
 }
@@ -3112,7 +3174,11 @@ function bind() {
   $('#pop').addEventListener('change', e => { S.pop = e.target.value; S.custom = null; update(); });
   $('#kit').innerHTML = Object.entries(BODY.kit.loadouts).map(([k, l]) => `<option value="${k}">${esc(l.name)}</option>`).join('');
   $('#kit').value = S.kit;
-  $('#kit').addEventListener('change', e => { S.kit = e.target.value; update(); });
+  $('#kit').addEventListener('change', e => {
+    S.kit = e.target.value; const fx = kitFx();
+    if (fx.shoe != null) { S.ws.shoe = fx.shoe; syncWsControls(); }   // footwear sets the shoe allowance (still editable)
+    update();
+  });
   $('#method').addEventListener('change', e => { S.method = e.target.value; S.custom = null; update(); });
   const setP = v => { S.pct = clamp(Math.round(+v || 50), 1, 99); S.custom = null; update(); };
   $('#pct').addEventListener('input', e => setP(e.target.value));
