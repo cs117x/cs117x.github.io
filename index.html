@@ -41,6 +41,8 @@ h1{font-size:clamp(26px,3.4vw,38px);line-height:1.15;font-weight:600;margin:0 0 
 .t{display:block;font-size:17px;font-weight:600;margin-bottom:6px}
 .d{display:block;font-size:14px;line-height:1.55;color:var(--muted)}
 .go{display:block;margin-top:12px;font-size:13.5px;font-weight:600;color:var(--accent)}
+.alt{margin:12px 0 0;font-size:13px;line-height:1.5;color:var(--muted)}
+.alt a{color:var(--accent);font-weight:600}
 .figure{margin:0;display:flex;flex-direction:column;gap:10px;min-width:0}
 canvas{width:100%;height:min(76vh,700px);display:block;cursor:grab;touch-action:pan-y}
 canvas.dragging{cursor:grabbing}
@@ -59,9 +61,10 @@ figcaption{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 16p
     <a class="card" href="/workstation-fit-model/">
       <span class="k">Tool</span>
       <span class="t">Seated Workstation Fit</span>
-      <span class="d">An interactive 3D assessment of a seated workstation. A link-segment manikin is built from individual anthropometric records, its posture is solved from the chair, desk, screens and desk objects, and the result is checked against editable limits: viewing distances and angles, joint angles, clearances and reach zones.</span>
+      <span class="d">An interactive 3D assessment of a seated workstation. A link-segment manikin is built from individual anthropometric records, its posture is solved from the chair, desk, screens and desk objects, and the result is checked against editable limits: viewing distances and angles, joint angles, clearances and reach zones. Section planes and a measure tool cut through the scene, population accommodation runs every ANSUR II record through the design, and a whole-body posture solver (beta) adds joint limits and clearance.</span>
       <span class="go">Open the tool →</span>
     </a>
+    <p class="alt"><a href="/workstation-fit-model/workstation-fit-offline.html" download="workstation-fit-offline.html">Download the offline version</a>: one HTML file with every library inside, for computers with no internet access.</p>
   </section>
   <figure class="figure">
     <canvas id="c" role="img" aria-label="Slowly turning wireframe model of a seated person"></canvas>
