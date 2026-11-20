@@ -918,11 +918,11 @@ const BODY = (() => {
     HIDE.set(key, tris); return tris;
   }
 
-  /* ---------- appearance (hair, brows, lashes, facial hair, eyewear, headsets, skin tone, eye colour) ----------
+  /* ---------- appearance (hair, brows, lashes, facial hair, eyewear, headsets, headwear, face masks, skin tone, eye colour) ----------
      Appearance never changes a dimension, a check or the kit's mass: it is drawn over the posed manikin only. The items
      are textured MakeHuman community proxies (core/clothes_mesh.js, `kind` other than garment), bound to the skin as the
      garments are. A 'tint' texture is grey, coloured here (hair colour); an 'rgba' one keeps its own colours. */
-  const LOOK_KINDS = ['hair', 'brows', 'lashes', 'beard', 'eyewear', 'headset'];
+  const LOOK_KINDS = ['hair', 'brows', 'lashes', 'beard', 'eyewear', 'headset', 'headwear', 'mask'];
   const lookList = kind => Object.entries(CL.items).filter(([, c]) => (c.kind || 'garment') === kind).map(([id, c]) => ({ id, name: c.name, thumb: c.thumb, author: c.author, licence: c.licence, url: c.url, pack: c.pack, tint: c.texMode === 'tint' }));
   let onTexture = null;
   const TEX = new Map(), LMAT = new Map();
@@ -937,7 +937,7 @@ const BODY = (() => {
     if (LMAT.has(key)) return LMAT.get(key);
     const fine = kind === 'brows' || kind === 'lashes';   // thin cards: blended, so their edges stay soft
     const mat = new THREE.MeshStandardMaterial({ map: lookTexture(gid), color: new THREE.Color(tint ? colour || '#3b2c22' : '#ffffff'), side: THREE.DoubleSide,
-      roughness: kind === 'eyewear' ? 0.35 : kind === 'headset' ? 0.5 : 0.75, metalness: 0,
+      roughness: kind === 'eyewear' ? 0.35 : kind === 'headset' ? 0.5 : kind === 'headwear' ? 0.8 : 0.75, metalness: 0,
       alphaTest: fine ? 0.02 : 0.45, transparent: fine, depthWrite: !fine });
     mat.userData.look = gid; LMAT.set(key, mat); return mat;
   }
@@ -1049,6 +1049,7 @@ const BODY = (() => {
       const Jl = boneMaps(F, sk.bp);
       for (const kind of LOOK_KINDS) {
         const gid = look[kind]; if (!gid || !CL.items[gid] || CL.items[gid].kind !== kind || !CL.items[gid].vmap) continue;
+        if (kind === 'hair' && look.headwear && CL.items[look.headwear]) continue;   // hair is taken as tucked under headwear (it would show through)
         const gm = garment(gid), P = placeGarment(gm, sex, sk.pos, nrm, null, Jl, null, null), Nn = triNormals(P, gm.tris), R = lookRender(gid), n = R.vmap.length;
         const pos = new Float32Array(3 * n), nor = new Float32Array(3 * n);
         for (let i = 0; i < n; i++) { const v = R.vmap[i]; for (let k = 0; k < 3; k++) { pos[3 * i + k] = P[3 * v + k]; nor[3 * i + k] = Nn[3 * v + k]; } }
