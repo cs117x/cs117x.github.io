@@ -1261,7 +1261,7 @@ const objLabel = o => (o.model && o.model !== HFE_PROPS.DEFAULT[o.type] && HFE_P
      sources      public references behind the indicative geometry
      reqs         requirement IDs the template serves */
 const HFE_ENV = (() => {
-  const ALL_NOW = ['Vision', 'Head and neck', 'Upper limb', 'Trunk and seat', 'Lower limb', 'Furniture', 'Joint range of motion', 'Clearance'];
+  const ALL_NOW = ['Vision', 'Head and neck', 'Upper limb', 'Trunk and seat', 'Lower limb', 'Furniture', 'Joint range of motion', 'Posture scores', 'Clearance'];
   // a display given by diagonal (inches) and aspect ratio
   const disp = (size, aspect, o) => { const [a, b] = aspect.split(':').map(Number), k = size * 25.4 / Math.hypot(a, b); return { k: 'disp', w: a * k, h: b * k, ...o }; };
   const scr = (size, aspect, x, z, yaw, dy, tilt = null) => ({ size, aspect, orient: 'landscape', curve: 0, tilt, dy, x, z, yaw });
@@ -1555,6 +1555,8 @@ const CHECKS = [
   { id: 'lumbarRange', group: 'Furniture', name: 'Backrest lumbar support height outside the chair\u2019s range', unit: 'mm', g: [null, 0], a: [null, 0] },
   { id: 'armRange', group: 'Furniture', name: 'Armrest height outside the chair\u2019s adjustment range', unit: 'mm', g: [null, 0], a: [null, 0] },
   { id: 'rom', group: 'Joint range of motion', name: 'Smallest margin to a joint\u2019s range-of-motion limit', unit: '°', g: [5, null], a: [0, null] },
+  { id: 'rula', group: 'Posture scores', name: 'RULA grand score (action level 1 at 1–2, 2 at 3–4)', unit: '', g: [1, 2], a: [1, 4], arm: true },
+  { id: 'reba', group: 'Posture scores', name: 'REBA score (negligible or low risk at 1–3, medium at 4–7)', unit: '', g: [1, 3], a: [1, 7], arm: true },
   { id: 'clearDesk', group: 'Clearance', name: 'Clearance, body to desk', unit: 'mm', g: [25, null], a: [0, null] },
   { id: 'clearScreens', group: 'Clearance', name: 'Clearance, body to screens', unit: 'mm', g: [25, null], a: [0, null] },
   { id: 'clearExact', group: 'Clearance', name: 'Clearance, body surface to geometry (exact)', unit: 'mm', g: [25, null], a: [0, null] },
@@ -2359,6 +2361,334 @@ const HFE_SOLVER = (() => {
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = HFE_SOLVER;
 
+/* ---------------- posture scores and biomechanics (shared core) ----------------
+   RULA, REBA, the revised NIOSH lifting equation (single task and composite) and a static sagittal L5/S1
+   model. Pure functions with no dependencies, so they run in the browser (inlined by tools/build.py at
+   __ERGONOMICS__) and in Node for unit tests (tests/ergonomics.test.js).
+
+   Traceability: every result carries `steps`, one entry per scoring step, each with the value used, the
+   score or multiplier it gave, the rule applied and a source key into SOURCES. Tables are transcribed from
+   the published worksheets and cross-checked between two independent copies (see SOURCES).
+
+   Units: angles in degrees, masses in kg, forces in N. NIOSH takes metric (cm) or US customary (in, lb)
+   with `units`. Sign conventions for angles: flexion positive, extension negative; wrist extension
+   positive, flexion negative (as core/solver.js).
+*/
+const HFE_ERGO = (() => {
+  const SOURCES = {
+    RULA: 'McAtamney L, Corlett EN (1993) RULA: a survey method for the investigation of work-related upper limb disorders. Applied Ergonomics 24(2):91–99. Tables A, B and C as reproduced in the Hedge (Cornell) RULA worksheet and the NCSU RULA quick reference tables (2020), which agree.',
+    REBA: 'Hignett S, McAtamney L (2000) Rapid Entire Body Assessment (REBA). Applied Ergonomics 31(2):201–205. Tables A, B and C as reproduced in the Hedge (Cornell) REBA worksheet and the USF REBA worksheet, which agree.',
+    NIOSH: 'Waters TR, Putz-Anderson V, Garg A (1994, revised 2021) Applications Manual for the Revised NIOSH Lifting Equation. DHHS (NIOSH) Publication 94-110. Multipliers from the table on p.8, frequency multipliers from Table 5, coupling multipliers from Table 7, composite index from section 2.4.',
+    NIOSH93: 'Waters TR, Putz-Anderson V, Garg A, Fine LJ (1993) Revised NIOSH equation for the design and evaluation of manual lifting tasks. Ergonomics 36(7):749–776. Biomechanical criterion: 3.4 kN L5/S1 compression.',
+    NIOSH81: 'NIOSH (1981) Work Practices Guide for Manual Lifting. DHHS (NIOSH) Publication 81-122. Action limit 3,400 N, maximum permissible limit 6,400 N L5/S1 compression.',
+    CHAFFIN: 'Chaffin DB, Andersson GBJ, Martin BJ, Occupational Biomechanics: the two-dimensional static sagittal low-back model (erector spinae as the only extensor, single equivalent muscle force at a fixed moment arm). Worked example as given in the NJIT IE665 lecture notes "A two dimensional back model, adopted from Chaffin et al. (1977)".',
+    HCBCF: 'Merryweather AS, Loertscher MC, Bloswick DS (2009) A revised back compressive force estimation model for ergonomic evaluation of lifting tasks. Work 34:263–272. Equations 1, 3, 4a and 4b; upper-body weight 50 % of body weight, upper-body centre of mass 0.23 × stature from L5/S1.',
+    TOOL: 'HFE Lab convention, not part of the published method; stated so it can be challenged.'
+  };
+
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const step = (steps, name, value, score, rule, src) => { steps.push({ step: name, value, score, rule, src }); return score; };
+  const r2 = x => Math.round(x * 100) / 100;
+
+  /* ---------------- RULA ---------------- */
+  // Table A [upper arm 1-6][lower arm 1-3][wrist 1-4][twist 1-2]
+  const RULA_A = [
+    [[[1, 2], [2, 2], [2, 3], [3, 3]], [[2, 2], [2, 2], [3, 3], [3, 3]], [[2, 3], [3, 3], [3, 3], [4, 4]]],
+    [[[2, 3], [3, 3], [3, 4], [4, 4]], [[3, 3], [3, 3], [3, 4], [4, 4]], [[3, 4], [4, 4], [4, 4], [5, 5]]],
+    [[[3, 3], [4, 4], [4, 4], [5, 5]], [[3, 4], [4, 4], [4, 4], [5, 5]], [[4, 4], [4, 4], [4, 5], [5, 5]]],
+    [[[4, 4], [4, 4], [4, 5], [5, 5]], [[4, 4], [4, 4], [4, 5], [5, 5]], [[4, 4], [4, 5], [5, 5], [6, 6]]],
+    [[[5, 5], [5, 5], [5, 6], [6, 7]], [[5, 6], [6, 6], [6, 7], [7, 7]], [[6, 6], [6, 7], [7, 7], [7, 8]]],
+    [[[7, 7], [7, 7], [7, 8], [8, 9]], [[8, 8], [8, 8], [8, 9], [9, 9]], [[9, 9], [9, 9], [9, 9], [9, 9]]]
+  ];
+  // Table B [neck 1-6][trunk 1-6][legs 1-2]
+  const RULA_B = [
+    [[1, 3], [2, 3], [3, 4], [5, 5], [6, 6], [7, 7]],
+    [[2, 3], [2, 3], [4, 5], [5, 5], [6, 7], [7, 7]],
+    [[3, 3], [3, 4], [4, 5], [5, 6], [6, 7], [7, 7]],
+    [[5, 5], [5, 6], [6, 7], [7, 7], [7, 7], [8, 8]],
+    [[7, 7], [7, 7], [7, 8], [8, 8], [8, 8], [8, 8]],
+    [[8, 8], [8, 8], [8, 8], [8, 9], [9, 9], [9, 9]]
+  ];
+  // Table C [wrist and arm score 1-8+][neck, trunk and leg score 1-7+]
+  const RULA_C = [
+    [1, 2, 3, 3, 4, 5, 5], [2, 2, 3, 4, 4, 5, 5], [3, 3, 3, 4, 4, 5, 6], [3, 3, 3, 4, 5, 6, 6],
+    [4, 4, 4, 5, 6, 7, 7], [4, 4, 5, 6, 6, 7, 7], [5, 5, 6, 6, 7, 7, 7], [5, 5, 6, 7, 7, 7, 7]
+  ];
+  const RULA_ACTION = [null,
+    { level: 1, text: 'Acceptable posture if not maintained or repeated for long periods' },
+    { level: 1, text: 'Acceptable posture if not maintained or repeated for long periods' },
+    { level: 2, text: 'Further investigation needed; changes may be required' },
+    { level: 2, text: 'Further investigation needed; changes may be required' },
+    { level: 3, text: 'Investigation and changes required soon' },
+    { level: 3, text: 'Investigation and changes required soon' },
+    { level: 4, text: 'Investigation and changes required immediately' }];
+
+  // RULA force/load score (McAtamney and Corlett 1993, Fig. 1): mode is 'intermittent', 'static' or 'repeated'
+  function rulaForce(kg = 0, mode = 'intermittent', shock = false) {
+    if (shock) return 3;
+    const held = mode === 'static' || mode === 'repeated';
+    if (kg < 2) return 0;
+    if (kg < 10) return held ? 2 : 1;
+    return held ? 3 : 2;
+  }
+
+  /* input (all optional except the angles):
+     upperArm   shoulder flexion, deg (− is extension)       shoulderRaised, armAbducted, armSupported: booleans
+     lowerArm   elbow flexion, deg (0 = straight)              armAcrossMidline: working across the midline or out to the side
+     wrist      wrist extension, deg (− is flexion)            wristDeviated: boolean; wristTwist: 'mid' (default) or 'end'
+     neck       neck flexion, deg (− is extension)             neckTwisted, neckSideBent
+     trunk      trunk flexion from vertical, deg               trunkSupported (seated, well supported), trunkTwisted, trunkSideBent
+     legsSupported (default true)
+     muscleA, muscleB: posture mainly static (held > 1 min) or repeated > 4 times/min; `muscle` sets both
+     loadKg, loadMode ('intermittent' | 'static' | 'repeated'), shock; forceA/forceB override the force score per group */
+  function rula(p) {
+    const steps = [], S = 'RULA';
+    let ua = Math.abs(p.upperArm) <= 20 ? 1 : p.upperArm < -20 ? 2 : p.upperArm <= 45 ? 2 : p.upperArm <= 90 ? 3 : 4;
+    step(steps, 'Upper arm position', p.upperArm, ua, '20° extension to 20° flexion 1; > 20° extension or 20–45° flexion 2; 45–90° 3; > 90° 4', S);
+    if (p.shoulderRaised) ua += step(steps, 'Shoulder raised', true, 1, '+1', S);
+    if (p.armAbducted) ua += step(steps, 'Upper arm abducted', true, 1, '+1', S);
+    if (p.armSupported) ua += step(steps, 'Arm supported or person leaning', true, -1, '−1', S);
+    ua = clamp(ua, 1, 6);
+    let la = p.lowerArm >= 60 && p.lowerArm <= 100 ? 1 : 2;
+    step(steps, 'Lower arm position', p.lowerArm, la, '60–100° flexion 1; < 60° or > 100° 2', S);
+    if (p.armAcrossMidline) la += step(steps, 'Working across the midline or out to the side', true, 1, '+1', S);
+    la = clamp(la, 1, 3);
+    const aw = Math.abs(p.wrist);
+    let wr = aw === 0 ? 1 : aw <= 15 ? 2 : 3;
+    step(steps, 'Wrist position', p.wrist, wr, 'neutral 1; 0–15° flexion or extension 2; > 15° 3', S);
+    if (p.wristDeviated) wr += step(steps, 'Wrist bent from the midline (deviation)', true, 1, '+1', S);
+    wr = clamp(wr, 1, 4);
+    const tw = step(steps, 'Wrist twist', p.wristTwist || 'mid', p.wristTwist === 'end' ? 2 : 1, 'mainly mid-range 1; at or near the end of range 2', S);
+    const postureA = step(steps, 'Posture score A (Table A)', [ua, la, wr, tw], RULA_A[ua - 1][la - 1][wr - 1][tw - 1], 'Table A', S);
+    const muscleA = p.muscleA ?? p.muscle ?? false, muscleB = p.muscleB ?? p.muscle ?? false;
+    const mA = step(steps, 'Muscle use, arm and wrist', muscleA, muscleA ? 1 : 0, '+1 if mainly static (held > 1 min) or repeated > 4 times/min', S);
+    const fA = step(steps, 'Force or load, arm and wrist', p.loadKg || 0, p.forceA ?? rulaForce(p.loadKg, p.loadMode, p.shock), '< 2 kg intermittent 0; 2–10 kg intermittent 1; 2–10 kg static or repeated, or ≥ 10 kg intermittent 2; ≥ 10 kg static or repeated, or shock 3', S);
+    const C = postureA + mA + fA;
+
+    let nk = p.neck < 0 ? 4 : p.neck <= 10 ? 1 : p.neck <= 20 ? 2 : 3;
+    step(steps, 'Neck position', p.neck, nk, '0–10° flexion 1; 10–20° 2; > 20° 3; in extension 4', S);
+    if (p.neckTwisted) nk += step(steps, 'Neck twisted', true, 1, '+1', S);
+    if (p.neckSideBent) nk += step(steps, 'Neck side bending', true, 1, '+1', S);
+    nk = clamp(nk, 1, 6);
+    let tk;
+    if (p.trunkSupported) tk = step(steps, 'Trunk position', p.trunk, 1, 'sitting and well supported (hip–trunk angle ≥ 90°) 1', S);
+    else {
+      tk = p.trunk === 0 ? 1 : p.trunk < 0 ? 2 : p.trunk <= 20 ? 2 : p.trunk <= 60 ? 3 : 4;
+      step(steps, 'Trunk position', p.trunk, tk, 'upright 1; 0–20° flexion 2; 20–60° 3; > 60° 4', S);
+      if (p.trunk < 0) step(steps, 'Trunk extension, unsupported', p.trunk, 0, 'RULA gives no band for trunk extension; scored as the 0–20° band', 'TOOL');
+    }
+    if (p.trunkTwisted) tk += step(steps, 'Trunk twisted', true, 1, '+1', S);
+    if (p.trunkSideBent) tk += step(steps, 'Trunk side bending', true, 1, '+1', S);
+    tk = clamp(tk, 1, 6);
+    const lg = step(steps, 'Legs', p.legsSupported !== false, p.legsSupported === false ? 2 : 1, 'legs and feet supported and balanced 1; not 2', S);
+    const postureB = step(steps, 'Posture score B (Table B)', [nk, tk, lg], RULA_B[nk - 1][tk - 1][lg - 1], 'Table B', S);
+    const mB = step(steps, 'Muscle use, neck, trunk and legs', muscleB, muscleB ? 1 : 0, '+1 if mainly static (held > 1 min) or repeated > 4 times/min', S);
+    const fB = step(steps, 'Force or load, neck, trunk and legs', p.loadKg || 0, p.forceB ?? rulaForce(p.loadKg, p.loadMode, p.shock), 'as for the arm and wrist', S);
+    const D = postureB + mB + fB;
+    const score = step(steps, 'Grand score (Table C)', [C, D], RULA_C[clamp(C, 1, 8) - 1][clamp(D, 1, 7) - 1], 'Table C: wrist and arm score (8+) by neck, trunk and leg score (7+)', S);
+    return { method: 'RULA', score, action: RULA_ACTION[score], parts: { upperArm: ua, lowerArm: la, wrist: wr, wristTwist: tw, postureA, scoreC: C, neck: nk, trunk: tk, legs: lg, postureB, scoreD: D }, steps };
+  }
+
+  /* ---------------- REBA ---------------- */
+  // Table A [trunk 1-5][neck 1-3][legs 1-4]
+  const REBA_A = [
+    [[1, 2, 3, 4], [1, 2, 3, 4], [3, 3, 5, 6]],
+    [[2, 3, 4, 5], [3, 4, 5, 6], [4, 5, 6, 7]],
+    [[2, 4, 5, 6], [4, 5, 6, 7], [5, 6, 7, 8]],
+    [[3, 5, 6, 7], [5, 6, 7, 8], [6, 7, 8, 9]],
+    [[4, 6, 7, 8], [6, 7, 8, 9], [7, 8, 9, 9]]
+  ];
+  // Table B [upper arm 1-6][lower arm 1-2][wrist 1-3]
+  const REBA_B = [
+    [[1, 2, 2], [1, 2, 3]], [[1, 2, 3], [2, 3, 4]], [[3, 4, 5], [4, 5, 5]],
+    [[4, 5, 5], [5, 6, 7]], [[6, 7, 8], [7, 8, 8]], [[7, 8, 8], [8, 9, 9]]
+  ];
+  // Table C [score A 1-12][score B 1-12]
+  const REBA_C = [
+    [1, 1, 1, 2, 3, 3, 4, 5, 6, 7, 7, 7], [1, 2, 2, 3, 4, 4, 5, 6, 6, 7, 7, 8], [2, 3, 3, 3, 4, 5, 6, 7, 7, 8, 8, 8],
+    [3, 4, 4, 4, 5, 6, 7, 8, 8, 9, 9, 9], [4, 4, 4, 5, 6, 7, 8, 8, 9, 9, 9, 9], [6, 6, 6, 7, 8, 8, 9, 9, 10, 10, 10, 10],
+    [7, 7, 7, 8, 9, 9, 9, 10, 10, 11, 11, 11], [8, 8, 8, 9, 10, 10, 10, 10, 10, 11, 11, 11], [9, 9, 9, 10, 10, 10, 11, 11, 11, 12, 12, 12],
+    [10, 10, 10, 11, 11, 11, 11, 12, 12, 12, 12, 12], [11, 11, 11, 11, 12, 12, 12, 12, 12, 12, 12, 12], [12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12]
+  ];
+  const rebaRisk = s => s <= 1 ? { level: 0, text: 'Negligible risk; no action necessary' } : s <= 3 ? { level: 1, text: 'Low risk; action may be necessary' }
+    : s <= 7 ? { level: 2, text: 'Medium risk; action necessary' } : s <= 10 ? { level: 3, text: 'High risk; action necessary soon' } : { level: 4, text: 'Very high risk; action necessary now' };
+  const COUPLING_REBA = { good: 0, fair: 1, poor: 2, unacceptable: 3 };
+
+  /* input: trunk, neck, upperArm, lowerArm, wrist (deg, conventions as RULA) with the same booleans, plus
+     legs: 'sitting' (default) | 'bilateral' | 'walking' | 'unilateral' | 'unstable'; knee: knee flexion, deg (standing only)
+     armRotated; wristTwisted; loadKg, shock; coupling: 'good' | 'fair' | 'poor' | 'unacceptable';
+     activity: { static, repeated, rapid } booleans, +1 each */
+  function reba(p) {
+    const steps = [], S = 'REBA';
+    let tk = p.trunk === 0 ? 1 : p.trunk < 0 ? (p.trunk >= -20 ? 2 : 3) : p.trunk <= 20 ? 2 : p.trunk <= 60 ? 3 : 4;
+    step(steps, 'Trunk', p.trunk, tk, 'upright 1; 0–20° flexion or extension 2; 20–60° flexion or > 20° extension 3; > 60° flexion 4', S);
+    if (p.trunkTwisted || p.trunkSideBent) tk += step(steps, 'Trunk twisted or side flexed', true, 1, '+1', S);
+    let nk = p.neck >= 0 && p.neck <= 20 ? 1 : 2;
+    step(steps, 'Neck', p.neck, nk, '0–20° flexion 1; > 20° flexion or in extension 2', S);
+    if (p.neckTwisted || p.neckSideBent) nk += step(steps, 'Neck twisted or side flexed', true, 1, '+1', S);
+    const legs = p.legs || 'sitting', uni = legs === 'unilateral' || legs === 'unstable';
+    let lg = step(steps, 'Legs', legs, uni ? 2 : 1, 'bilateral weight bearing, walking or sitting 1; unilateral, feather weight bearing or unstable 2', S);
+    if (legs !== 'sitting' && p.knee > 30) lg += step(steps, 'Knee flexion', p.knee, p.knee > 60 ? 2 : 1, '+1 for 30–60°; +2 for > 60° (not for sitting)', S);
+    const postureA = step(steps, 'Posture score A (Table A)', [tk, nk, lg], REBA_A[tk - 1][nk - 1][lg - 1], 'Table A', S);
+    const kg = p.loadKg || 0;
+    let ld = kg < 5 ? 0 : kg <= 10 ? 1 : 2;
+    step(steps, 'Load or force', kg, ld, '< 5 kg 0; 5–10 kg 1; > 10 kg 2', S);
+    if (p.shock) ld += step(steps, 'Shock or rapid build-up of force', true, 1, '+1', S);
+    const A = postureA + ld;
+
+    let ua = Math.abs(p.upperArm) <= 20 ? 1 : p.upperArm < -20 ? 2 : p.upperArm <= 45 ? 2 : p.upperArm <= 90 ? 3 : 4;
+    step(steps, 'Upper arm', p.upperArm, ua, '20° extension to 20° flexion 1; > 20° extension or 20–45° flexion 2; 45–90° 3; > 90° 4', S);
+    if (p.armAbducted || p.armRotated) ua += step(steps, 'Arm abducted or rotated', true, 1, '+1', S);
+    if (p.shoulderRaised) ua += step(steps, 'Shoulder raised', true, 1, '+1', S);
+    if (p.armSupported) ua += step(steps, 'Leaning, arm supported or gravity assisted', true, -1, '−1', S);
+    ua = clamp(ua, 1, 6);
+    const la = step(steps, 'Lower arm', p.lowerArm, p.lowerArm >= 60 && p.lowerArm <= 100 ? 1 : 2, '60–100° flexion 1; < 60° or > 100° 2', S);
+    let wr = Math.abs(p.wrist) <= 15 ? 1 : 2;
+    step(steps, 'Wrist', p.wrist, wr, '0–15° flexion or extension 1; > 15° 2', S);
+    if (p.wristDeviated || p.wristTwisted) wr += step(steps, 'Wrist deviated or twisted', true, 1, '+1', S);
+    const postureB = step(steps, 'Posture score B (Table B)', [ua, la, wr], REBA_B[ua - 1][la - 1][wr - 1], 'Table B', S);
+    const cp = step(steps, 'Coupling', p.coupling || 'good', COUPLING_REBA[p.coupling || 'good'], 'good 0; fair 1; poor 2; unacceptable 3', S);
+    const B = postureB + cp;
+    const scoreC = step(steps, 'Table C score', [A, B], REBA_C[clamp(A, 1, 12) - 1][clamp(B, 1, 12) - 1], 'Table C: score A by score B', S);
+    const act = p.activity || {};
+    const ac = step(steps, 'Activity', act, (act.static ? 1 : 0) + (act.repeated ? 1 : 0) + (act.rapid ? 1 : 0),
+      '+1 one or more body parts static (held > 1 min); +1 repeated small-range actions (> 4 times/min); +1 rapid large changes in posture or unstable base', S);
+    const score = scoreC + ac;
+    return { method: 'REBA', score, risk: rebaRisk(score), parts: { trunk: tk, neck: nk, legs: lg, postureA, load: ld, scoreA: A, upperArm: ua, lowerArm: la, wrist: wr, postureB, coupling: cp, scoreB: B, scoreC, activity: ac }, steps };
+  }
+
+  /* ---------------- revised NIOSH lifting equation ---------------- */
+  // Table 5: frequency (lifts/min) rows; columns ≤ 1 h, ≤ 2 h, ≤ 8 h, each [V < 75 cm (30 in), V ≥ 75 cm]
+  const FM_F = [0.2, 0.5, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+  const FM_T = [
+    [[1.00, 1.00], [0.95, 0.95], [0.85, 0.85]], [[0.97, 0.97], [0.92, 0.92], [0.81, 0.81]], [[0.94, 0.94], [0.88, 0.88], [0.75, 0.75]],
+    [[0.91, 0.91], [0.84, 0.84], [0.65, 0.65]], [[0.88, 0.88], [0.79, 0.79], [0.55, 0.55]], [[0.84, 0.84], [0.72, 0.72], [0.45, 0.45]],
+    [[0.80, 0.80], [0.60, 0.60], [0.35, 0.35]], [[0.75, 0.75], [0.50, 0.50], [0.27, 0.27]], [[0.70, 0.70], [0.42, 0.42], [0.22, 0.22]],
+    [[0.60, 0.60], [0.35, 0.35], [0.18, 0.18]], [[0.52, 0.52], [0.30, 0.30], [0.00, 0.15]], [[0.45, 0.45], [0.26, 0.26], [0.00, 0.13]],
+    [[0.41, 0.41], [0.00, 0.23], [0.00, 0.00]], [[0.37, 0.37], [0.00, 0.21], [0.00, 0.00]], [[0.00, 0.34], [0.00, 0.00], [0.00, 0.00]],
+    [[0.00, 0.31], [0.00, 0.00], [0.00, 0.00]], [[0.00, 0.28], [0.00, 0.00], [0.00, 0.00]]
+  ];
+  // Table 7: coupling multiplier [V < 75 cm, V ≥ 75 cm]
+  const CM_T = { good: [1.00, 1.00], fair: [0.95, 1.00], poor: [0.90, 0.90] };
+  const UNITS = {
+    metric: { LC: 23, Hmin: 25, Hmax: 63, Hk: 25, V0: 75, Vk: 0.003, Vmax: 175, Dmin: 25, Dmax: 175, Dk: 4.5, len: 'cm', mass: 'kg' },
+    us: { LC: 51, Hmin: 10, Hmax: 25, Hk: 10, V0: 30, Vk: 0.0075, Vmax: 70, Dmin: 10, Dmax: 70, Dk: 1.8, len: 'in', mass: 'lb' }
+  };
+  const durCol = h => h <= 1 ? 0 : h <= 2 ? 1 : h <= 8 ? 2 : -1;
+  /* frequency multiplier. Frequencies between table rows are interpolated linearly (a tool convention; the
+     manual gives the tabulated rows only). Above the highest frequency with a non-zero entry, FM = 0. */
+  function fm(F, durationH, vLow) {
+    const c = durCol(durationH); if (c < 0) return { fm: null, note: 'The equation gives no limits for more than 8 hours of work.' };
+    const k = vLow ? 0 : 1, f = Math.max(F, 0.2);
+    let last = 0; for (let i = 0; i < FM_F.length; i++) if (FM_T[i][c][k] > 0) last = i;
+    if (f > FM_F[last]) return { fm: 0, note: 'Frequency above the maximum for this duration and height: RWL is 0.' };
+    for (let i = 0; i < FM_F.length; i++) {
+      if (f === FM_F[i]) return { fm: FM_T[i][c][k] };
+      if (f < FM_F[i]) { const t = (f - FM_F[i - 1]) / (FM_F[i] - FM_F[i - 1]); return { fm: FM_T[i - 1][c][k] + t * (FM_T[i][c][k] - FM_T[i - 1][c][k]), interpolated: true }; }
+    }
+    return { fm: 0 };
+  }
+
+  /* task: { units: 'metric' (default) | 'us', H, V, D, A (deg, default 0), F (lifts/min), duration (h),
+             coupling: 'good' | 'fair' | 'poor', load, round (round each multiplier to 2 dp, as the manual's worksheets) }
+     Returns RWL, LI, FIRWL (frequency-independent RWL, FM = 1) and FILI, with each multiplier and the steps. */
+  function niosh(t) {
+    const u = UNITS[t.units || 'metric'], steps = [], S = 'NIOSH', R = t.round ? r2 : x => x;
+    if (!u) throw new Error('units must be metric or us');
+    const H = t.H, V = t.V, D = t.D ?? 0, A = t.A || 0, cpl = t.coupling || 'good', vLow = V < u.V0;
+    const HM = R(H > u.Hmax ? 0 : u.Hk / Math.max(H, u.Hmin));
+    step(steps, 'Horizontal multiplier HM', H, HM, `${u.Hk}/H; H < ${u.Hmin} ${u.len} is set to ${u.Hmin}; H > ${u.Hmax} ${u.len} gives 0`, S);
+    const VM = R(V < 0 || V > u.Vmax ? 0 : 1 - u.Vk * Math.abs(V - u.V0));
+    step(steps, 'Vertical multiplier VM', V, VM, `1 − ${u.Vk}|V − ${u.V0}|; V > ${u.Vmax} ${u.len} gives 0`, S);
+    const DM = R(D > u.Dmax ? 0 : 0.82 + u.Dk / Math.max(D, u.Dmin));
+    step(steps, 'Distance multiplier DM', D, DM, `0.82 + ${u.Dk}/D; D < ${u.Dmin} ${u.len} is set to ${u.Dmin}; D > ${u.Dmax} ${u.len} gives 0`, S);
+    const AM = R(A > 135 ? 0 : 1 - 0.0032 * A);
+    step(steps, 'Asymmetric multiplier AM', A, AM, '1 − 0.0032A; A > 135° gives 0', S);
+    const f = fm(t.F ?? 0.2, t.duration ?? 1, vLow), FM = f.fm == null ? null : R(f.fm);
+    step(steps, 'Frequency multiplier FM', { F: t.F, duration: t.duration, V }, FM, `Table 5${f.interpolated ? ', interpolated between rows (tool convention)' : ''}; F < 0.2/min is set to 0.2${f.note ? '. ' + f.note : ''}`, f.interpolated ? 'TOOL' : S);
+    const CM = R(CM_T[cpl][vLow ? 0 : 1]);
+    step(steps, 'Coupling multiplier CM', cpl, CM, `Table 7, V ${vLow ? '<' : '≥'} ${u.V0} ${u.len}`, S);
+    const FIRWL = u.LC * HM * VM * DM * AM * CM, RWL = FM == null ? null : FIRWL * FM;
+    step(steps, 'Recommended weight limit RWL', null, RWL, `LC (${u.LC} ${u.mass}) × HM × VM × DM × AM × FM × CM`, S);
+    const LI = t.load != null && RWL ? t.load / RWL : t.load != null && RWL === 0 ? Infinity : null;
+    if (t.load != null) step(steps, 'Lifting index LI', t.load, LI, 'load / RWL', S);
+    return { method: 'NIOSH', units: t.units || 'metric', RWL, LI, FIRWL, FILI: t.load != null ? t.load / FIRWL : null, STRWL: RWL, STLI: LI,
+      mult: { HM, VM, DM, AM, FM, CM }, notes: f.note ? [f.note] : [], steps };
+  }
+  // the governing end of a lift: RWL at origin and, with significant control at the destination, there too
+  function nioshLift(origin, dest) {
+    const o = niosh(origin), d = dest ? niosh({ ...origin, ...dest }) : null;
+    const gov = !d || o.RWL <= d.RWL ? 'origin' : 'destination';
+    return { origin: o, destination: d, governs: gov, RWL: gov === 'origin' ? o.RWL : d.RWL, LI: gov === 'origin' ? o.LI : d.LI };
+  }
+
+  /* Composite lifting index (Applications Manual §2.4): tasks are { load, F, FIRWL } or niosh() inputs (FIRWL computed),
+     with V (for the FM column) and a shared duration. Tasks are ordered by STLI, largest first;
+     CLI = STLI1 + Σ FILIk × (1/FM(F1+…+Fk) − 1/FM(F1+…+Fk−1)). */
+  function nioshCLI(tasks, { duration = 1, units = 'metric' } = {}) {
+    const u = UNITS[units], vLow = t => t.V == null ? true : t.V < u.V0;
+    const T = tasks.map((t, i) => {
+      const FIRWL = t.FIRWL ?? niosh({ units, duration, ...t, F: 0.2 }).FIRWL, FM = fm(t.F, duration, vLow(t)).fm;
+      return { i, load: t.load, F: t.F, FIRWL, FM, FILI: t.load / FIRWL, STRWL: FIRWL * FM, STLI: t.load / (FIRWL * FM), vLow: vLow(t) };
+    }).sort((a, b) => b.STLI - a.STLI);
+    const steps = [];
+    let CLI = T[0].STLI, Fsum = T[0].F;
+    step(steps, `Task ${T[0].i + 1} STLI`, T[0].F, CLI, 'largest single-task lifting index', 'NIOSH');
+    for (let k = 1; k < T.length; k++) {
+      const a = fm(Fsum, duration, T[k].vLow).fm, b = fm(Fsum + T[k].F, duration, T[k].vLow).fm;
+      const inc = b > 0 ? T[k].FILI * (1 / b - 1 / a) : Infinity;
+      step(steps, `Task ${T[k].i + 1} increment`, { F: Fsum + T[k].F, FM: b, FMprev: a }, inc, 'FILI × (1/FM(ΣF) − 1/FM(ΣF − Fk))', 'NIOSH');
+      CLI += inc; Fsum += T[k].F;
+    }
+    return { method: 'NIOSH CLI', CLI, tasks: T, steps };
+  }
+
+  /* ---------------- static L5/S1 (sagittal plane) ---------------- */
+  const L5S1_LIMITS = { action: 3400, max: 6400 };   // N; NIOSH81 (and NIOSH93 for the 3.4 kN design criterion)
+  const l5s1Rate = Fc => Fc <= L5S1_LIMITS.action ? 'below the 3,400 N action limit' : Fc <= L5S1_LIMITS.max ? 'between the 3,400 N action limit and the 6,400 N maximum permissible limit' : 'above the 6,400 N maximum permissible limit';
+
+  /* Chaffin's two-dimensional static model. Lengths in m (or any consistent unit), forces in N.
+     { upperBodyN, b: horizontal distance L5/S1 to the upper-body centre of mass, loadN, h: horizontal distance L5/S1 to the
+       load, trunk: trunk flexion from vertical (deg), E: erector spinae moment arm (default 0.05 m) }
+     Muscle force Fm = (W·b + L·h)/E. Compression Fc = Fm + (W + L)·cos(trunk). Shear Fs = (W + L)·sin(trunk). */
+  function l5s1(p) {
+    const steps = [], S = 'CHAFFIN', E = p.E ?? 0.05, th = (p.trunk || 0) * Math.PI / 180, W = p.upperBodyN, L = p.loadN || 0;
+    const M = W * p.b + L * (p.h || 0);
+    step(steps, 'Moment about L5/S1', { W, b: p.b, L, h: p.h }, M, 'W·b + L·h', S);
+    const Fm = step(steps, 'Erector spinae force', E, M / E, 'moment / E', S);
+    const axial = (W + L) * Math.cos(th), Fs = (W + L) * Math.sin(th);
+    step(steps, 'Body and load along the spine', p.trunk, axial, '(W + L)·cos(trunk angle from vertical)', S);
+    const Fc = step(steps, 'Compression', null, Fm + axial, 'muscle force + axial component', S);
+    step(steps, 'Shear', p.trunk, Fs, '(W + L)·sin(trunk angle from vertical)', S);
+    step(steps, 'Compared with NIOSH limits', Fc, Fc <= L5S1_LIMITS.action ? 'ok' : Fc <= L5S1_LIMITS.max ? 'warn' : 'bad', l5s1Rate(Fc), 'NIOSH81');
+    return { method: 'L5/S1 static', muscle: Fm, compression: Fc, shear: Fs, moment: M, limits: L5S1_LIMITS, verdict: l5s1Rate(Fc), steps };
+  }
+  /* From a posture and anthropometry: upper body 50 % of body weight with its centre of mass 0.23 × stature from L5/S1
+     along the trunk (HCBCF), so b = 0.23·H·sin(trunk). { bodyMassKg, statureMm, trunk (deg), loadKg, handDistMm, E (m), g } */
+  function l5s1Posture(p) {
+    const g = p.g ?? 9.81, th = (p.trunk || 0) * Math.PI / 180;
+    const r = l5s1({ upperBodyN: 0.5 * p.bodyMassKg * g, b: 0.23 * p.statureMm / 1000 * Math.sin(th), loadN: (p.loadKg || 0) * g, h: (p.handDistMm || 0) / 1000, trunk: p.trunk, E: p.E });
+    r.steps.unshift({ step: 'Upper-body weight and centre of mass', value: { bodyMassKg: p.bodyMassKg, statureMm: p.statureMm }, score: null, rule: 'W = 0.5 × body weight; centre of mass 0.23 × stature from L5/S1 along the trunk', src: 'HCBCF' });
+    return r;
+  }
+  /* Merryweather et al. (2009) hand-calculation back compressive force, in kg-force (as published) and N.
+     { version: '1.0' | '1.1' | '1.2', sex: 'male' | 'female' (1.2), BW (kg), H (stature, cm), L (load, kg), HB (hands to L5/S1, cm), theta (trunk from vertical, deg) } */
+  function hcbcf(p) {
+    const s = Math.sin((p.theta || 0) * Math.PI / 180), BW = p.BW, L = p.L || 0, HB = p.HB || 0, H = p.H;
+    let kg;
+    if (p.version === '1.0') kg = 3 * BW * s + L * HB / 5 + 0.8 * (BW / 2 + L);
+    else if (p.version === '1.1' || !p.version) kg = 0.023 * BW * H * s + L * HB / 5 + 0.8 * (BW / 2 + L);
+    else if (p.version === '1.2') kg = p.sex === 'female' ? 0.0175 * BW * H * s + 0.152 * L * HB + 0.8 * (BW / 2 + L) + 20
+      : 0.0167 * BW * H * s + 0.145 * L * HB + 0.8 * (BW / 2 + L) + 23;
+    else throw new Error('version must be 1.0, 1.1 or 1.2');
+    return { method: 'HCBCF ' + (p.version || '1.1'), kg, N: kg * 9.81, src: 'HCBCF' };
+  }
+
+  return { SOURCES, rula, reba, niosh, nioshLift, nioshCLI, fm, l5s1, l5s1Posture, hcbcf, L5S1_LIMITS,
+    TABLES: { RULA_A, RULA_B, RULA_C, REBA_A, REBA_B, REBA_C, FM_F, FM_T, CM_T } };
+})();
+if (typeof module !== 'undefined' && module.exports) module.exports = HFE_ERGO;
+
 
 /* ---------------- posture solver ---------------- */
 // ov (optional, from the whole-body solver): { arms: { [side]: { E, W } }, legs: { K, A } } replaces the two-link
@@ -2713,6 +3043,29 @@ function classicAngles(G, R) {
   }
   return out;
 }
+/* RULA and REBA for each arm, from the solved posture (core/ergonomics.js). Inputs the posture doesn't carry are
+   assumptions, listed in the check's note: static posture (held > 1 min), no load, good coupling, wrist mid-range and
+   not deviated, shoulder not raised. Twist and side bend come from the whole-body solver (more than 10° counts, a tool
+   convention). Off the seat the trunk angle is the hip–shoulder line from vertical; prone is not scored. */
+function postureScores(G, R, W) {
+  const st = offSeat(W);
+  if (st === 'prone') { R.ergo = R.rula = R.reba = null; return; }
+  const chair = CHAIRS[W.chair] || {}, lean = R.lean > 0.5 ? R.lean : 0, tw = (G.body && G.body.twist) || {}, big = v => Math.abs(v || 0) > 10;
+  let trunk = -R.recline, supported = !st && !!chair.back && !lean;
+  if (st) { const L = HFE_SOLVER.landmarks(G.body.sk, G.body.F), h = L.hipMid, sh = L.shoulderMid; trunk = deg(Math.atan2(sh[0] - h[0], sh[1] - h[1])); }
+  const legs = !st ? 'sitting' : st === 'halfKneeling' ? 'unilateral' : 'bilateral', knee = st && R.knee != null ? 180 - R.knee : 0;
+  const out = { rula: {}, reba: {} };
+  for (const k of ['L', 'R']) {
+    const p = { upperArm: R.shFlex[k], armAbducted: R.shAbd[k] > 20, armSupported: !st && !!W.armrests && R.armrest != null && Math.abs(R.armrest) <= 40,
+      lowerArm: 180 - R.elbow[k], wrist: R.wrist[k], neck: R.neckFlex, trunk, trunkSupported: supported, legsSupported: legs !== 'unilateral' && !(R.footGap > 1),
+      trunkTwisted: big(tw.trunkRot), trunkSideBent: big(tw.trunkLat), neckTwisted: big(tw.neckRot), neckSideBent: big(tw.neckLat) };
+    out.rula[k] = HFE_ERGO.rula({ ...p, muscle: true, loadKg: 0 });
+    out.reba[k] = HFE_ERGO.reba({ ...p, trunk: supported ? 0 : trunk, legs, knee, loadKg: 0, coupling: 'good', activity: { static: true } });
+  }
+  R.ergo = out;
+  R.rula = { L: out.rula.L.score, R: out.rula.R.score };
+  R.reba = { L: out.reba.L.score, R: out.reba.R.score };
+}
 function solvePosture(M, W) {
   let out = solve(M, W), body = null;
   const stance = offSeat(W);
@@ -2729,6 +3082,7 @@ function solvePosture(M, W) {
   G.body = body;
   R.romList = body ? body.rom : SV.romReport(classicAngles(G, R));
   R.rom = R.romList.length ? R.romList[0].margin : null;
+  postureScores(G, R, W);
   // clearance capsules grow by the thickest kit item over each segment (core/kit.js `segs`)
   // clearance capsules: from the whole-body solver's own segment frames (twist, side bend and each leg), or the classic posture
   const kfx = kitFx(), caps = SV.capsules(M, body ? SV.capsLandmarks(body.sk, body.F) : postureLandmarks(M, G)).map(c => { const t = kfx.segs[c.id.replace(/[LR]$/, '')] || 0; return t ? { ...c, ra: c.ra + t, rb: c.rb + t } : c; });
@@ -2744,19 +3098,19 @@ function inR(v, r) { return (r[0] == null || v >= r[0] - 1e-9) && (r[1] == null 
 function rate(v, lim) { if (v == null || !isFinite(v)) return 'info'; if (inR(v, lim.g)) return 'ok'; if (inR(v, lim.a)) return 'warn'; return 'bad'; }
 const RANK = { info: 0, ok: 1, warn: 2, bad: 3 };
 const worst = arr => arr.reduce((a, b) => RANK[b] > RANK[a] ? b : a, 'info');
-const unitTxt = (v, u) => fmt(v) + (u === '°' ? '°' : ` ${u}`);
+const unitTxt = (v, u) => fmt(v) + (u === '°' ? '°' : u ? ` ${u}` : '');
 // checks about the seat, the chair and seated legroom, and the seated comfort ranges for the trunk, hip and knee, do not
 // apply when the stance takes the person off the seat (the joint range-of-motion check still covers every joint); prone,
 // the hands are not on the controls, so the arm and reach checks do not apply either
 const OFF_SEAT_NA = new Set(['homeVsElbow', 'seatDepth', 'seatWidth', 'armrest', 'seatPop', 'thigh', 'legroom', 'seatRange', 'headrest', 'depthRange', 'lumbarRange', 'armRange', 'recline', 'hip', 'knee']);
-const PRONE_NA = new Set(['elbow', 'shFlex', 'shAbd', 'wrist', 'reach']);
+const PRONE_NA = new Set(['elbow', 'shFlex', 'shAbd', 'wrist', 'reach', 'rula', 'reba']);
 function evaluate(R, W, G) {
   const rows = [], nS = G.scr.list.length;
   const push = (c, key, name, v, extra = {}) => {
     const lim = S.lim[c.id]; let status, text;
     if (c.arm) {
       const sL = rate(v.L, lim), sR = rate(v.R, lim);
-      status = worst([sL, sR]); text = `L ${fmt(v.L)} · R ${fmt(v.R)}${c.unit === '°' ? '°' : ' ' + c.unit}`;
+      status = worst([sL, sR]); text = `L ${fmt(v.L)} · R ${fmt(v.R)}${c.unit === '°' ? '°' : c.unit ? ' ' + c.unit : ''}`;
     } else { status = rate(v, lim); text = unitTxt(v, c.unit); }
     rows.push({ key, base: c.id, group: c.group, name, status, text, note: '', v, ...extra });
   };
@@ -2832,6 +3186,12 @@ function noteFor(id, key, R, W, G, st) {
     case 'rom': {
       const r = R.romList[0], act = G.body && G.body.active.length ? ' Joints at a limit: ' + G.body.active.map(k => k.replace(/^(\w+?)([LR]?)\.(\w+)$/, (m, sg, sd, d) => `${sd === 'L' ? 'left ' : sd === 'R' ? 'right ' : ''}${{ upperarm: 'shoulder', forearm: d === 'flex' ? 'elbow' : 'forearm', hand: 'wrist', thigh: 'hip', shank: 'knee', foot: 'ankle', head: 'neck', trunk: 'thoracic spine', lumbar: 'lumbar spine' }[sg] || sg} ${d}`)).join(', ') + ': a target could not be met inside the range.' : '';
       return `${HFE_SOLVER.romText(r)}.${act} Ranges are average adult values; the 5° green margin is a tool convention.${G.body ? '' : ' Classic solver: shoulder angles are plane projections.'}`;
+    }
+    case 'rula': case 'reba': {
+      const k = R[id].R >= R[id].L ? 'R' : 'L', r = R.ergo[id][k], P = r.parts, side = k === 'R' ? 'right' : 'left';
+      const parts = id === 'rula' ? `upper arm ${P.upperArm}, lower arm ${P.lowerArm}, wrist ${P.wrist}, twist ${P.wristTwist} → A ${P.postureA}; neck ${P.neck}, trunk ${P.trunk}, legs ${P.legs} → B ${P.postureB}; +1 muscle use each (static posture)`
+        : `trunk ${P.trunk}, neck ${P.neck}, legs ${P.legs} → A ${P.scoreA}; upper arm ${P.upperArm}, lower arm ${P.lowerArm}, wrist ${P.wrist} → B ${P.scoreB}; Table C ${P.scoreC}, +${P.activity} activity (static)`;
+      return `${id === 'rula' ? r.action.text : r.risk.text}. Worse side (${side}): ${parts}. ${id === 'rula' ? 'McAtamney and Corlett (1993)' : 'Hignett and McAtamney (2000)'}. Assumes a static posture, no load, ${id === 'reba' ? 'good coupling, ' : ''}and the wrist mid-range; arm abducted beyond 20°, twist or side bend beyond 10°, and armrests within 40 mm of elbow height count as adjustments (tool conventions).`;
     }
     case 'clearDesk': case 'clearScreens': {
       const grp = id === 'clearDesk' ? 'desk' : 'screens', p = G.clear.byGroup[grp], n = G.clear.clashes.filter(c => c.group === grp).length;
