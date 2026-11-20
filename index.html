@@ -475,14 +475,20 @@ const BODY = (() => {
 
   /* ---------- skinning ---------- */
   const FING = /^f(\d)(\d)([LR])$/;
+  // the most a finger curls to reach a surface under it: a typing hand's fingers arch down onto the keys, the knuckle
+  // joint slightly extended and the middle joints flexed. Drawn only (no check reads finger angles), so these are set by
+  // eye to a curved typing hand; others reach no further than their pose
+  const REACH = { keyboard: [-15, 80, 45, 18] };
   const POSES = { keyboard: [24, 48, 24, 14], mouse: [14, 30, 16, 8], tbThumb: [18, 38, 20, 22], tbFinger: [10, 36, 22, 10], phone: [52, 68, 38, 30], doc: [6, 12, 6, 6], rest: [14, 28, 14, 10] };
   // Grasp: each finger closes on the object, joint by joint from the knuckle, each joint stopping when the finger beyond it
   // touches the object (or the surface it stands on) or the joint reaches its limit, as hand models in DHM tools close on
   // an object. Shapes, in world mm: a handle { c, a, r } (cylinder: a point, axis direction and radius), or a body
   // { kind: 'ellipsoid', c, u: [x, y, z axes], r: [3 radii] } such as a mouse; `floor` is the height of the surface below.
-  // Contact is a finger pad (4.5% of hand length) on the surface. Returns degrees per finger and joint.
+  // Contact is a finger pad (6.5% of hand length, the finger's half-thickness) on the surface. Returns degrees per finger and joint.
   const GRASP_MAX = [[50, 60, 70], [90, 110, 80], [90, 110, 80], [90, 110, 80], [90, 110, 80]];
   function shapeDist(g, floor) {
+    // a device made of several parts (a trackball's body and its ball): the nearest part
+    if (g.kind === 'union') { const ds = g.parts.map(q => shapeDist(q)); return p => Math.min(...ds.map(f => f(p)), floor == null ? Infinity : p.y - floor); }
     const sdf = g.kind === 'ellipsoid'
       ? p => { const d = new V(p.x - g.c.x, p.y - g.c.y, p.z - g.c.z), l = g.u.map((u, i) => d.dot(u) / g.r[i]), k = Math.hypot(...l); return (k - 1) * Math.min(...g.r); }
       : p => { const d = new V(p.x - g.c.x, p.y - g.c.y, p.z - g.c.z), a = v3w(g.a).normalize(); return d.addScaledVector(a, -d.dot(a)).length() - g.r; };
@@ -496,8 +502,10 @@ const BODY = (() => {
       for (let f = 0.25; f <= 1; f += 0.25) d = Math.min(d, dist(pts[k].clone().lerp(pts[k + 1], f)));
     return d;
   }
-  function graspAngles(Lk, hd, g, HL, floor, limits) {
-    const dist = shapeDist(g, floor), pad = 0.06 * HL, W = p => hd.o.clone().add(p.clone().applyQuaternion(hd.q));
+  // together: all three joints curl in proportion to their limits (a finger arching onto a surface, as in typing)
+  // rather than one at a time from the knuckle (a finger wrapping round a handle)
+  function graspAngles(Lk, hd, g, HL, floor, limits, together) {
+    const dist = shapeDist(g, floor), pad = 0.065 * HL, W = p => hd.o.clone().add(p.clone().applyQuaternion(hd.q));
     return Lk.fingers.map((fg, i) => {
       const ang = [0, 0, 0], max = limits ? limits[i] : GRASP_MAX[i];
       const chain = () => {
@@ -508,6 +516,29 @@ const BODY = (() => {
         }
         return pts.map(W);
       };
+      if (together) {
+        let was = null, f = 0;
+        for (; f <= 1.0001; f += 0.04) {
+          for (let n = 0; n < 3; n++) ang[n] = max[n] * f;
+          const d = segDist(chain(), 0, dist);
+          if (was == null) was = d;
+          if (d < Math.min(pad, was) - 0.5) break;
+        }
+        f = Math.max(0, Math.min(1, f - 0.04));
+        if (was < pad) {
+          // already on or in the surface when straight (a thumb hanging below the palm): straighten it further, up to the
+          // same angles the other way, to the position that clears the surface most
+          let best = was;
+          for (let g = -0.04; g >= -1.0001; g -= 0.04) {
+            for (let n = 0; n < 3; n++) ang[n] = max[n] * g;
+            const d = segDist(chain(), 0, dist);
+            if (d > best + 0.25) { best = d; f = g; }
+            if (best >= pad) break;
+          }
+        }
+        for (let n = 0; n < 3; n++) ang[n] = max[n] * f;
+        return ang;
+      }
       for (let n = 0; n < 3; n++) {
         const top = Math.max(0, max[n]);
         let was = null;
@@ -556,10 +587,12 @@ const BODY = (() => {
       }
       set('buttock' + k, th.o, P.q.clone().slerp(th.q.clone().multiply(Lk.thigh.qi), 0.3));
       // fingers: flexion at each joint in the hand frame, distal joints first; round a gripped handle they close until they touch it
-      const arm = G.arms && G.arms[s], [mcp, pip, dip, thf] = POSES[(arm && arm.pose) || 'rest'] || POSES.rest;
+      const arm = G.arms && G.arms[s], pose = (arm && arm.pose) || 'rest', [mcp, pip, dip, thf] = POSES[pose] || POSES.rest;
+      // on a surface the fingers curl until their pads meet it, up to the pose's angles (a keyboard: up to a curved typing hand)
+      const reach = REACH[pose] || [mcp, pip, dip, thf];
       const wrap = arm && arm.hand && arm.hand.grasp ? graspAngles(Lk, hd, arm.hand.grasp, M.handlength, arm.hand.floor)
         : arm && arm.hand && arm.hand.floor != null ? graspAngles(Lk, hd, { kind: 'ellipsoid', c: { x: 0, y: -1e6, z: 0 }, u: [X, Yv, Zv], r: [1, 1, 1] }, M.handlength, arm.hand.floor,
-          [0, 1, 2, 3, 4].map(i => i === 0 ? [thf * 0.6, thf, thf * 0.8] : [mcp, pip, dip].map(a => a * (1 + (i - 2) * 0.04)))) : null;
+          [0, 1, 2, 3, 4].map(i => i === 0 ? [reach[3] * 0.6, reach[3], reach[3] * 0.8] : reach.slice(0, 3).map(a => a * (1 + (i - 2) * 0.04))), true) : null;
       Lk.fingers.forEach((fg, i) => {
         const ang = wrap ? wrap[i] : i === 0 ? [thf * 0.6, thf, thf * 0.8] : [mcp, pip, dip].map(a => a * (1 + (i - 2) * 0.04));
         for (let n = 1; n <= 3; n++) {

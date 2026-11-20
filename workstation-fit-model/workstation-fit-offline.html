@@ -1048,11 +1048,11 @@ const HFE_PROPS = (() => {
         const m = H.sweep(secs, H.M.device, 2.6); m.position.x = -d.d / 2; m.rotation.x = H.rad(-12); g.add(m);
         g.add(H.box(d.d * 0.9, 3, d.w * 0.95, H.mat('#2b3036'), 0, 1.5, 0));
       } },
-    'tb-thumb': { type: 'tbThumb', cat: 'pointing', label: 'Trackball (thumb)', d: 134, w: 100, h: 46, src: 'Typical thumb-operated trackball',
+    'tb-thumb': { type: 'tbThumb', cat: 'pointing', label: 'Trackball (thumb)', d: 134, w: 100, h: 46, src: 'Typical thumb-operated trackball', ball: [12, 30, -34, 17], top: [-13, 46],
       build: (g, H, o, d) => trackball(g, H, d, true) },
-    'tb-finger': { type: 'tbFinger', cat: 'pointing', label: 'Trackball (finger)', d: 130, w: 118, h: 58, src: 'Typical finger-operated trackball',
+    'tb-finger': { type: 'tbFinger', cat: 'pointing', label: 'Trackball (finger)', d: 130, w: 118, h: 58, src: 'Typical finger-operated trackball', ball: [8, 46, 0, 28], top: [-6, 40],
       build: (g, H, o, d) => trackball(g, H, d, false) },
-    'tb-panel': { type: 'tbFinger', cat: 'pointing', label: 'Console trackball (50 mm)', d: 150, w: 150, h: 45, src: 'Typical rugged panel trackball', hand: [-0.62, 40, 0.12, 58],
+    'tb-panel': { type: 'tbFinger', cat: 'pointing', label: 'Console trackball (50 mm)', d: 150, w: 150, h: 45, src: 'Typical rugged panel trackball', ball: [10, 30, 0, 25], top: [0, 26],
       build: (g, H, o, d) => {
         g.add(H.rbox(d.d, 26, d.w, 6, H.mat('#3b4136'), 0, 13, 0));
         const ball = new H.THREE.Mesh(new H.THREE.SphereGeometry(25, 28, 18), H.M.ball); ball.position.set(10, 30, 0); g.add(ball);
@@ -1894,13 +1894,22 @@ function graspOf(o, dims) {
 // the palm towards the body's midline side of the handle. The handle's axis sits one palm-thickness (taken as 10% of hand
 // length) plus its radius out of the palm, 42% of hand length from the wrist (over the distal palm). Returns the hand's
 // frame (x out of the palm, y towards the elbow, z towards the thumb on the right hand), and the wrist target.
-function gripHand(side, S, gr, HL) {
+function gripHand(side, S, gr, HL, E) {
   const A = new V3().subVectors(gr.b, gr.a).normalize();
   const t = Math.abs(A.y) > 0.2 ? clamp((gr.y - gr.a.y) / (gr.b.y - gr.a.y), 0, 1) : 0.5;
   const C = gr.a.clone().lerp(gr.b, t);
-  let Fd = new V3().subVectors(C, S); Fd.addScaledVector(A, -Fd.dot(A)); Fd.y = Math.abs(A.y) > 0.9 ? 0 : Fd.y;
+  let Fd = new V3().subVectors(C, E || S); Fd.addScaledVector(A, -Fd.dot(A)); Fd.y = Math.abs(A.y) > 0.9 ? 0 : Fd.y;
   if (Fd.lengthSq() < 1) Fd.set(1, 0, 0); Fd.addScaledVector(A, -Fd.dot(A)).normalize();
-  const x = new V3().crossVectors(A, Fd).multiplyScalar(side).normalize(), y = Fd.clone().negate(), z = A.clone().multiplyScalar(side);
+  const x = new V3().crossVectors(A, Fd).multiplyScalar(side).normalize();
+  if (E) {
+    // with the elbow known, the fingers carry on the forearm's line less 10° of ulnar deviation, so the handle crosses
+    // the palm obliquely (handle to forearm about 100°: Napier 1956; ulnar deviation in a power grip, Kapandji),
+    // instead of the hand bending to keep the handle square to it
+    const f = new V3().subVectors(C, E); f.addScaledVector(x, -f.dot(x)).normalize();
+    const u = A.clone().addScaledVector(f, -A.dot(f)).normalize();   // across the palm, towards the thumb side of the line
+    Fd = f.multiplyScalar(Math.cos(rad(10))).addScaledVector(u, -Math.sin(rad(10))).normalize();
+  }
+  const y = Fd.clone().negate(), z = new V3().crossVectors(x, y);
   const gx = 0.12 * HL + gr.r, gy = 0.42 * HL;
   const Wt = C.clone().addScaledVector(x, -gx).addScaledVector(Fd, -gy);
   return { Wt, tip: Wt.clone().addScaledVector(Fd, HL), tilt: 0, basis: { x, y, z }, grasp: { c: C, a: A, r: gr.r } };
@@ -1909,6 +1918,7 @@ function objName(o, all) {
   const same = all.filter(x => objLabel(x) === objLabel(o));
   return objLabel(o) + (same.length > 1 ? ' ' + (same.indexOf(o) + 1) : '');
 }
+const KB_WRIST_EXT = 10;   // degrees: the typing hand's extension from the keyboard's slope
 function objWorld(o, deskY, HL, reachH) {
   const yaw = rad(o.yaw || 0), dims = objDims(o);
   const T = (x, y, z) => new V3(x, y, z).applyAxisAngle(YAX, yaw).add(new V3(o.x, o.base != null ? o.base : deskY, o.z));
@@ -1917,7 +1927,11 @@ function objWorld(o, deskY, HL, reachH) {
     const kb = KB[o.kb], tau = rad(o.tilt || 0), hx = -kb.d / 2 + Math.min(63, kb.d * 0.47);
     r.home = T(hx, o.homeRowH, -kb.off); r.reachPt = T(hx, 30, -kb.off);
     r.reachPts = { [-1]: T(hx - 0.35 * HL, 30, -kb.off - 60), [1]: T(hx - 0.35 * HL, 30, -kb.off + 60) };
-    r.hand = side => ({ Wt: T(hx - reachH * Math.cos(tau), o.homeRowH + 30 - reachH * Math.sin(tau), -kb.off + side * 60), tip: T(hx + 0.25 * HL * Math.cos(tau), o.homeRowH + 12, -kb.off + side * 58), tilt: tau });
+    // the hand is extended 10° from the keyboard's slope, so the knuckles stand high enough for the fingers to arch down
+    // until their pads rest on the key tops (core/bodylib.js); typists' wrists are commonly extended further than this
+    // (Serina et al. 1999). The wrist check reports this extension.
+    r.hand = side => ({ Wt: T(hx - reachH * Math.cos(tau), o.homeRowH + 30 - reachH * Math.sin(tau), -kb.off + side * 60), tip: T(hx - reachH * Math.cos(tau) + HL * Math.cos(tau + rad(KB_WRIST_EXT)), o.homeRowH + 30 - reachH * Math.sin(tau) + HL * Math.sin(tau + rad(KB_WRIST_EXT)), -kb.off + side * 58), tilt: tau + rad(KB_WRIST_EXT),
+      floor: T(hx, o.homeRowH, 0).y - 4 });
   } else if (HFE_PROPS.of(o) && HFE_PROPS.of(o).hand) {
     // a pointing device held differently from a mouse (vertical mouse, trackpad, panel trackball): its model places the hand
     const [wx, wy, tx, ty] = HFE_PROPS.of(o).hand; r.reachPt = T(0, 30, 0);
@@ -1929,6 +1943,22 @@ function objWorld(o, deskY, HL, reachH) {
     const hump = { x: dims.d / 2 - 0.57 * HL, y: dims.h }, ax = [T(1, 0, 0).sub(T(0, 0, 0)), new V3(0, 1, 0), T(0, 0, 1).sub(T(0, 0, 0))];
     const shell = { kind: 'ellipsoid', c: T(0, 0, 0), u: ax, r: [dims.d / 2, dims.h, dims.w / 2] };
     r.hand = () => ({ Wt: T(hump.x - 0.35 * HL, hump.y + 0.14 * HL, 0), tip: T(hump.x + 0.65 * HL, hump.y + 0.14 * HL, 0), tilt: 0, grasp: shell });
+  } else if ((o.type === 'tbThumb' || o.type === 'tbFinger') && HFE_PROPS.of(o) && HFE_PROPS.of(o).ball) {
+    // a trackball: the hand rests on the body and the fingers (or, on a thumb trackball, the thumb) close onto the ball
+    r.reachPt = T(0, 30, 0);
+    const m = HFE_PROPS.of(o), b = m.ball, top = m.top, ax = [T(1, 0, 0).sub(T(0, 0, 0)), new V3(0, 1, 0), T(0, 0, 1).sub(T(0, 0, 0))];
+    const sph = { kind: 'ellipsoid', c: T(b[0], b[1], b[2]), u: ax, r: [b[3], b[3], b[3]] };
+    const body = { kind: 'ellipsoid', c: T(top[0], 0, 0), u: ax, r: [dims.d / 2, top[1], dims.w / 2] };
+    const grasp = { kind: 'union', parts: [body, sph] };
+    if (o.type === 'tbThumb') {
+      // held as a mouse, with the thumb beside the ball
+      const hx = dims.d / 2 - 0.46 * HL, hy = top[1] + 0.14 * HL;
+      r.hand = () => ({ Wt: T(hx - 0.35 * HL, hy, 0), tip: T(hx + 0.65 * HL, hy, 0), tilt: 0, grasp });
+    } else {
+      // the knuckles over the back of the ball, the hand sloping down 15° to the wrist, the fingers draped over the ball
+      const sl = rad(15), kx = b[0] - 0.75 * b[3], ky = b[1] + b[3] + 0.1 * HL, L = 0.45 * HL;
+      r.hand = () => ({ Wt: T(kx - L * Math.cos(sl), ky - L * Math.sin(sl), b[2]), tip: T(kx + HL, ky, b[2]), tilt: sl, grasp });
+    }
   } else if (o.type === 'tbThumb') {
     r.reachPt = T(0, 30, 0);
     r.hand = () => ({ Wt: T(-0.52 * HL, 50, 0), tip: T(0.3 * HL, 46, 0), tilt: 0 });
@@ -1939,7 +1969,7 @@ function objWorld(o, deskY, HL, reachH) {
     // power grip round the handle: the palm against it, thumb uppermost, fingers closed round it (gripHand)
     const gy = dims.grip, g = graspOf(o, dims); r.reachPt = T(0, gy, 0);
     r.grasp = { a: T(...g.a), b: T(...g.b), r: g.r, y: gy + (o.base != null ? o.base : deskY) };
-    r.hand = (side, S) => gripHand(side, S, r.grasp, HL);
+    r.hand = (side, S, E) => gripHand(side, S, r.grasp, HL, E);
   } else if (o.type === 'stick' || o.type === 'throttle') {
     // fingertip control (panel mini-joystick): hand palm down behind the knob
     const gy = dims.grip; r.reachPt = T(0, gy, 0);
@@ -3069,7 +3099,10 @@ function solve(M, W, ov) {
     const Sv = new V3(Sh.x, Sh.y, side * ghZ);
     const id = W.hands[side < 0 ? 'L' : 'R'];
     const ob = id === '' ? null : (objs.find(x => x.o.id === id) || kbFirst || null);
-    const t0 = ob ? ob.hand(side, Sv) : null, t = t0 ? { ...t0, floor: ob.o.base != null ? ob.o.base : deskY } : { Wt: new V3(Sh.x + 260, deskY + 30, side * 150), tip: new V3(Sh.x + 260 + 0.6 * HL, deskY + 20, side * 150), tilt: 0 };
+    let t0 = ob ? ob.hand(side, Sv) : null;
+    // a gripped handle is held in line with the forearm: grip again with the elbow that the first grip gives
+    if (t0 && t0.basis) t0 = ob.hand(side, Sv, (ov && ov.arms ? ov.arms[side] : armIK(Sv, t0.Wt, Lu, Lf, side, trunkEnv)).E);
+    const t = t0 ? { ...t0, floor: t0.floor != null ? t0.floor : ob.o.base != null ? ob.o.base : deskY } : { Wt: new V3(Sh.x + 260, deskY + 30, side * 150), tip: new V3(Sh.x + 260 + 0.6 * HL, deskY + 20, side * 150), tilt: 0 };
     const ik = ov && ov.arms ? ov.arms[side] : armIK(Sv, t.Wt, Lu, Lf, side, trunkEnv);
     const El = ik.E, Wr = ik.W, Sa = ik.S || Sv;   // the whole-body solver's shoulder follows trunk twist and side bend
     const elbow = deg(new V3().subVectors(Sa, El).angleTo(new V3().subVectors(Wr, El)));
@@ -4033,14 +4066,20 @@ const BODY = (() => {
 
   /* ---------- skinning ---------- */
   const FING = /^f(\d)(\d)([LR])$/;
+  // the most a finger curls to reach a surface under it: a typing hand's fingers arch down onto the keys, the knuckle
+  // joint slightly extended and the middle joints flexed. Drawn only (no check reads finger angles), so these are set by
+  // eye to a curved typing hand; others reach no further than their pose
+  const REACH = { keyboard: [-15, 80, 45, 18] };
   const POSES = { keyboard: [24, 48, 24, 14], mouse: [14, 30, 16, 8], tbThumb: [18, 38, 20, 22], tbFinger: [10, 36, 22, 10], phone: [52, 68, 38, 30], doc: [6, 12, 6, 6], rest: [14, 28, 14, 10] };
   // Grasp: each finger closes on the object, joint by joint from the knuckle, each joint stopping when the finger beyond it
   // touches the object (or the surface it stands on) or the joint reaches its limit, as hand models in DHM tools close on
   // an object. Shapes, in world mm: a handle { c, a, r } (cylinder: a point, axis direction and radius), or a body
   // { kind: 'ellipsoid', c, u: [x, y, z axes], r: [3 radii] } such as a mouse; `floor` is the height of the surface below.
-  // Contact is a finger pad (4.5% of hand length) on the surface. Returns degrees per finger and joint.
+  // Contact is a finger pad (6.5% of hand length, the finger's half-thickness) on the surface. Returns degrees per finger and joint.
   const GRASP_MAX = [[50, 60, 70], [90, 110, 80], [90, 110, 80], [90, 110, 80], [90, 110, 80]];
   function shapeDist(g, floor) {
+    // a device made of several parts (a trackball's body and its ball): the nearest part
+    if (g.kind === 'union') { const ds = g.parts.map(q => shapeDist(q)); return p => Math.min(...ds.map(f => f(p)), floor == null ? Infinity : p.y - floor); }
     const sdf = g.kind === 'ellipsoid'
       ? p => { const d = new V(p.x - g.c.x, p.y - g.c.y, p.z - g.c.z), l = g.u.map((u, i) => d.dot(u) / g.r[i]), k = Math.hypot(...l); return (k - 1) * Math.min(...g.r); }
       : p => { const d = new V(p.x - g.c.x, p.y - g.c.y, p.z - g.c.z), a = v3w(g.a).normalize(); return d.addScaledVector(a, -d.dot(a)).length() - g.r; };
@@ -4054,8 +4093,10 @@ const BODY = (() => {
       for (let f = 0.25; f <= 1; f += 0.25) d = Math.min(d, dist(pts[k].clone().lerp(pts[k + 1], f)));
     return d;
   }
-  function graspAngles(Lk, hd, g, HL, floor, limits) {
-    const dist = shapeDist(g, floor), pad = 0.06 * HL, W = p => hd.o.clone().add(p.clone().applyQuaternion(hd.q));
+  // together: all three joints curl in proportion to their limits (a finger arching onto a surface, as in typing)
+  // rather than one at a time from the knuckle (a finger wrapping round a handle)
+  function graspAngles(Lk, hd, g, HL, floor, limits, together) {
+    const dist = shapeDist(g, floor), pad = 0.065 * HL, W = p => hd.o.clone().add(p.clone().applyQuaternion(hd.q));
     return Lk.fingers.map((fg, i) => {
       const ang = [0, 0, 0], max = limits ? limits[i] : GRASP_MAX[i];
       const chain = () => {
@@ -4066,6 +4107,29 @@ const BODY = (() => {
         }
         return pts.map(W);
       };
+      if (together) {
+        let was = null, f = 0;
+        for (; f <= 1.0001; f += 0.04) {
+          for (let n = 0; n < 3; n++) ang[n] = max[n] * f;
+          const d = segDist(chain(), 0, dist);
+          if (was == null) was = d;
+          if (d < Math.min(pad, was) - 0.5) break;
+        }
+        f = Math.max(0, Math.min(1, f - 0.04));
+        if (was < pad) {
+          // already on or in the surface when straight (a thumb hanging below the palm): straighten it further, up to the
+          // same angles the other way, to the position that clears the surface most
+          let best = was;
+          for (let g = -0.04; g >= -1.0001; g -= 0.04) {
+            for (let n = 0; n < 3; n++) ang[n] = max[n] * g;
+            const d = segDist(chain(), 0, dist);
+            if (d > best + 0.25) { best = d; f = g; }
+            if (best >= pad) break;
+          }
+        }
+        for (let n = 0; n < 3; n++) ang[n] = max[n] * f;
+        return ang;
+      }
       for (let n = 0; n < 3; n++) {
         const top = Math.max(0, max[n]);
         let was = null;
@@ -4114,10 +4178,12 @@ const BODY = (() => {
       }
       set('buttock' + k, th.o, P.q.clone().slerp(th.q.clone().multiply(Lk.thigh.qi), 0.3));
       // fingers: flexion at each joint in the hand frame, distal joints first; round a gripped handle they close until they touch it
-      const arm = G.arms && G.arms[s], [mcp, pip, dip, thf] = POSES[(arm && arm.pose) || 'rest'] || POSES.rest;
+      const arm = G.arms && G.arms[s], pose = (arm && arm.pose) || 'rest', [mcp, pip, dip, thf] = POSES[pose] || POSES.rest;
+      // on a surface the fingers curl until their pads meet it, up to the pose's angles (a keyboard: up to a curved typing hand)
+      const reach = REACH[pose] || [mcp, pip, dip, thf];
       const wrap = arm && arm.hand && arm.hand.grasp ? graspAngles(Lk, hd, arm.hand.grasp, M.handlength, arm.hand.floor)
         : arm && arm.hand && arm.hand.floor != null ? graspAngles(Lk, hd, { kind: 'ellipsoid', c: { x: 0, y: -1e6, z: 0 }, u: [X, Yv, Zv], r: [1, 1, 1] }, M.handlength, arm.hand.floor,
-          [0, 1, 2, 3, 4].map(i => i === 0 ? [thf * 0.6, thf, thf * 0.8] : [mcp, pip, dip].map(a => a * (1 + (i - 2) * 0.04)))) : null;
+          [0, 1, 2, 3, 4].map(i => i === 0 ? [reach[3] * 0.6, reach[3], reach[3] * 0.8] : reach.slice(0, 3).map(a => a * (1 + (i - 2) * 0.04))), true) : null;
       Lk.fingers.forEach((fg, i) => {
         const ang = wrap ? wrap[i] : i === 0 ? [thf * 0.6, thf, thf * 0.8] : [mcp, pip, dip].map(a => a * (1 + (i - 2) * 0.04));
         for (let n = 1; n <= 3; n++) {
@@ -5538,7 +5604,7 @@ let toastT; function toast(m) { $('#toast').textContent = m; clearTimeout(toastT
 /* ---------------- evidence: project files and output stamps (PRJ-01, PRJ-03, VAL-02, VAL-03, VAL-07) ----------------
    core/evidence.js does the hashing, migration and comparison; this gathers the tool's state for it. Every output
    (checks CSV, population CSVs, placement map CSV, image, drawing) carries the same stamp. */
-const TOOL = { name: 'HFE Lab Workspace Visualisation', build: 'd477c6baf3df' };
+const TOOL = { name: 'HFE Lab Workspace Visualisation', build: '222ddb08c236' };
 const VALIDATION = 'Not validated (posture from geometric rules, not a validated posture-prediction model; limits are guidance values unless edited)';
 const solverName = W => W.solver === 'body' ? 'Whole body with joint limits (beta)' : 'Classic seated';
 function subjectText() {
