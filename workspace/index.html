@@ -2042,6 +2042,10 @@ const HFE_SOLVER = (() => {
     GIRDLE: 'Neumann D.A. (2017) Kinesiology of the Musculoskeletal System, 3rd ed., Elsevier, Chapter 5 (shoulder complex): sternoclavicular elevation about 45° and depression about 10°, protraction and retraction about 15° each; acromioclavicular upward rotation about 30°. Rounded; the clavicle is one rigid segment turning about the sternoclavicular joint and the scapula one turning about the acromioclavicular joint. A tool convention, to be verified.',
     INMAN: 'Inman V.T., Saunders J.B. deC.M., Abbott L.C. (1944) Observations on the function of the shoulder joint. J Bone Joint Surg 26(1):1–30: of 180° of arm elevation about 120° is glenohumeral and 60° scapulothoracic, a 2:1 rhythm after the first 30° or so.',
     MTP: 'American Academy of Orthopaedic Surgeons (1965) Joint Motion: Method of Measuring and Recording: first metatarsophalangeal joint, extension 70°, flexion 45°. Applied to the toes as one segment.',
+    AAOS_HAND: 'American Academy of Orthopaedic Surgeons (1965) Joint Motion: Method of Measuring and Recording, average adult values for the hand: finger metacarpophalangeal (MCP) flexion 90°, hyperextension 45°; proximal interphalangeal (PIP) flexion 100°; distal interphalangeal (DIP) flexion 90°, hyperextension 10°; thumb carpometacarpal (CMC) abduction 70°, flexion 15°, extension 20°; thumb MCP flexion 50°; thumb interphalangeal (IP) flexion 80°, hyperextension 20°. To be checked against the booklet before a customer verdict.',
+    SPREAD: 'Finger MCP abduction and adduction (spreading the fingers): about 20° either side of the finger\'s rest line, a round figure for the active range of the index to little fingers (the AAOS booklet gives no average). A tool convention, to be verified.',
+    COUPLE: 'Coupling of the distal to the proximal interphalangeal joint, DIP ≈ ⅔ PIP, in free finger flexion: Rijpkema H., Girard M. (1991) Computer animation of knowledge-based human grasping. Computer Graphics 25(4):339–348. Used as a soft preference when a finger arches onto a surface, not as a limit.',
+    BUCHHOLZ: 'Buchholz B., Armstrong T.J., Goldstein S.A. (1992) Anthropometric data for describing the kinematics of the human hand. Ergonomics 35(3):261–273: segment lengths of each digit as a share of hand length. Used only for the default hand geometry (the tool uses the fitted body mesh\'s own finger joints).',
     DELEVA: 'de Leva P. (1996) Adjustments to Zatsiorsky–Seluyanov\'s segment inertia parameters. J Biomech 29(9):1223–1230, Table 4: segment mass as a share of body mass and centre-of-mass position along the segment, young adult men and women.'
   };
   // de Leva (1996) Table 4: [mass % of body mass, centre of mass % along the segment from its proximal end] for men and
@@ -2071,7 +2075,16 @@ const HFE_SOLVER = (() => {
     hip:      { flex: [-20, 120, 'AAOS'], abd: [-20, 40, 'AAOS'], rot: [-45, 45, 'AAOS'] },
     knee:     { flex: [0, 135, 'AAOS'] },
     ankle:    { dorsi: [-50, 20, 'AAOS'] },
-    toe:      { dorsi: [-45, 70, 'MTP'] }
+    toe:      { dorsi: [-45, 70, 'MTP'] },
+    // the hand (see hand()): angles are anatomical, measured from straight fingers (a finger in line with its metacarpal)
+    // and, for the thumb's CMC, from the thumb metacarpal beside the index metacarpal; the model's rest hand is not
+    // quite straight, and that offset is carried by each degree of freedom's `zero`
+    mcp:      { flex: [-45, 90, 'AAOS_HAND'], abd: [-20, 20, 'SPREAD'] },   // abd: away from the middle finger (the middle finger: towards the thumb)
+    pip:      { flex: [0, 100, 'AAOS_HAND'] },
+    dip:      { flex: [-10, 90, 'AAOS_HAND'] },
+    cmc:      { abd: [0, 70, 'AAOS_HAND'], flex: [-20, 15, 'AAOS_HAND'] },   // thumb: abd is palmar abduction (out of the palm's plane), flex across the palm
+    tmcp:     { flex: [0, 50, 'AAOS_HAND'] },
+    ip:       { flex: [-20, 80, 'AAOS_HAND'] }
   };
   // the share of each thoracolumbar motion taken by the lumbar and thoracic spine (SPINE): the limits above are the VA
   // totals times these shares, and the solver's stiffness for each level follows them so a trunk motion divides this way
@@ -2079,7 +2092,8 @@ const HFE_SOLVER = (() => {
   // regularisation weight for a DOF from per-joint weights; the two spine levels split the trunk's weight so that together
   // they are as stiff as one trunk joint of that weight
   const jointReg = (d, REG) => d.joint === 'lumbar' || d.joint === 'thorax' ? (REG.trunk || 0) / Math.sqrt(SPINE_SHARE[d.joint][d.name]) : (REG[d.joint] || 0);
-  const JOINT_NAME = { clavicle: 'Clavicle', scapula: 'Scapula', trunk: 'Trunk', lumbar: 'Lumbar spine', thorax: 'Thoracic spine', neck: 'Neck', shoulder: 'Shoulder', elbow: 'Elbow', forearm: 'Forearm', wrist: 'Wrist', hip: 'Hip', knee: 'Knee', ankle: 'Ankle', toe: 'Toe' };
+  const JOINT_NAME = { clavicle: 'Clavicle', scapula: 'Scapula', trunk: 'Trunk', lumbar: 'Lumbar spine', thorax: 'Thoracic spine', neck: 'Neck', shoulder: 'Shoulder', elbow: 'Elbow', forearm: 'Forearm', wrist: 'Wrist', hip: 'Hip', knee: 'Knee', ankle: 'Ankle', toe: 'Toe', mcp: 'MCP', pip: 'PIP', dip: 'DIP', cmc: 'CMC', tmcp: 'MCP', ip: 'IP' };
+  const DIGIT_NAME = ['thumb', 'index finger', 'middle finger', 'ring finger', 'little finger'];
   const DOF_NAME = { flex: 'flexion', lat: 'lateral bend', rot: 'rotation', abd: 'abduction', pron: 'pronation', ext: 'extension', dev: 'ulnar deviation', dorsi: 'dorsiflexion', elev: 'elevation', prot: 'protraction', uprot: 'upward rotation' };
   const NEG_NAME = { flex: 'extension', lat: 'lateral bend', rot: 'rotation', abd: 'adduction', pron: 'supination', ext: 'flexion', dev: 'radial deviation', dorsi: 'plantarflexion', elev: 'depression', prot: 'retraction', uprot: 'downward rotation' };
 
@@ -2204,7 +2218,7 @@ const HFE_SOLVER = (() => {
     sk.segs.forEach((g, i) => {
       let p, Rw;
       let R0 = I3;
-      if (g.pi < 0) { p = v3(); Rw = I3; } else { const P = out[g.pi]; p = add(P.p, mv(P.R, g.off)); Rw = R0 = P.R; }
+      if (g.pi < 0) { p = sk.base ? sk.base.p.slice() : v3(); Rw = R0 = sk.base ? sk.base.R : I3; } else { const P = out[g.pi]; p = add(P.p, mv(P.R, g.off)); Rw = R0 = P.R; }
       if (!g.restAt) Rw = mm(Rw, g.rest);
       for (let j = 0; j < g.dofs.length; j++) {
         const d = g.dofs[j];
@@ -2301,6 +2315,7 @@ const HFE_SOLVER = (() => {
     }).filter(Boolean).sort((x, y) => x.margin - y.margin);
   }
   function romLabel(a) {
+    if (a.digit != null) return `${a.side < 0 ? 'Left' : 'Right'} ${DIGIT_NAME[a.digit]} ${JOINT_NAME[a.joint]} ${a.joint === 'cmc' && a.name === 'abd' ? 'palmar abduction' : DOF_NAME[a.name]}`;
     return `${a.side ? (a.side < 0 ? 'Left ' : 'Right ') + JOINT_NAME[a.joint].toLowerCase() : JOINT_NAME[a.joint]} ${DOF_NAME[a.name]}`;
   }
   // e.g. "Neck flexion: 50° extension (range 45° extension to 45°, VA)"
@@ -2369,8 +2384,13 @@ const HFE_SOLVER = (() => {
                                                         body moves. centre [x, z], or pull towards the hull's centre, adds a
                                                         soft pull
        { type: 'above', y, caps? }                      keep every body capsule (or those named) above the floor at y
+       { type: 'clear', seg, a, b, shape, pad, n? }     keep n points along a segment (local a to b) pad clear of a shape
+                                                        (one-sided; shapes as sdf())
+       { type: 'touch', seg, local, shape, pad }        a point on a segment pad from a shape's surface (a contact)
+       { type: 'couple', a, b, k, raw? }                joint angle b = k · joint angle a (DOF keys; anatomical angles, or
+                                                        with raw from the rest posture)
      opts: { q0, pref, regW (per DOF weight, mm per radian), lock (set of DOF keys), lim (overrides by DOF
-     key: [lo, hi] radians), iters } */
+     key: [lo, hi] radians), iters, maxStep (radians: the most any DOF turns in one step) } */
   function residuals(sk, q, targets, opts, F) {
     F = F || fk(sk, q);
     const r = [];
@@ -2402,6 +2422,19 @@ const HFE_SOLVER = (() => {
         if (poly) r.push(w * Math.min(0, insidePoly([c[0], c[2]], poly) - (t.margin || 0)));
         const ctr = t.contacts && t.pull ? polyCentre(poly) : t.centre;
         if (ctr) { const k = w * (t.pull == null ? 0.2 : t.pull); r.push(k * (c[0] - ctr[0]), k * (c[2] - ctr[1])); }
+      } else if (t.type === 'clear') {
+        // keep points along a segment (n samples from local a to local b, a excluded) at least pad from a surface (one-sided)
+        const f = t._f || (t._f = sdf(t.shape)), n = t.n || 4;
+        for (let k = 1; k <= n; k++) r.push(w * Math.min(0, f(point(sk, F, t.seg, add(t.a, scl(sub(t.b, t.a), k / n)))) - (t.pad || 0)));
+      } else if (t.type === 'touch') {
+        // a point on a segment on a surface, at distance pad from it (two-sided: a contact)
+        const f = t._f || (t._f = sdf(t.shape)); r.push(w * (f(point(sk, F, t.seg, t.local)) - (t.pad || 0)));
+      } else if (t.type === 'couple') {
+        // one joint angle a fixed ratio of another, b = k · a, in anatomical angles (each DOF's zero included), or with raw
+        // in angles from the rest posture
+        const da = sk.dofs[sk.dofIndex[t.a]], db = sk.dofs[sk.dofIndex[t.b]];
+        const za = t.raw ? 0 : da.zero || 0, zb = t.raw ? 0 : db.zero || 0;
+        r.push(w * ((q[sk.dofIndex[t.b]] + zb) - t.k * (q[sk.dofIndex[t.a]] + za)));
       } else if (t.type === 'above') {
         if (!L) L = capsLandmarks(sk, F);
         for (const C of capsules(sk.M, L)) if (!t.caps || t.caps.some(p => C.id.startsWith(p)))
@@ -2478,6 +2511,8 @@ const HFE_SOLVER = (() => {
           const keep = free.map((_, a) => a).filter(a => !held[a]), dk = solveLinear(keep.map(a => keep.map(b => A[a][b])), keep.map(a => -JTr[a]));
           dq = free.map(() => 0); keep.forEach((a, j) => { dq[a] = dk[j]; });
         }
+        // an optional trust region: no joint turns more than maxStep in one step (so a finger cannot jump through a thin handle)
+        if (opts.maxStep) { const big = Math.max(...dq.map(Math.abs)); if (big > opts.maxStep) dq = dq.map(v => v * opts.maxStep / big); }
         const qn = [...q]; free.forEach((i, a) => { qn[i] = clamp(q[i] + dq[a], lim[i][0], lim[i][1]); });
         const rn = residuals(sk, qn, targets, opts), cn = cost(rn);
         if (cn < c) {
@@ -2500,7 +2535,8 @@ const HFE_SOLVER = (() => {
   // primary limits; the per-level limits are a split of them (SPINE) that the solver enforces but does not report
   function angles(sk, q, skipLocked) {
     const out = sk.dofs.map((d, i) => ({ d, i })).filter(({ d }) => d.joint !== 'root' && d.joint !== 'lumbar' && d.joint !== 'thorax' && !(skipLocked && skipLocked.has(d.key)))
-      .map(({ d, i }) => ({ joint: d.joint, name: d.name, side: d.side, value: q[i] * R2D, key: d.key }));
+      .map(({ d, i }) => d.digit == null ? { joint: d.joint, name: d.name, side: d.side, value: q[i] * R2D, key: d.key }
+        : { joint: d.joint, name: d.name, side: d.side, value: (q[i] + d.zero) * R2D, key: d.key, digit: d.digit });
     // shoulder abduction is reported for the whole complex (arm to thorax, as AAOS measures it): the glenohumeral angle
     // plus the girdle's elevation and upward rotation, which turn about the same axis
     for (const a of out) if (a.joint === 'shoulder' && a.name === 'abd') {
@@ -2649,9 +2685,164 @@ const HFE_SOLVER = (() => {
     const c = com(sk, res.F, spec.sex), poly = S.contacts.length ? supportPoly(sk, res.F, S.contacts) : null;
     return { ...res, stance: spec.stance || 'standing', com: c, support: poly, stability: poly ? insidePoly([c[0], c[2]], poly) : null, targets: S.targets };
   }
+
+  /* ---- shapes for contact: signed distance (mm, negative inside), world frame ----
+     { kind: 'plane', n, d } (n · p = d is the surface, n pointing out), { kind: 'sphere', c, r },
+     { kind: 'ellipsoid', c, u: [3 unit axes], r: [3 radii] } (approximate distance), a handle { c, a, r } (an endless
+     cylinder through c along a), and { kind: 'union', parts } (the nearest part). */
+  function sdf(g) {
+    if (typeof g === 'function') return g;
+    if (g.kind === 'union') { const fs = g.parts.map(sdf); return p => { let d = Infinity; for (const f of fs) d = Math.min(d, f(p)); return d; }; }
+    if (g.kind === 'plane') { const n = unit(g.n); return p => dot(n, p) - g.d; }
+    if (g.kind === 'sphere') return p => len(sub(p, g.c)) - g.r;
+    if (g.kind === 'ellipsoid') return p => { const d = sub(p, g.c); return (Math.hypot(...g.u.map((u, i) => dot(d, u) / g.r[i])) - 1) * Math.min(...g.r); };
+    const a = unit(g.a);
+    return p => { const d = sub(p, g.c); return len(sub(d, scl(a, dot(d, a)))) - g.r; };
+  }
+
+  /* ---- the hand ----
+     The fingers and thumb as a skeleton of their own, hung from the body's hand segment. Each digit has three segments
+     (a finger: proximal, middle and distal phalanges; the thumb: metacarpal, proximal and distal phalanges) and four
+     degrees of freedom, 20 in each hand, each limited by its range (ROM):
+       fingers  MCP abduction (spread) and flexion, PIP flexion, DIP flexion
+       thumb    CMC flexion (across the palm) and palmar abduction, MCP flexion, IP flexion
+     Nothing proximal moves with the fingers, so a hand is solved after the body, in the hand frame the body solve gives
+     it: the arm's solution, and every check that reads it, is the same with or without the fingers.
+     Frame: the body skeleton's hand frame (origin at the wrist, -Y towards the fingers, +X out of the palm, +Z towards the
+     thumb on the right hand and the little finger on the left). geom (optional): { fingers: [5 × { j: [3 joint points],
+     tip, ax: [3 flexion axes] }] }, thumb first, in that frame, as the tool takes them from the fitted body mesh; each
+     flexion axis turns the digit towards +X. Without geom the joints are laid out from hand length and breadth (BUCHHOLZ).
+     The model's rest hand is not quite straight: each DOF's `zero` is its anatomical angle at rest, so limits and reports
+     are anatomical while q = 0 is the rest hand. */
+  const T3 = A => [A[0], A[3], A[6], A[1], A[4], A[7], A[2], A[5], A[8]];
+  const cols = (x, y, z) => [x[0], y[0], z[0], x[1], y[1], z[1], x[2], y[2], z[2]];
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const perpTo = (v, n) => unit(sub(v, scl(n, dot(v, n))));
+  // the angle that turns a onto b about ax, both seen in the plane normal to ax
+  const angAbout = (a, b, ax) => Math.atan2(dot(cross(a, b), ax), dot(a, b) - dot(a, ax) * dot(b, ax));
+  const DIGITS = ['thumb', 'index', 'middle', 'ring', 'little'];
+  // segment lengths as a share of hand length (BUCHHOLZ): thumb metacarpal, proximal, distal; fingers proximal, middle, distal
+  const DIGIT_LEN = [[0.251, 0.196, 0.158], [0.265, 0.143, 0.097], [0.277, 0.170, 0.108], [0.259, 0.165, 0.107], [0.206, 0.117, 0.093]];
+  function handGeom(M, side) {
+    const HL = M.handlength, HB = M.handbreadth || 0.43 * HL, X = [1, 0, 0];
+    // finger MCP joints on an arc across the palm (fingertips at 95, 100, 96 and 80 % of hand length), the thumb's CMC at
+    // the base of the palm on the thumb side, its metacarpal pointing 35° out from the index line and 15° palmar
+    const mcp = [null, [0, -0.445 * HL, 0.36 * HB * side], [0, -0.445 * HL, 0.12 * HB * side], [0, -0.429 * HL, -0.12 * HB * side], [0, -0.384 * HL, -0.34 * HB * side]];
+    return { fingers: DIGIT_LEN.map((L, i) => {
+      const base = i ? mcp[i] : [0.05 * HL, -0.1 * HL, 0.3 * HB * side];
+      const d = i ? [0, -1, 0] : unit([Math.sin(15 * D2R), -Math.cos(35 * D2R), Math.sin(35 * D2R) * side]);
+      const j = [base]; for (let n = 0; n < 2; n++) j.push(add(j[n], scl(d, L[n] * HL)));
+      const ax = unit(cross(d, X));
+      return { j, tip: add(j[2], scl(d, L[2] * HL)), ax: [ax, ax, ax] };
+    }) };
+  }
+  function hand(M, side, geom) {
+    geom = geom || handGeom(M, side);
+    const G = geom.fingers, X = [1, 0, 0], HL = M.handlength, segs = [], dofs = [], digits = [];
+    const dofOf = (joint, name, axis, sign) => ({ joint, name, axis, sign });
+    segs.push({ name: 'palm', parent: null, off: v3(), dofs: [], rest: I3 });
+    const mid = G[2].j[0], tz = [0, 0, side];   // the middle finger's MCP; +Z·side is towards the thumb
+    G.forEach((g, i) => {
+      const P = [...g.j, g.tip], d = [0, 1, 2].map(n => unit(sub(P[n + 1], P[n])));
+      const B = [0, 1, 2].map(n => { const z = unit(g.ax[n]), x = perpTo(X, z); return cols(x, cross(z, x), z); });
+      // the turn about the palm's normal (finger spread, or the thumb across the palm): spread is positive away from the
+      // middle finger (the middle finger itself towards the thumb), the thumb's CMC flexion positive towards the little finger
+      const lat = i === 0 ? scl(tz, -1) : i === 2 ? tz : scl(tz, Math.sign(dot(sub(g.j[0], mid), tz)) || 1);
+      const sx = dot(cross(X, d[0]), lat) >= 0 ? 1 : -1;
+      // rest angles (anatomical, degrees): a finger's MCP from the line wrist to MCP, the thumb's palmar abduction from the
+      // index metacarpal (wrist to index MCP), each other joint from the segment before
+      const ref0 = i === 0 ? unit(G[1].j[0]) : unit(g.j[0]);
+      const z0 = [angAbout(ref0, d[0], unit(g.ax[0])), angAbout(d[0], d[1], unit(g.ax[1])), angAbout(d[1], d[2], unit(g.ax[2]))].map(a => a * R2D);
+      const J = i === 0 ? ['cmc', 'tmcp', 'ip'] : ['mcp', 'pip', 'dip'], nm = DIGITS[i];
+      const first = i === 0 ? [{ ...dofOf('cmc', 'flex', 'x', sx), zero: 0 }, { ...dofOf('cmc', 'abd', 'z', 1), zero: z0[0] }]
+        : [{ ...dofOf('mcp', 'abd', 'x', sx), zero: 0 }, { ...dofOf('mcp', 'flex', 'z', 1), zero: z0[0] }];
+      for (let n = 0; n < 3; n++) {
+        const parent = n ? nm + n : 'palm', Bp = n ? B[n - 1] : I3;
+        segs.push({ name: nm + (n + 1), parent, off: mtv(Bp, sub(g.j[n], n ? g.j[n - 1] : v3())), rest: mm(T3(Bp), B[n]), side, digit: i,
+          dofs: n ? [{ ...dofOf(J[n], 'flex', 'z', 1), zero: z0[n] }] : first, end: mtv(B[n], sub(P[n + 1], P[n])) });
+      }
+      digits.push({ name: nm, segs: [1, 2, 3].map(n => nm + n), flex: [i === 0 ? nm + '1.abd' : nm + '1.flex', nm + '2.flex', nm + '3.flex'], side: nm + '1.' + (i === 0 ? 'flex' : 'abd') });
+    });
+    const index = {}; segs.forEach((g, i) => { index[g.name] = i; g.pi = g.parent ? index[g.parent] : -1; });
+    segs.forEach((g, si) => g.dofs.forEach((d, di) => {
+      const r = ROM[d.joint][d.name], zero = clamp(d.zero, r[0], r[1]) * D2R;
+      dofs.push({ key: `${g.name}.${d.name}`, seg: g.name, si, di, joint: d.joint, name: d.name, side, digit: g.digit, zero, lim: [r[0] * D2R - zero, r[1] * D2R - zero], src: r[2] });
+    }));
+    const dofIndex = Object.fromEntries(dofs.map((d, i) => [d.key, i]));
+    const lm = Object.fromEntries(DIGITS.map(nm => ['tip' + nm[0].toUpperCase() + nm.slice(1), [nm + '3', segs[index[nm + '3']].end]]));
+    return { M, side, segs, index, dofs, dofIndex, lm, digits, geom, HL, pad: 0.065 * HL };
+  }
+  // how far a wrapping grasp closes each joint at most (degrees from the rest hand, each also held inside its range):
+  // thumb CMC palmar abduction, MCP, IP; fingers MCP, PIP, DIP
+  const GRASP_MAX = [[50, 60, 70], [90, 110, 80], [90, 110, 80], [90, 110, 80], [90, 110, 80]];
+  /* solve the hand: spec { base: { p, R } (the hand frame in the world: the wrist and its rotation), mode, shape, pose,
+     reach }. Modes:
+       pose   the digits take a set posture: pose = [MCP, PIP, DIP, thumb] degrees from rest (the thumb's three joints at
+              0.6, 1 and 0.8 of its value; the fingers' angles grow 4 % a finger from the index outwards), held in range
+       wrap   the digits close round a shape, as a hand closes on a handle, a mouse or a trackball: joint by joint from
+              the base, each joint closing towards GRASP_MAX until the digit beyond it touches the shape (a finger pad,
+              6.5 % of hand length, clear of the surface) or the joint reaches its limit
+       type   the fingers arch down onto a surface (the key tops: shape a plane) until their pads touch it, the PIP
+              joint up to reach[1], MCP following PIP in the ratio reach[0] : reach[1] (from the rest hand) and DIP at ⅔ of PIP (COUPLE); the
+              thumb curls up to reach[3] (shared as in pose) and no further than the surface
+     Returns { q, F, ang: per digit [3 flexion DOFs, degrees from rest, the thumb's first being palmar abduction],
+     spread: per digit the turn about the palm's normal (degrees), gap: per digit its nearest clearance to the shape less
+     the pad (mm; null without a shape), rom: romReport of the 20 joints (anatomical angles), cost }. */
+  function handPose(hk, spec = {}) {
+    const sk = spec.base ? { ...hk, base: spec.base } : hk, ix = hk.dofIndex, n = hk.dofs.length, D = hk.digits;
+    const lim = hk.dofs.map(d => d.lim), cl = (i, v) => clamp(v, lim[i][0], lim[i][1]);
+    const fromPose = P => { const q = new Array(n).fill(0); D.forEach((g, i) => (i === 0 ? [P[3] * 0.6, P[3], P[3] * 0.8] : P.slice(0, 3).map(a => a * (1 + (i - 2) * 0.04))).forEach((a, k) => { q[ix[g.flex[k]]] = cl(ix[g.flex[k]], a * D2R); })); return q; };
+    let q = fromPose(spec.pose || [14, 28, 14, 10]), cost = 0;
+    const shape = spec.shape ? sdf(spec.shape) : null, pad = hk.pad;
+    const phal = (g, k) => ({ seg: g.segs[k], a: v3(), b: hk.segs[hk.index[g.segs[k]]].end });
+    const gapOf = (F, g, from = 0) => { let d = Infinity; for (let k = from; k < 3; k++) { const s = phal(g, k); for (let m = 1; m <= 4; m++) d = Math.min(d, shape(point(sk, F, s.seg, add(s.a, scl(s.b, m / 4))))); } return d; };
+    const base = { rhythm: 0, maxStep: 3 * D2R, iters: 80 };
+    // the digits do not touch each other, so each is solved on its own (the other digits held), which is quicker
+    const only = keys => hk.dofs.filter(d => !keys.includes(d.key)).map(d => d.key);
+    if (shape && spec.mode === 'wrap') {
+      q = new Array(n).fill(0);
+      D.forEach((g, i) => {
+        for (let k = 0; k < 3; k++) {
+          // the k-th joint closes; the digit beyond it may not come nearer than the pad (or, if it starts nearer, than
+          // where it starts: a hand set low does not push further in)
+          const di = ix[g.flex[k]], was = gapOf(fk(sk, q), g, k), T = [], pref = q.slice(), regW = new Array(n).fill(0);
+          pref[di] = cl(di, GRASP_MAX[i][k] * D2R); regW[di] = 20;
+          for (let m = k; m < 3; m++) T.push({ type: 'clear', ...phal(g, m), shape: spec.shape, _f: shape, pad: Math.min(pad, was), w: 10 });
+          const r = solve(sk, T, { ...base, q0: q, pref, regW, lock: only([g.flex[k]]) });
+          q = r.q; cost += r.cost;
+        }
+      });
+    } else if (shape && spec.mode === 'type') {
+      const R = spec.reach || [-15, 80, 53, 18];
+      q = new Array(n).fill(0);
+      D.forEach((g, i) => {
+        const T = [], pref = q.slice(), regW = new Array(n).fill(0), lo = {};
+        for (let m = 0; m < 3; m++) T.push({ type: 'clear', ...phal(g, m), shape: spec.shape, _f: shape, pad, w: 10 });
+        if (i === 0) {
+          // the thumb curls to its share of the reach unless the surface stops it; it may straighten (up to the same angles
+          // the other way) if it starts on or in the surface
+          [0.6, 1, 0.8].forEach((f, m) => { const di = ix[g.flex[m]], a = R[3] * f * D2R; pref[di] = cl(di, a); regW[di] = 5; lo[g.flex[m]] = [Math.max(lim[di][0], -Math.abs(a)), Math.min(lim[di][1], Math.abs(a))]; });
+        } else {
+          const sc = 1 + (i - 2) * 0.04, pip = ix[g.flex[1]];
+          lo[g.flex[1]] = [Math.max(lim[pip][0], 0), Math.min(lim[pip][1], R[1] * sc * D2R)];
+          T.push({ type: 'touch', seg: g.segs[2], local: phal(g, 2).b, shape: spec.shape, _f: shape, pad, w: 2 });
+          T.push({ type: 'couple', a: g.flex[1], b: g.flex[0], k: R[0] / R[1], raw: true, w: 300 }, { type: 'couple', a: g.flex[1], b: g.flex[2], k: 2 / 3, w: 300 });
+        }
+        const r = solve(sk, T, { ...base, maxStep: 5 * D2R, q0: q, pref, regW, lock: only(g.flex), lim: lo });
+        q = r.q; cost += r.cost;
+      });
+    }
+    const F = fk(sk, q);
+    return {
+      q, F, cost,
+      ang: D.map(g => g.flex.map(k => q[ix[k]] * R2D)), spread: D.map(g => q[ix[g.side]] * R2D),
+      gap: shape ? D.map(g => gapOf(F, g) - pad) : null,
+      rom: romReport(angles(hk, q))
+    };
+  }
   const qOf = (sk, obj) => { const q = new Array(sk.dofs.length).fill(0); for (const [k, v] of Object.entries(obj)) if (k in sk.dofIndex) q[sk.dofIndex[k]] = v; return q; };
 
-  return { SOURCES, ROM, SPINE_SHARE, jointReg, trunkAngle, SEGMENT_MASS, STANCES, residuals, reference, comParts, com, hull, insidePoly, stance, pose, skeleton, fk, point, dir, landmarks, capsLandmarks, capsuleRadii, capsules, partName, box, boxFromMinMax, pointBox, capsuleBox, clearance, romReport, romText, solve, angles, qOf, rotAxis, mv, mtv, D2R, R2D };
+  return { SOURCES, ROM, SPINE_SHARE, jointReg, trunkAngle, SEGMENT_MASS, STANCES, residuals, reference, comParts, com, hull, insidePoly, stance, pose, skeleton, fk, point, dir, landmarks, capsLandmarks, capsuleRadii, capsules, partName, box, boxFromMinMax, pointBox, capsuleBox, clearance, romReport, romText, solve, angles, qOf, rotAxis, sdf, hand, handGeom, handPose, DIGITS, GRASP_MAX, mv, mtv, D2R, R2D };
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = HFE_SOLVER;
 
@@ -3452,6 +3643,14 @@ function evaluate(R, W, G) {
   rows.forEach(r => { if (!r.note) r.note = noteFor(r.base, r.key, R, W, G, r.status); });
   return rows;
 }
+// the fingers and thumbs (20 joints a hand, solved onto the controls by core/solver.js through core/bodylib.js): reported
+// for information, outside the joint range check, whose result reads the body's joints only
+function handRomNote(G) {
+  let h = null; try { h = lastM && BODY.hands(lastM, G, { sex: manikinSex() }); } catch (e) { h = null; }
+  if (!h) return '';
+  const all = [...h.L.rom, ...h.R.rom].sort((a, b) => a.margin - b.margin), r = all[0];
+  return r ? ` Hands (not part of this check): ${all.filter(x => x.margin < 0.5).length} of 40 finger and thumb joints at a limit; nearest, ${HFE_SOLVER.romText(r)}.` : '';
+}
 function noteFor(id, key, R, W, G, st) {
   const up10 = x => Math.ceil(x / 10) * 10;
   const si = key && key.includes('#') && id !== null ? +key.split('#')[1] : null;
@@ -3491,7 +3690,7 @@ function noteFor(id, key, R, W, G, st) {
     }
     case 'rom': {
       const r = R.romList[0], act = G.body && G.body.active.length ? ' Joints at a limit: ' + G.body.active.map(k => k.replace(/^(\w+?)([LR]?)\.(\w+)$/, (m, sg, sd, d) => `${sd === 'L' ? 'left ' : sd === 'R' ? 'right ' : ''}${{ upperarm: 'shoulder', forearm: d === 'flex' ? 'elbow' : 'forearm', hand: 'wrist', thigh: 'hip', shank: 'knee', foot: 'ankle', head: 'neck', trunk: 'thoracic spine', lumbar: 'lumbar spine' }[sg] || sg} ${{ elev: 'elevation', prot: 'protraction', uprot: 'upward rotation' }[d] || d}`)).join(', ') + ': a target could not be met inside the range.' : '';
-      return `${HFE_SOLVER.romText(r)}.${act} Ranges are average adult values; the 5° green margin is a tool convention.${G.body ? '' : ' Classic solver: shoulder angles are plane projections.'}`;
+      return `${HFE_SOLVER.romText(r)}.${act} Ranges are average adult values; the 5° green margin is a tool convention.${G.body ? '' : ' Classic solver: shoulder angles are plane projections.'}${handRomNote(G)}`;
     }
     case 'rula': case 'reba': {
       const k = R[id].R >= R[id].L ? 'R' : 'L', r = R.ergo[id][k], P = r.parts, side = k === 'R' ? 'right' : 'left';
@@ -4067,83 +4266,32 @@ const BODY = (() => {
   /* ---------- skinning ---------- */
   const FING = /^f(\d)(\d)([LR])$/;
   // the most a finger curls to reach a surface under it: a typing hand's fingers arch down onto the keys, the knuckle
-  // joint slightly extended and the middle joints flexed. Drawn only (no check reads finger angles), so these are set by
-  // eye to a curved typing hand; others reach no further than their pose
-  const REACH = { keyboard: [-15, 80, 45, 18] };
+  // joint slightly extended and the middle joints flexed, DIP at two thirds of PIP (core/solver.js, COUPLE). No check
+  // reads finger angles, so these are set by eye to a curved typing hand; others reach no further than their pose
+  const REACH = { keyboard: [-15, 80, 53, 18] };
   const POSES = { keyboard: [24, 48, 24, 14], mouse: [14, 30, 16, 8], tbThumb: [18, 38, 20, 22], tbFinger: [10, 36, 22, 10], phone: [52, 68, 38, 30], doc: [6, 12, 6, 6], rest: [14, 28, 14, 10] };
-  // Grasp: each finger closes on the object, joint by joint from the knuckle, each joint stopping when the finger beyond it
-  // touches the object (or the surface it stands on) or the joint reaches its limit, as hand models in DHM tools close on
-  // an object. Shapes, in world mm: a handle { c, a, r } (cylinder: a point, axis direction and radius), or a body
-  // { kind: 'ellipsoid', c, u: [x, y, z axes], r: [3 radii] } such as a mouse; `floor` is the height of the surface below.
-  // Contact is a finger pad (6.5% of hand length, the finger's half-thickness) on the surface. Returns degrees per finger and joint.
-  const GRASP_MAX = [[50, 60, 70], [90, 110, 80], [90, 110, 80], [90, 110, 80], [90, 110, 80]];
-  function shapeDist(g, floor) {
-    // a device made of several parts (a trackball's body and its ball): the nearest part
-    if (g.kind === 'union') { const ds = g.parts.map(q => shapeDist(q)); return p => Math.min(...ds.map(f => f(p)), floor == null ? Infinity : p.y - floor); }
-    const sdf = g.kind === 'ellipsoid'
-      ? p => { const d = new V(p.x - g.c.x, p.y - g.c.y, p.z - g.c.z), l = g.u.map((u, i) => d.dot(u) / g.r[i]), k = Math.hypot(...l); return (k - 1) * Math.min(...g.r); }
-      : p => { const d = new V(p.x - g.c.x, p.y - g.c.y, p.z - g.c.z), a = v3w(g.a).normalize(); return d.addScaledVector(a, -d.dot(a)).length() - g.r; };
-    return floor == null ? sdf : p => Math.min(sdf(p), p.y - floor);
-  }
-  // nearest approach of the moving part of a finger (joint n onwards) to the shape: sampled along each phalanx, not only
-  // at the joints, so a long proximal phalanx cannot pass through a thin handle between its two ends
-  function segDist(pts, n, dist) {
-    let d = Infinity;
-    for (let k = n; k < pts.length - 1; k++)
-      for (let f = 0.25; f <= 1; f += 0.25) d = Math.min(d, dist(pts[k].clone().lerp(pts[k + 1], f)));
-    return d;
-  }
-  // together: all three joints curl in proportion to their limits (a finger arching onto a surface, as in typing)
-  // rather than one at a time from the knuckle (a finger wrapping round a handle)
-  function graspAngles(Lk, hd, g, HL, floor, limits, together) {
-    const dist = shapeDist(g, floor), pad = 0.065 * HL, W = p => hd.o.clone().add(p.clone().applyQuaternion(hd.q));
-    return Lk.fingers.map((fg, i) => {
-      const ang = [0, 0, 0], max = limits ? limits[i] : GRASP_MAX[i];
-      const chain = () => {
-        const pts = [fg.j[0].clone()]; let q = new Q();
-        for (let n = 0; n < 3; n++) {
-          q = q.clone().multiply(qAxis(fg.ax[n], rad(ang[n])));
-          pts.push(pts[n].clone().add((n < 2 ? fg.j[n + 1] : fg.tip).clone().sub(fg.j[n]).applyQuaternion(q)));
-        }
-        return pts.map(W);
-      };
-      if (together) {
-        let was = null, f = 0;
-        for (; f <= 1.0001; f += 0.04) {
-          for (let n = 0; n < 3; n++) ang[n] = max[n] * f;
-          const d = segDist(chain(), 0, dist);
-          if (was == null) was = d;
-          if (d < Math.min(pad, was) - 0.5) break;
-        }
-        f = Math.max(0, Math.min(1, f - 0.04));
-        if (was < pad) {
-          // already on or in the surface when straight (a thumb hanging below the palm): straighten it further, up to the
-          // same angles the other way, to the position that clears the surface most
-          let best = was;
-          for (let g = -0.04; g >= -1.0001; g -= 0.04) {
-            for (let n = 0; n < 3; n++) ang[n] = max[n] * g;
-            const d = segDist(chain(), 0, dist);
-            if (d > best + 0.25) { best = d; f = g; }
-            if (best >= pad) break;
-          }
-        }
-        for (let n = 0; n < 3; n++) ang[n] = max[n] * f;
-        return ang;
-      }
-      for (let n = 0; n < 3; n++) {
-        const top = Math.max(0, max[n]);
-        let was = null;
-        for (let a = 0; a <= top; a += 2) {
-          ang[n] = a;
-          // stop on first contact; a finger that starts nearer than the pad, or already inside (a hand set low), may
-          // not get any nearer
-          const d = segDist(chain(), n, dist);
-          if (was == null) was = d;
-          if (d < Math.min(pad, was) - 0.5) { ang[n] = Math.max(0, a - 2); break; }
-        }
-      }
-      return ang;
-    });
+  const arr = p => Array.isArray(p) ? p : [p.x, p.y, p.z];
+  // a grasp shape in the solver's terms (arrays, world mm): a handle { c, a, r }, a body { kind: 'ellipsoid', c, u, r } or a union
+  const solverShape = g => g.kind === 'union' ? { kind: 'union', parts: g.parts.map(solverShape) }
+    : g.kind === 'ellipsoid' ? { kind: 'ellipsoid', c: arr(g.c), u: g.u.map(arr), r: g.r.slice() } : { c: arr(g.c), a: arr(g.a), r: g.r };
+  // The fingers and thumb are solved by core/solver.js (hand, handPose): 20 joints a hand with their ranges, closing
+  // round a gripped control or arching onto the keys as solver targets (contact without passing through), or taking the
+  // pose's angles. The hand's geometry is the fitted mesh's own finger joints, so the drawn contact is the solved one.
+  // Returns per side { res (handPose's result), hk (the hand skeleton), mode }, or null without the solver.
+  function handSolve(M, G, F, fr, s) {
+    const SV = typeof HFE_SOLVER !== 'undefined' && HFE_SOLVER.handPose ? HFE_SOLVER : null; if (!SV) return null;
+    const k = s < 0 ? 'L' : 'R', Lk = F.limbs[k], hd = fr['hand' + k], arm = G.arms && G.arms[s];
+    if (!Lk.hk) Lk.hk = SV.hand(M, s, { fingers: Lk.fingers.map(fg => ({ j: fg.j.map(arr), tip: arr(fg.tip), ax: fg.ax.map(arr) })) });
+    const pose = (arm && arm.pose) || 'rest', P = POSES[pose] || POSES.rest, h = arm && arm.hand;
+    const floor = h && h.floor != null ? { kind: 'plane', n: [0, 1, 0], d: h.floor } : null;
+    const spec = h && h.grasp ? { mode: 'wrap', shape: floor ? { kind: 'union', parts: [solverShape(h.grasp), floor] } : solverShape(h.grasp) }
+      : floor ? { mode: 'type', shape: floor, reach: REACH[pose] || P } : { mode: 'pose' };
+    spec.pose = P;
+    const m = new THREE.Matrix4().makeRotationFromQuaternion(hd.q).elements;
+    spec.base = { p: [hd.o.x, hd.o.y, hd.o.z], R: [m[0], m[4], m[8], m[1], m[5], m[9], m[2], m[6], m[10]] };
+    const key = JSON.stringify(spec, (kk, v) => typeof v === 'number' ? Math.round(v * 1e4) / 1e4 : v);
+    if (!Lk.hcache || Lk.hcache.key !== key) Lk.hcache = { key, res: SV.handPose(Lk.hk, spec) };
+    return { res: Lk.hcache.res, hk: Lk.hk, mode: spec.mode };
   }
   const v3w = p => new V(p.x, p.y, p.z);
   function bonePoses(M, G, F, fr) {
@@ -4177,25 +4325,34 @@ const BODY = (() => {
         } else set('toes' + k, ft.o, ft.q);
       }
       set('buttock' + k, th.o, P.q.clone().slerp(th.q.clone().multiply(Lk.thigh.qi), 0.3));
-      // fingers: flexion at each joint in the hand frame, distal joints first; round a gripped handle they close until they touch it
-      const arm = G.arms && G.arms[s], pose = (arm && arm.pose) || 'rest', [mcp, pip, dip, thf] = POSES[pose] || POSES.rest;
-      // on a surface the fingers curl until their pads meet it, up to the pose's angles (a keyboard: up to a curved typing hand)
-      const reach = REACH[pose] || [mcp, pip, dip, thf];
-      const wrap = arm && arm.hand && arm.hand.grasp ? graspAngles(Lk, hd, arm.hand.grasp, M.handlength, arm.hand.floor)
-        : arm && arm.hand && arm.hand.floor != null ? graspAngles(Lk, hd, { kind: 'ellipsoid', c: { x: 0, y: -1e6, z: 0 }, u: [X, Yv, Zv], r: [1, 1, 1] }, M.handlength, arm.hand.floor,
-          [0, 1, 2, 3, 4].map(i => i === 0 ? [reach[3] * 0.6, reach[3], reach[3] * 0.8] : reach.slice(0, 3).map(a => a * (1 + (i - 2) * 0.04))), true) : null;
-      Lk.fingers.forEach((fg, i) => {
-        const ang = wrap ? wrap[i] : i === 0 ? [thf * 0.6, thf, thf * 0.8] : [mcp, pip, dip].map(a => a * (1 + (i - 2) * 0.04));
-        for (let n = 1; n <= 3; n++) {
-          // local -> rotated about joints n..1 (distal first): p' = q (p - j) + j, composed
-          let q = new Q(), t = new V();
-          for (let jn = n - 1; jn >= 0; jn--) {
-            const r = qAxis(fg.ax[jn], rad(ang[jn])), j = fg.j[jn];
-            q = r.clone().multiply(q); t = t.sub(j).applyQuaternion(r).add(j);
+      // fingers: the hand solve's segment frames (core/solver.js), each bone carrying its rest-hand coordinates with it
+      const hs = handSolve(M, G, F, fr, s);
+      if (hs) {
+        const { hk, res } = hs, F0 = Lk.hF0 || (Lk.hF0 = HFE_SOLVER.fk(hk, hk.dofs.map(() => 0))), mx = new THREE.Matrix4();
+        hk.digits.forEach((g, i) => g.segs.forEach((sg, n) => {
+          const a = res.F[hk.index[sg]], b = F0[hk.index[sg]];
+          // world = Rw · R0ᵀ · (p - p0) + pw: the rest frame b maps to the solved world frame a
+          const Rr = [0, 1, 2].map(r => [0, 1, 2].map(c => a.R[r * 3] * b.R[c * 3] + a.R[r * 3 + 1] * b.R[c * 3 + 1] + a.R[r * 3 + 2] * b.R[c * 3 + 2]));
+          const p0 = b.p, o = new V(a.p[0] - (Rr[0][0] * p0[0] + Rr[0][1] * p0[1] + Rr[0][2] * p0[2]), a.p[1] - (Rr[1][0] * p0[0] + Rr[1][1] * p0[1] + Rr[1][2] * p0[2]), a.p[2] - (Rr[2][0] * p0[0] + Rr[2][1] * p0[1] + Rr[2][2] * p0[2]));
+          mx.set(Rr[0][0], Rr[0][1], Rr[0][2], 0, Rr[1][0], Rr[1][1], Rr[1][2], 0, Rr[2][0], Rr[2][1], Rr[2][2], 0, 0, 0, 0, 1);
+          set(`f${i + 1}${n + 1}${k}`, o, new Q().setFromRotationMatrix(mx));
+        }));
+      } else {
+        // without the solver (the landing page): the pose's angles at each joint in the hand frame, distal joints first
+        const arm = G.arms && G.arms[s], pose = (arm && arm.pose) || 'rest', [mcp, pip, dip, thf] = POSES[pose] || POSES.rest;
+        Lk.fingers.forEach((fg, i) => {
+          const ang = i === 0 ? [thf * 0.6, thf, thf * 0.8] : [mcp, pip, dip].map(a => a * (1 + (i - 2) * 0.04));
+          for (let n = 1; n <= 3; n++) {
+            // local -> rotated about joints n..1 (distal first): p' = q (p - j) + j, composed
+            let q = new Q(), t = new V();
+            for (let jn = n - 1; jn >= 0; jn--) {
+              const r = qAxis(fg.ax[jn], rad(ang[jn])), j = fg.j[jn];
+              q = r.clone().multiply(q); t = t.sub(j).applyQuaternion(r).add(j);
+            }
+            set(`f${i + 1}${n}${k}`, hd.o.clone().add(t.applyQuaternion(hd.q)), hd.q.clone().multiply(q));
           }
-          set(`f${i + 1}${n}${k}`, hd.o.clone().add(t.applyQuaternion(hd.q)), hd.q.clone().multiply(q));
-        }
-      });
+        });
+      }
     }
     return out;
   }
@@ -4722,8 +4879,14 @@ const BODY = (() => {
   }
   // world positions of the posed skin (for tests and fit reports)
   function surface(M, G, opts = {}) { const sex = opts.sex === 'female' ? 'female' : 'male', F = fit(M, sex); return { pos: skin(M, G, F, sex).pos, dec: decode() }; }
+  // the solved fingers of both hands (for reports and tests): per side { mode, ang, spread, gap, rom }, or null without the solver
+  function hands(M, G, opts = {}) {
+    const sex = opts.sex === 'female' ? 'female' : 'male', F = fit(M, sex), fr = frames(M, G, F), out = {};
+    for (const s of [-1, 1]) { const h = handSolve(M, G, F, fr, s); if (!h) return null; out[s < 0 ? 'L' : 'R'] = { mode: h.mode, ...h.res }; }
+    return out;
+  }
   const looks = () => Object.fromEntries(LOOK_KINDS.map(k => [k, lookList(k)]));
-  return { build, surface, kit: KIT, looks, set onTexture(f) { onTexture = f; } };
+  return { build, surface, hands, kit: KIT, looks, set onTexture(f) { onTexture = f; } };
 })();
 
 // body shape follows the dataset's sex; mixed or unknown groups use the male base
@@ -5604,7 +5767,7 @@ let toastT; function toast(m) { $('#toast').textContent = m; clearTimeout(toastT
 /* ---------------- evidence: project files and output stamps (PRJ-01, PRJ-03, VAL-02, VAL-03, VAL-07) ----------------
    core/evidence.js does the hashing, migration and comparison; this gathers the tool's state for it. Every output
    (checks CSV, population CSVs, placement map CSV, image, drawing) carries the same stamp. */
-const TOOL = { name: 'HFE Lab Workspace Visualisation', build: '222ddb08c236' };
+const TOOL = { name: 'HFE Lab Workspace Visualisation', build: '825e9993164e' };
 const VALIDATION = 'Not validated (posture from geometric rules, not a validated posture-prediction model; limits are guidance values unless edited)';
 const solverName = W => W.solver === 'body' ? 'Whole body with joint limits (beta)' : 'Classic seated';
 function subjectText() {

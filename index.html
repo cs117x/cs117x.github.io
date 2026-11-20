@@ -476,83 +476,32 @@ const BODY = (() => {
   /* ---------- skinning ---------- */
   const FING = /^f(\d)(\d)([LR])$/;
   // the most a finger curls to reach a surface under it: a typing hand's fingers arch down onto the keys, the knuckle
-  // joint slightly extended and the middle joints flexed. Drawn only (no check reads finger angles), so these are set by
-  // eye to a curved typing hand; others reach no further than their pose
-  const REACH = { keyboard: [-15, 80, 45, 18] };
+  // joint slightly extended and the middle joints flexed, DIP at two thirds of PIP (core/solver.js, COUPLE). No check
+  // reads finger angles, so these are set by eye to a curved typing hand; others reach no further than their pose
+  const REACH = { keyboard: [-15, 80, 53, 18] };
   const POSES = { keyboard: [24, 48, 24, 14], mouse: [14, 30, 16, 8], tbThumb: [18, 38, 20, 22], tbFinger: [10, 36, 22, 10], phone: [52, 68, 38, 30], doc: [6, 12, 6, 6], rest: [14, 28, 14, 10] };
-  // Grasp: each finger closes on the object, joint by joint from the knuckle, each joint stopping when the finger beyond it
-  // touches the object (or the surface it stands on) or the joint reaches its limit, as hand models in DHM tools close on
-  // an object. Shapes, in world mm: a handle { c, a, r } (cylinder: a point, axis direction and radius), or a body
-  // { kind: 'ellipsoid', c, u: [x, y, z axes], r: [3 radii] } such as a mouse; `floor` is the height of the surface below.
-  // Contact is a finger pad (6.5% of hand length, the finger's half-thickness) on the surface. Returns degrees per finger and joint.
-  const GRASP_MAX = [[50, 60, 70], [90, 110, 80], [90, 110, 80], [90, 110, 80], [90, 110, 80]];
-  function shapeDist(g, floor) {
-    // a device made of several parts (a trackball's body and its ball): the nearest part
-    if (g.kind === 'union') { const ds = g.parts.map(q => shapeDist(q)); return p => Math.min(...ds.map(f => f(p)), floor == null ? Infinity : p.y - floor); }
-    const sdf = g.kind === 'ellipsoid'
-      ? p => { const d = new V(p.x - g.c.x, p.y - g.c.y, p.z - g.c.z), l = g.u.map((u, i) => d.dot(u) / g.r[i]), k = Math.hypot(...l); return (k - 1) * Math.min(...g.r); }
-      : p => { const d = new V(p.x - g.c.x, p.y - g.c.y, p.z - g.c.z), a = v3w(g.a).normalize(); return d.addScaledVector(a, -d.dot(a)).length() - g.r; };
-    return floor == null ? sdf : p => Math.min(sdf(p), p.y - floor);
-  }
-  // nearest approach of the moving part of a finger (joint n onwards) to the shape: sampled along each phalanx, not only
-  // at the joints, so a long proximal phalanx cannot pass through a thin handle between its two ends
-  function segDist(pts, n, dist) {
-    let d = Infinity;
-    for (let k = n; k < pts.length - 1; k++)
-      for (let f = 0.25; f <= 1; f += 0.25) d = Math.min(d, dist(pts[k].clone().lerp(pts[k + 1], f)));
-    return d;
-  }
-  // together: all three joints curl in proportion to their limits (a finger arching onto a surface, as in typing)
-  // rather than one at a time from the knuckle (a finger wrapping round a handle)
-  function graspAngles(Lk, hd, g, HL, floor, limits, together) {
-    const dist = shapeDist(g, floor), pad = 0.065 * HL, W = p => hd.o.clone().add(p.clone().applyQuaternion(hd.q));
-    return Lk.fingers.map((fg, i) => {
-      const ang = [0, 0, 0], max = limits ? limits[i] : GRASP_MAX[i];
-      const chain = () => {
-        const pts = [fg.j[0].clone()]; let q = new Q();
-        for (let n = 0; n < 3; n++) {
-          q = q.clone().multiply(qAxis(fg.ax[n], rad(ang[n])));
-          pts.push(pts[n].clone().add((n < 2 ? fg.j[n + 1] : fg.tip).clone().sub(fg.j[n]).applyQuaternion(q)));
-        }
-        return pts.map(W);
-      };
-      if (together) {
-        let was = null, f = 0;
-        for (; f <= 1.0001; f += 0.04) {
-          for (let n = 0; n < 3; n++) ang[n] = max[n] * f;
-          const d = segDist(chain(), 0, dist);
-          if (was == null) was = d;
-          if (d < Math.min(pad, was) - 0.5) break;
-        }
-        f = Math.max(0, Math.min(1, f - 0.04));
-        if (was < pad) {
-          // already on or in the surface when straight (a thumb hanging below the palm): straighten it further, up to the
-          // same angles the other way, to the position that clears the surface most
-          let best = was;
-          for (let g = -0.04; g >= -1.0001; g -= 0.04) {
-            for (let n = 0; n < 3; n++) ang[n] = max[n] * g;
-            const d = segDist(chain(), 0, dist);
-            if (d > best + 0.25) { best = d; f = g; }
-            if (best >= pad) break;
-          }
-        }
-        for (let n = 0; n < 3; n++) ang[n] = max[n] * f;
-        return ang;
-      }
-      for (let n = 0; n < 3; n++) {
-        const top = Math.max(0, max[n]);
-        let was = null;
-        for (let a = 0; a <= top; a += 2) {
-          ang[n] = a;
-          // stop on first contact; a finger that starts nearer than the pad, or already inside (a hand set low), may
-          // not get any nearer
-          const d = segDist(chain(), n, dist);
-          if (was == null) was = d;
-          if (d < Math.min(pad, was) - 0.5) { ang[n] = Math.max(0, a - 2); break; }
-        }
-      }
-      return ang;
-    });
+  const arr = p => Array.isArray(p) ? p : [p.x, p.y, p.z];
+  // a grasp shape in the solver's terms (arrays, world mm): a handle { c, a, r }, a body { kind: 'ellipsoid', c, u, r } or a union
+  const solverShape = g => g.kind === 'union' ? { kind: 'union', parts: g.parts.map(solverShape) }
+    : g.kind === 'ellipsoid' ? { kind: 'ellipsoid', c: arr(g.c), u: g.u.map(arr), r: g.r.slice() } : { c: arr(g.c), a: arr(g.a), r: g.r };
+  // The fingers and thumb are solved by core/solver.js (hand, handPose): 20 joints a hand with their ranges, closing
+  // round a gripped control or arching onto the keys as solver targets (contact without passing through), or taking the
+  // pose's angles. The hand's geometry is the fitted mesh's own finger joints, so the drawn contact is the solved one.
+  // Returns per side { res (handPose's result), hk (the hand skeleton), mode }, or null without the solver.
+  function handSolve(M, G, F, fr, s) {
+    const SV = typeof HFE_SOLVER !== 'undefined' && HFE_SOLVER.handPose ? HFE_SOLVER : null; if (!SV) return null;
+    const k = s < 0 ? 'L' : 'R', Lk = F.limbs[k], hd = fr['hand' + k], arm = G.arms && G.arms[s];
+    if (!Lk.hk) Lk.hk = SV.hand(M, s, { fingers: Lk.fingers.map(fg => ({ j: fg.j.map(arr), tip: arr(fg.tip), ax: fg.ax.map(arr) })) });
+    const pose = (arm && arm.pose) || 'rest', P = POSES[pose] || POSES.rest, h = arm && arm.hand;
+    const floor = h && h.floor != null ? { kind: 'plane', n: [0, 1, 0], d: h.floor } : null;
+    const spec = h && h.grasp ? { mode: 'wrap', shape: floor ? { kind: 'union', parts: [solverShape(h.grasp), floor] } : solverShape(h.grasp) }
+      : floor ? { mode: 'type', shape: floor, reach: REACH[pose] || P } : { mode: 'pose' };
+    spec.pose = P;
+    const m = new THREE.Matrix4().makeRotationFromQuaternion(hd.q).elements;
+    spec.base = { p: [hd.o.x, hd.o.y, hd.o.z], R: [m[0], m[4], m[8], m[1], m[5], m[9], m[2], m[6], m[10]] };
+    const key = JSON.stringify(spec, (kk, v) => typeof v === 'number' ? Math.round(v * 1e4) / 1e4 : v);
+    if (!Lk.hcache || Lk.hcache.key !== key) Lk.hcache = { key, res: SV.handPose(Lk.hk, spec) };
+    return { res: Lk.hcache.res, hk: Lk.hk, mode: spec.mode };
   }
   const v3w = p => new V(p.x, p.y, p.z);
   function bonePoses(M, G, F, fr) {
@@ -586,25 +535,34 @@ const BODY = (() => {
         } else set('toes' + k, ft.o, ft.q);
       }
       set('buttock' + k, th.o, P.q.clone().slerp(th.q.clone().multiply(Lk.thigh.qi), 0.3));
-      // fingers: flexion at each joint in the hand frame, distal joints first; round a gripped handle they close until they touch it
-      const arm = G.arms && G.arms[s], pose = (arm && arm.pose) || 'rest', [mcp, pip, dip, thf] = POSES[pose] || POSES.rest;
-      // on a surface the fingers curl until their pads meet it, up to the pose's angles (a keyboard: up to a curved typing hand)
-      const reach = REACH[pose] || [mcp, pip, dip, thf];
-      const wrap = arm && arm.hand && arm.hand.grasp ? graspAngles(Lk, hd, arm.hand.grasp, M.handlength, arm.hand.floor)
-        : arm && arm.hand && arm.hand.floor != null ? graspAngles(Lk, hd, { kind: 'ellipsoid', c: { x: 0, y: -1e6, z: 0 }, u: [X, Yv, Zv], r: [1, 1, 1] }, M.handlength, arm.hand.floor,
-          [0, 1, 2, 3, 4].map(i => i === 0 ? [reach[3] * 0.6, reach[3], reach[3] * 0.8] : reach.slice(0, 3).map(a => a * (1 + (i - 2) * 0.04))), true) : null;
-      Lk.fingers.forEach((fg, i) => {
-        const ang = wrap ? wrap[i] : i === 0 ? [thf * 0.6, thf, thf * 0.8] : [mcp, pip, dip].map(a => a * (1 + (i - 2) * 0.04));
-        for (let n = 1; n <= 3; n++) {
-          // local -> rotated about joints n..1 (distal first): p' = q (p - j) + j, composed
-          let q = new Q(), t = new V();
-          for (let jn = n - 1; jn >= 0; jn--) {
-            const r = qAxis(fg.ax[jn], rad(ang[jn])), j = fg.j[jn];
-            q = r.clone().multiply(q); t = t.sub(j).applyQuaternion(r).add(j);
+      // fingers: the hand solve's segment frames (core/solver.js), each bone carrying its rest-hand coordinates with it
+      const hs = handSolve(M, G, F, fr, s);
+      if (hs) {
+        const { hk, res } = hs, F0 = Lk.hF0 || (Lk.hF0 = HFE_SOLVER.fk(hk, hk.dofs.map(() => 0))), mx = new THREE.Matrix4();
+        hk.digits.forEach((g, i) => g.segs.forEach((sg, n) => {
+          const a = res.F[hk.index[sg]], b = F0[hk.index[sg]];
+          // world = Rw · R0ᵀ · (p - p0) + pw: the rest frame b maps to the solved world frame a
+          const Rr = [0, 1, 2].map(r => [0, 1, 2].map(c => a.R[r * 3] * b.R[c * 3] + a.R[r * 3 + 1] * b.R[c * 3 + 1] + a.R[r * 3 + 2] * b.R[c * 3 + 2]));
+          const p0 = b.p, o = new V(a.p[0] - (Rr[0][0] * p0[0] + Rr[0][1] * p0[1] + Rr[0][2] * p0[2]), a.p[1] - (Rr[1][0] * p0[0] + Rr[1][1] * p0[1] + Rr[1][2] * p0[2]), a.p[2] - (Rr[2][0] * p0[0] + Rr[2][1] * p0[1] + Rr[2][2] * p0[2]));
+          mx.set(Rr[0][0], Rr[0][1], Rr[0][2], 0, Rr[1][0], Rr[1][1], Rr[1][2], 0, Rr[2][0], Rr[2][1], Rr[2][2], 0, 0, 0, 0, 1);
+          set(`f${i + 1}${n + 1}${k}`, o, new Q().setFromRotationMatrix(mx));
+        }));
+      } else {
+        // without the solver (the landing page): the pose's angles at each joint in the hand frame, distal joints first
+        const arm = G.arms && G.arms[s], pose = (arm && arm.pose) || 'rest', [mcp, pip, dip, thf] = POSES[pose] || POSES.rest;
+        Lk.fingers.forEach((fg, i) => {
+          const ang = i === 0 ? [thf * 0.6, thf, thf * 0.8] : [mcp, pip, dip].map(a => a * (1 + (i - 2) * 0.04));
+          for (let n = 1; n <= 3; n++) {
+            // local -> rotated about joints n..1 (distal first): p' = q (p - j) + j, composed
+            let q = new Q(), t = new V();
+            for (let jn = n - 1; jn >= 0; jn--) {
+              const r = qAxis(fg.ax[jn], rad(ang[jn])), j = fg.j[jn];
+              q = r.clone().multiply(q); t = t.sub(j).applyQuaternion(r).add(j);
+            }
+            set(`f${i + 1}${n}${k}`, hd.o.clone().add(t.applyQuaternion(hd.q)), hd.q.clone().multiply(q));
           }
-          set(`f${i + 1}${n}${k}`, hd.o.clone().add(t.applyQuaternion(hd.q)), hd.q.clone().multiply(q));
-        }
-      });
+        });
+      }
     }
     return out;
   }
@@ -1131,8 +1089,14 @@ const BODY = (() => {
   }
   // world positions of the posed skin (for tests and fit reports)
   function surface(M, G, opts = {}) { const sex = opts.sex === 'female' ? 'female' : 'male', F = fit(M, sex); return { pos: skin(M, G, F, sex).pos, dec: decode() }; }
+  // the solved fingers of both hands (for reports and tests): per side { mode, ang, spread, gap, rom }, or null without the solver
+  function hands(M, G, opts = {}) {
+    const sex = opts.sex === 'female' ? 'female' : 'male', F = fit(M, sex), fr = frames(M, G, F), out = {};
+    for (const s of [-1, 1]) { const h = handSolve(M, G, F, fr, s); if (!h) return null; out[s < 0 ? 'L' : 'R'] = { mode: h.mode, ...h.res }; }
+    return out;
+  }
   const looks = () => Object.fromEntries(LOOK_KINDS.map(k => [k, lookList(k)]));
-  return { build, surface, kit: KIT, looks, set onTexture(f) { onTexture = f; } };
+  return { build, surface, hands, kit: KIT, looks, set onTexture(f) { onTexture = f; } };
 })();
 
 const V3 = THREE.Vector3, rad = d => d * Math.PI / 180;
