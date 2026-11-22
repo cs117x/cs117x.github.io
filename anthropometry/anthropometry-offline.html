@@ -1764,6 +1764,10 @@ const CHECKS = [
   { id: 'reba', group: 'Posture scores', name: 'REBA score (negligible or low risk at 1–3, medium at 4–7)', unit: '', g: [1, 3], a: [1, 7], arm: true },
   { id: 'clearDesk', group: 'Clearance', name: 'Clearance, body to desk', unit: 'mm', g: [25, null], a: [0, null] },
   { id: 'clearScreens', group: 'Clearance', name: 'Clearance, body to screens', unit: 'mm', g: [25, null], a: [0, null] },
+  { id: 'clearObjects', group: 'Clearance', name: 'Clearance, body to desk objects', unit: 'mm', g: [25, null], a: [0, null] },
+  { id: 'clearChair', group: 'Clearance', name: 'Clearance, body to armrests', unit: 'mm', g: [0, null], a: [-10, null] },
+  { id: 'clearEnv', group: 'Clearance', name: 'Clearance, body to environment', unit: 'mm', g: [25, null], a: [0, null] },
+  { id: 'clearSelf', group: 'Clearance', name: 'Self-contact, body to body', unit: 'mm', g: [-5, null], a: [-15, null] },
   { id: 'clearExact', group: 'Clearance', name: 'Clearance, body surface to geometry (exact)', unit: 'mm', g: [25, null], a: [0, null] },
 ];
 const CHECK = Object.fromEntries(CHECKS.map(c => [c.id, c]));
@@ -2304,6 +2308,102 @@ const HFE_SOLVER = (() => {
     return { pairs, byGroup, clashes: pairs.filter(p => p.d < 0) };
   }
 
+  /* ---- solid-body collision: the body against obstacles, and against itself ----
+     Obstacles are boxes (box(), boxFromMinMax()) or shapes: { id, shape (as sdf(), or a function of a world point),
+     bound: { c, r } (a sphere that holds every point of the shape's surface the body can reach, for culling; omit for
+     shapes such as a wall that are everywhere) }. Each obstacle may carry group (for reporting) and skip (capsule id
+     prefixes left out, such as hands that rest on a desk or hold a control).
+     A capsule against a shape: the smallest of the shape's distance less the capsule's radius over points along it. */
+  function capsuleShape(C, f) {
+    const g = t => f(add(C.a, scl(sub(C.b, C.a), t))) - (C.ra + (C.rb - C.ra) * t);
+    let bt = 0, bv = g(0);
+    const N = 8; for (let i = 1; i <= N; i++) { const t = i / N, v = g(t); if (v < bv) { bv = v; bt = t; } }
+    let lo = Math.max(0, bt - 1 / N), hi = Math.min(1, bt + 1 / N);
+    for (let it = 0; it < 12; it++) { const m1 = lo + (hi - lo) / 3, m2 = hi - (hi - lo) / 3; if (g(m1) < g(m2)) hi = m2; else lo = m1; }
+    const t = (lo + hi) / 2, v = g(t);
+    return v < bv ? { d: v, t } : { d: bv, t: bt };
+  }
+  // closest points of two segments p1 + s (q1 - p1) and p2 + t (q2 - p2), s and t in [0, 1] (Ericson 2005, 5.1.9)
+  function segSeg(p1, q1, p2, q2) {
+    const d1 = sub(q1, p1), d2 = sub(q2, p2), r = sub(p1, p2), a = dot(d1, d1), e = dot(d2, d2), f = dot(d2, r);
+    let s, t;
+    if (a < 1e-9 && e < 1e-9) return { s: 0, t: 0 };
+    if (a < 1e-9) { s = 0; t = clamp(f / e, 0, 1); }
+    else {
+      const c = dot(d1, r);
+      if (e < 1e-9) { t = 0; s = clamp(-c / a, 0, 1); }
+      else {
+        const b = dot(d1, d2), den = a * e - b * b;
+        s = den > 1e-9 ? clamp((b * f - c * e) / den, 0, 1) : 0;
+        t = (b * s + f) / e;
+        if (t < 0) { t = 0; s = clamp(-c / a, 0, 1); } else if (t > 1) { t = 1; s = clamp((b - c) / a, 0, 1); }
+      }
+    }
+    return { s, t };
+  }
+  // signed clearance between two tapered capsules: the distance between their axes' closest points less the radii there
+  function capsuleCapsule(A, B) {
+    const { s, t } = segSeg(A.a, A.b, B.a, B.b);
+    const pa = add(A.a, scl(sub(A.b, A.a), s)), pb = add(B.a, scl(sub(B.b, B.a), t));
+    return { d: len(sub(pa, pb)) - (A.ra + (A.rb - A.ra) * s) - (B.ra + (B.rb - B.ra) * t), s, t };
+  }
+  // a capsule against one obstacle, or null when the obstacle's bound shows it is further than `near` (mm) away
+  function capsuleObstacle(C, B, near = Infinity) {
+    const mid = scl(add(C.a, C.b), 0.5), reach = 0.5 * len(sub(C.b, C.a)) + Math.max(C.ra, C.rb) + near;
+    if (B.h) { if (pointBox(mid, B) > reach) return null; return capsuleBox(C, B); }
+    if (B.bound && len(sub(mid, B.bound.c)) - B.bound.r > reach) return null;
+    const f = B._f || (B._f = sdf(B.shape));
+    return capsuleShape(C, f);
+  }
+  /* Self-contact. The trunk is an elliptic prism in its own frame (front to back the chest depth, side to side 74 % of the
+     biacromial breadth, as the elbow's 'outside' target in the tool), from just above the hip joints to the shoulder
+     joints; every other part is its capsule. trunk: { p, R } (the trunk segment's frame: origin at the hip-joint midpoint
+     of the seated reference). Pairs of parts that meet at a joint are not tested, and the upper arm is held outside the
+     trunk by the elbow's own target, so it is not tested against the trunk either; nor is the elbow end of the forearm
+     (its first half, beside the waist, where the prism, a chest-sized section all the way down, is wider than the body).
+     A pair's third entry, where given, is the share of the first part's length left out from its proximal end. */
+  const SELF_PAIRS = [
+    ['forearmL', 'trunk', 0.5], ['forearmR', 'trunk', 0.5], ['handL', 'trunk'], ['handR', 'trunk'],
+    ['forearmL', 'head'], ['forearmR', 'head'], ['handL', 'head'], ['handR', 'head'],
+    ['forearmL', 'forearmR'], ['forearmL', 'handR'], ['handL', 'forearmR'], ['handL', 'handR'],
+    ['forearmL', 'thighL'], ['forearmL', 'thighR'], ['forearmR', 'thighL'], ['forearmR', 'thighR'],
+    ['handL', 'thighL'], ['handL', 'thighR'], ['handR', 'thighL'], ['handR', 'thighR'],
+    ['thighL', 'thighR'], ['shankL', 'shankR'], ['footL', 'footR'], ['shankL', 'footR'], ['footL', 'shankR'], ['thighL', 'shankR'], ['shankL', 'thighR']
+  ];
+  function trunkShape(M, trunk) {
+    const R = reference(M), a = 0.5 * M.chestdepth, b = 0.37 * M.biacromialbreadth, cx = 0.5 * M.chestdepth - R.H0.x;
+    const y0 = 0.15 * R.hipU, y1 = R.S0.y - R.H0.y, m = Math.min(a, b);
+    return p => {
+      const l = mtv(trunk.R, sub(p, trunk.p));
+      const dr = (Math.hypot((l[0] - cx) / a, l[2] / b) - 1) * m, dy = Math.max(y0 - l[1], l[1] - y1);
+      return dr > 0 || dy > 0 ? Math.hypot(Math.max(dr, 0), Math.max(dy, 0)) : Math.max(dr, dy);
+    };
+  }
+  // clearance of each self-contact pair: [{ a, b, d }] (d mm, negative when the parts overlap)
+  // a capsule less the share t0 of its length from its proximal end
+  const part = (C, t0) => !C || !t0 ? C : { ...C, a: add(C.a, scl(sub(C.b, C.a), t0)), ra: C.ra + (C.rb - C.ra) * t0 };
+  function selfClearance(M, caps, trunk, pairs = SELF_PAIRS) {
+    const by = Object.fromEntries(caps.map(c => [c.id, c])), tf = trunk ? trunkShape(M, trunk) : null, out = [];
+    for (const [x, y, t0] of pairs) {
+      const A = part(by[x], t0); if (!A) continue;
+      if (y === 'trunk') { if (tf) out.push({ a: x, b: y, d: capsuleShape(A, tf).d }); continue; }
+      const B = by[y]; if (B) out.push({ a: x, b: y, d: capsuleCapsule(A, B).d });
+    }
+    return out;
+  }
+  // every contact of the body: against the obstacles (each obstacle's skip list honoured) and itself, nearest first.
+  // Returns { obstacles: [{ box, group, part, d }], self: [{ a, b, d }], clashes: those with d < 0 }
+  function contacts(M, caps, obstacles, trunk, pairs) {
+    const ob = [];
+    for (const B of obstacles || []) for (const C of caps) {
+      if (B.skip && B.skip.some(p => C.id.startsWith(p))) continue;
+      const r = capsuleObstacle(C, B); if (r) ob.push({ box: B.id, group: B.group || B.id, part: C.id, d: r.d });
+    }
+    const self = pairs === false ? [] : selfClearance(M, caps, trunk, pairs);
+    ob.sort((a, b) => a.d - b.d); self.sort((a, b) => a.d - b.d);
+    return { obstacles: ob, self, clashes: [...ob.filter(c => c.d < 0), ...self.filter(c => c.d < 0)] };
+  }
+
   /* ---- range-of-motion report ----
      angles: [{ joint, name, side, value (deg) }]. Returns each with its limits and margin (deg; negative
      means beyond the limit), sorted by margin. */
@@ -2384,6 +2484,11 @@ const HFE_SOLVER = (() => {
                                                         body moves. centre [x, z], or pull towards the hull's centre, adds a
                                                         soft pull
        { type: 'above', y, caps? }                      keep every body capsule (or those named) above the floor at y
+       { type: 'collide', obstacles, margin?, grow?, self?, selfMargin? }
+                                                        solid-body collision (one-sided): every body capsule (grown by
+                                                        grow[part] mm) margin clear of each obstacle (boxes or shapes,
+                                                        see contacts()), and the body clear of itself (SELF_PAIRS, or the
+                                                        pairs given as self; false for none)
        { type: 'clear', seg, a, b, shape, pad, n? }     keep n points along a segment (local a to b) pad clear of a shape
                                                         (one-sided; shapes as sdf())
        { type: 'touch', seg, local, shape, pad }        a point on a segment pad from a shape's surface (a contact)
@@ -2417,6 +2522,44 @@ const HFE_SOLVER = (() => {
         if (!L) L = capsLandmarks(sk, F);
         const caps = capsules(sk.M, L).filter(c => t.caps.some(p => c.id.startsWith(p)));
         for (const B of t.boxes) for (const C of caps) r.push(w * Math.min(0, capsuleBox(C, B).d - (t.margin || 0)));
+      } else if (t.type === 'collide') {
+        // solid-body collision: every capsule (grown by t.grow[part] mm, e.g. for kit) at least margin from each obstacle,
+        // and the self-contact pairs at least selfMargin apart (one-sided). Far pairs are culled, which leaves their
+        // residual at zero, as it would be anyway, so the residual vector keeps its length.
+        if (!L) L = capsLandmarks(sk, F);
+        const m = t.margin || 0, g = t.grow || {};
+        const caps = capsules(sk.M, L).map(c => { const k = g[c.id.replace(/[LR]$/, '')] || 0; return k ? { ...c, ra: c.ra + k, rb: c.rb + k } : c; });
+        // a numeric Jacobian moves one joint at a time, which leaves most capsules where they were: each capsule's results
+        // are kept with its ends and reused while they are unchanged
+        const memo = t._memo || (t._memo = {}), same = (A, B) => A && A.a[0] === B.a[0] && A.a[1] === B.a[1] && A.a[2] === B.a[2] && A.b[0] === B.b[0] && A.b[1] === B.b[1] && A.b[2] === B.b[2] && A.ra === B.ra && A.rb === B.rb;
+        for (const C of caps) {
+          let e = memo[C.id];
+          if (!e || !same(e.C, C)) {
+            const v = [];
+            for (const B of t.obstacles || []) {
+              if (B.skip && B.skip.some(p => C.id.startsWith(p))) continue;
+              const c = capsuleObstacle(C, B, m); v.push(c ? Math.min(0, c.d - m) : 0);
+            }
+            e = memo[C.id] = { C, v };
+          }
+          for (const v of e.v) r.push(w * v);
+        }
+        if (t.self !== false) {
+          const sm = t.selfMargin || 0, f = F[sk.index.trunk], by = Object.fromEntries(caps.map(c => [c.id, c]));
+          let tf = null;
+          const tr = memo._trunk && memo._trunk.p.every((v, i) => v === f.p[i]) && memo._trunk.R.every((v, i) => v === f.R[i]) ? memo._trunk : (memo._trunk = { p: f.p, R: f.R, v: {} });
+          for (const [x, y, t0] of Array.isArray(t.self) ? t.self : SELF_PAIRS) {
+            const A = part(by[x], t0), B = by[y]; if (!A || (y !== 'trunk' && !B)) continue;
+            const k = x + '|' + y, e = memo[k];
+            let d;
+            if (y === 'trunk') {
+              if (e && same(e.C, A) && tr.v[k] === e) d = e.d;
+              else { tf = tf || trunkShape(sk.M, tr); d = capsuleShape(A, tf).d; tr.v[k] = memo[k] = { C: A, d }; }
+            } else if (e && same(e.C, A) && same(e.D, B)) d = e.d;
+            else { d = capsuleCapsule(A, B).d; memo[k] = { C: A, D: B, d }; }
+            r.push(w * Math.min(0, d - sm));
+          }
+        }
       } else if (t.type === 'com') {
         const c = com(sk, F, t.sex), poly = t.contacts ? supportPoly(sk, F, t.contacts) : t.poly;
         if (poly) r.push(w * Math.min(0, insidePoly([c[0], c[2]], poly) - (t.margin || 0)));
@@ -2842,7 +2985,7 @@ const HFE_SOLVER = (() => {
   }
   const qOf = (sk, obj) => { const q = new Array(sk.dofs.length).fill(0); for (const [k, v] of Object.entries(obj)) if (k in sk.dofIndex) q[sk.dofIndex[k]] = v; return q; };
 
-  return { SOURCES, ROM, SPINE_SHARE, jointReg, trunkAngle, SEGMENT_MASS, STANCES, residuals, reference, comParts, com, hull, insidePoly, stance, pose, skeleton, fk, point, dir, landmarks, capsLandmarks, capsuleRadii, capsules, partName, box, boxFromMinMax, pointBox, capsuleBox, clearance, romReport, romText, solve, angles, qOf, rotAxis, sdf, hand, handGeom, handPose, DIGITS, GRASP_MAX, mv, mtv, D2R, R2D };
+  return { SOURCES, ROM, SPINE_SHARE, jointReg, trunkAngle, SEGMENT_MASS, STANCES, residuals, reference, comParts, com, hull, insidePoly, stance, pose, skeleton, fk, point, dir, landmarks, capsLandmarks, capsuleRadii, capsules, partName, box, boxFromMinMax, pointBox, capsuleBox, clearance, capsuleShape, capsuleCapsule, capsuleObstacle, segSeg, SELF_PAIRS, trunkShape, selfClearance, contacts, romReport, romText, solve, angles, qOf, rotAxis, sdf, hand, handGeom, handPose, DIGITS, GRASP_MAX, mv, mtv, D2R, R2D };
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = HFE_SOLVER;
 
@@ -3244,12 +3387,38 @@ function solve(M, W, ov) {
     W.footrest = floorY; R.ringPsi = deg(psi);
   }
   const soleY = floorY + W.shoe, ankleYfoot = soleY + M.lateralmalleolusheight;
-  const kneeYseat = seatY + dk, kneeYneed = ankleYfoot + Lshank * Math.cos(psi);
-  let kneeY = Math.max(kneeYneed, kneeYseat);
-  let dy = kneeY - H.y; if (Math.abs(dy) > Lthigh * 0.97) { dy = Math.sign(dy) * Lthigh * 0.97; kneeY = H.y + dy; }
-  let K = { x: H.x + Math.sqrt(Lthigh * Lthigh - dy * dy), y: kneeY };
-  let A = { x: K.x + Lshank * Math.sin(psi), y: K.y - Lshank * Math.cos(psi) };
+  const kneeYseat = seatY + dk;
+  const legAt = psi => {
+    let kneeY = Math.max(ankleYfoot + Lshank * Math.cos(psi), kneeYseat);
+    let dy = kneeY - H.y; if (Math.abs(dy) > Lthigh * 0.97) { dy = Math.sign(dy) * Lthigh * 0.97; kneeY = H.y + dy; }
+    const K = { x: H.x + Math.sqrt(Lthigh * Lthigh - dy * dy), y: kneeY };
+    return { K, A: { x: K.x + Lshank * Math.sin(psi), y: K.y - Lshank * Math.cos(psi) } };
+  };
+  let { K, A } = legAt(psi);
+  R.footBack = 0;
   if (ov && ov.legs) { K = ov.legs.K; A = ov.legs.A; psi = Math.atan2(A.x - K.x, K.y - A.y); }
+  else if (!(ov && ov.base) && !(CHAIRS[W.chair] || {}).ring) {
+    // solid feet: when a foot or shin would pass into a console cabinet, a modesty panel or the environment, the feet
+    // draw back (the shin turns back about the knee, knee and ankle staying on their heights) until both are 10 mm clear,
+    // or as far as 30° behind the knee; any contact left is reported by the clearance checks
+    const SV = HFE_SOLVER, fk = kitFx().segs, legZ = Math.max(0.5 * M.hipbreadthsitting - hipU * 0.92, hipU * 0.7);
+    const obs = [...deskBoxes(W), ...envObstacles(W)].filter(b => !(b.skip && b.skip.some(p => 'shank'.startsWith(p) || 'foot'.startsWith(p))));
+    const r = SV.capsuleRadii(M), FL = M.footlength, Hm = M.lateralmalleolusheight, grow = k => fk[k] || 0;
+    const clr = ps => {
+      const { K: k, A: a } = legAt(ps); let d = Infinity;
+      for (const z of [-legZ, legZ]) {
+        const caps = [{ id: 'shank', a: [k.x, k.y, z], b: [a.x, a.y, z], ra: r.shank[0] + grow('shank'), rb: r.shank[1] + grow('shank') },
+          { id: 'foot', a: [a.x - 0.24 * FL, a.y - Hm, z], b: [a.x + 0.76 * FL, a.y - Hm, z], ra: r.foot[0] + grow('foot'), rb: r.foot[1] + grow('foot') }];
+        for (const C of caps) for (const B of obs) { const c = SV.capsuleObstacle(C, B, 10); if (c) d = Math.min(d, c.d); }
+      }
+      return d;
+    };
+    if (obs.length && clr(psi) < 10) {
+      let best = psi, bd = clr(psi);
+      for (let ps = psi - rad(1); ps >= rad(-30) - 1e-9; ps -= rad(1)) { const d = clr(ps); if (d > bd + 1e-6) { bd = d; best = ps; } if (d >= 10) break; }
+      if (best !== psi) { R.footBack = deg(psi - best); psi = best; ({ K, A } = legAt(psi)); }
+    }
+  }
   const footGap = A.y - ankleYfoot;
   const tdir = mul2(sub2(K, H), 1 / Lthigh);
   const KF = add2(K, mul2(tdir, M.buttockkneelength - kneeXref));
@@ -3416,13 +3585,108 @@ function armIK(S, T, L1, L2, side, env) {
 // head turns to a screen off to the side. The skinned body surface (core/bodylib.js) follows every joint.
 let skCache = { M: null, sk: null };
 const bodySkeleton = M => { if (skCache.M !== M) skCache = { M, sk: HFE_SOLVER.skeleton(M) }; return skCache.sk; };
+// The desk as drawn (buildWorkstation): the top, then a console's closed cabinet behind the legroom line, or a desk's
+// four legs and modesty panel. Hands and forearms rest on the top, so they are left out against it.
 const deskBoxes = (W, G) => {
-  const SV = HFE_SOLVER, panelH = Math.min(380, W.deskH - W.deskT - 80), hw = W.deskWidth / 2;
-  return [
-    SV.boxFromMinMax('desk.top', [0, W.deskH - W.deskT, -hw], [W.deskDepth, W.deskH, hw], { group: 'desk', skip: ['hand', 'forearm'] }),
-    SV.boxFromMinMax('desk.panel', [W.legroom - 5, W.deskH - W.deskT - panelH, -(hw - 60)], [W.legroom + 5, W.deskH - W.deskT, hw - 60], { group: 'desk', skip: ['hand', 'forearm'] })
-  ];
+  const SV = HFE_SOLVER, panelH = Math.min(380, W.deskH - W.deskT - 80), hw = W.deskWidth / 2, under = W.deskH - W.deskT;
+  const out = [SV.boxFromMinMax('desk.top', [0, under, -hw], [W.deskDepth, W.deskH, hw], { group: 'desk', skip: ['hand', 'forearm'] })];
+  if (W.deskStyle === 'console') {
+    if (W.deskDepth - W.legroom > 20) out.push(SV.boxFromMinMax('desk.cabinet', [W.legroom, 0, -hw], [W.deskDepth, under, hw], { group: 'desk' }));
+  } else if (W.deskStyle !== 'panel') {
+    for (const x of [35, W.deskDepth - 35]) for (const z of [-1, 1]) { const zc = z * (hw - 35); out.push(SV.boxFromMinMax(`desk.leg`, [x - 25, 0, zc - 25], [x + 25, under, zc + 25], { group: 'desk' })); }
+    out.push(SV.boxFromMinMax('desk.panel', [W.legroom - 5, under - panelH, -(hw - 60)], [W.legroom + 5, under, hw - 60], { group: 'desk', skip: ['hand', 'forearm'] }));
+  }
+  return out;
 };
+/* ---------------- solid obstacles (collision avoidance) ----------------
+   Everything solid near the body, in the tool's world frame, as boxes (core/solver.js box()) or shapes (a fuselage or
+   hull's curved wall, cylinders, domes): the desk, the screens, the desk objects, the chair's armrests, and the
+   environment's walls and fixtures. The whole-body solver keeps the body clear of them (the 'collide' target) and the
+   clearance checks measure against them. The seat and backrest are left out: the body rests on them, and the seat and
+   backrest settings already place it. The floor is held by the solver's floor and foot targets. A hand is left out
+   against the object it holds (its fingers are solved against that object's own shape), and its forearm too, as the
+   wrist rests on it. Groups: desk, screens, objects, chair, env. */
+// a box from a THREE.Matrix4 (any rotation, mirror or scale) and its size along its own axes
+function obbOf(Mx, size, id, extra) {
+  const e = Mx.elements, cols = [0, 4, 8].map(i => [e[i], e[i + 1], e[i + 2]]), ls = cols.map(c => Math.hypot(...c) || 1);
+  const c = new V3(0, 0, 0).applyMatrix4(Mx);
+  return HFE_SOLVER.box(id, [c.x, c.y, c.z], size.map((v, i) => v / 2 * ls[i]), cols.map((c_, i) => c_.map(v => v / ls[i])), extra);
+}
+// a shape given in a local frame (a rigid transform, possibly mirrored), with a bounding sphere for culling (none for a
+// shell the body sits inside, which is solid everywhere outside it)
+function shapeOf(Mx, fLocal, rLocal, id, extra) {
+  const inv = Mx.clone().invert(), v = new V3(), c = new V3().applyMatrix4(Mx);
+  return { id, shape: p => fLocal(v.set(p[0], p[1], p[2]).applyMatrix4(inv)), bound: rLocal == null ? null : { c: [c.x, c.y, c.z], r: rLocal }, ...extra };
+}
+let envObsCache = { key: null, list: [] };
+function envObstacles(W) {
+  const E = envNow(), sh = E.shell; if (!sh) return [];
+  const key = JSON.stringify([S.env, W.deskDepth]); if (envObsCache.key === key) return envObsCache.list;
+  const M4 = () => new THREE.Matrix4(), role = envRole(E), I = sh.internal, sa = role.mirror ? -1 : 1, front = envFront(sh), ax = envRoleX(E, role, W);
+  const Gm = M4().makeTranslation(-ax, 0, -sa * role.z).multiply(M4().makeScale(1, 1, sa));
+  const out = [], X = { group: 'env' };
+  if (sh.kind === 'tube') {
+    // the curved wall: inside the tube is free (the shape's distance is the depth into the wall)
+    const R = I.diameter / 2;
+    out.push({ id: 'env.walls', group: 'env', shape: p => R - Math.hypot(p[0] + ax, p[1] - I.axis) });
+  } else {
+    // walls (and the ceiling) as slabs 200 mm thick behind each inner face
+    const T = 200, xF = I.width / 2, L = I.length / 2, at = (lo, hi) => { const b = HFE_SOLVER.boxFromMinMax('env.walls', lo, hi, X); return obbOf(Gm.clone().multiply(M4().makeTranslation(...b.c)), b.h.map(v => 2 * v), 'env.walls', X); };
+    out.push(at([xF, 0, -L - T], [xF + T, I.height, L + T]), at([-xF - T, 0, -L - T], [-xF, I.height, L + T]), at([-xF, 0, -L - T], [xF, I.height, -L]), at([-xF, 0, L], [xF, I.height, L + T]));
+    if (sh.ceiling !== false) out.push(at([-xF, I.height, -L], [xF, I.height + T, L]));
+  }
+  const fix = (f, P) => {
+    const x = f.front != null ? front - f.front : (f.x || 0), id = 'env.fixture';
+    if (f.k === 'disp') {
+      const m = P.clone().multiply(M4().makeTranslation(x, f.y, f.z || 0)).multiply(M4().makeRotationFromEuler(new THREE.Euler(-rad(f.tilt || 0), -Math.PI / 2 + rad(f.yaw || 0), 0, 'YXZ'))).multiply(M4().makeTranslation(0, 0, -20));
+      out.push(obbOf(m, [f.w + 24, f.h + 24, 44], id, X));
+    } else if (f.k === 'cyl') {
+      const h = f.axis === 'z' ? f.len : f.y1 - f.y0, r = f.r;
+      let m = P.clone().multiply(M4().makeTranslation(x, f.axis === 'z' ? f.y : (f.y0 + f.y1) / 2, f.z || 0));
+      if (f.axis === 'z') m = m.multiply(M4().makeRotationX(Math.PI / 2));
+      out.push(shapeOf(m, p => { const dr = Math.hypot(p.x, p.z) - r, dy = Math.abs(p.y) - h / 2; return dr > 0 || dy > 0 ? Math.hypot(Math.max(dr, 0), Math.max(dy, 0)) : Math.max(dr, dy); }, Math.hypot(r, h / 2), id, X));
+    } else if (f.k === 'dome') {
+      // a canopy: the upper half of an ellipsoid as a shell, open below, that the body sits inside; outside it and above
+      // its base is the solid side (an approximate distance, as core/solver.js sdf())
+      const m = P.clone().multiply(M4().makeTranslation(x, f.y, f.z || 0)), rm = Math.min(f.rx, f.ry, f.rz);
+      out.push(shapeOf(m, p => Math.max((1 - Math.hypot(p.x / f.rx, p.y / f.ry, p.z / f.rz)) * rm, -p.y), null, id, X));
+    } else {
+      const m = P.clone().multiply(M4().makeTranslation(x, f.y, f.z || 0)).multiply(M4().makeRotationFromEuler(new THREE.Euler(0, rad(f.yaw || 0), rad(f.tilt || 0), 'YXZ')));
+      out.push(obbOf(m, [f.d, f.h, f.w], id, X));
+    }
+  };
+  (E.fixtures || []).forEach(f => fix(f, Gm));
+  for (const r of E.roles) { const so = r.mirror ? -1 : 1, P = Gm.clone().multiply(M4().makeTranslation(envRoleX(E, r, W), 0, r.z)).multiply(M4().makeScale(1, 1, so)); (E.roleFixtures || []).forEach(f => fix(f, P)); }
+  // only what is within reach of the seat (3 m) matters
+  const list = out.filter(o => o.h ? HFE_SOLVER.pointBox([0, 900, 0], o) < 3000 : !o.bound || Math.hypot(o.bound.c[0], o.bound.c[1] - 900, o.bound.c[2]) - o.bound.r < 3000);
+  envObsCache = { key, list };
+  return list;
+}
+// desk objects as boxes round their footprint and height, turned with the object
+function objectBoxes(W, G) {
+  const out = [];
+  for (const ob of G.objs || []) {
+    const d = ob.dims; if (!d) continue;
+    const held = ['L', 'R'].filter(k => W.hands[k] === ob.o.id || (W.hands[k] !== '' && ob.o.type === 'keyboard' && !W.objects.some(o => o.id === W.hands[k])));
+    const c = ob.T(0, d.h / 2, 0), u = ob.T(1, 0, 0).sub(ob.T(0, 0, 0)), w = ob.T(0, 0, 1).sub(ob.T(0, 0, 0));
+    out.push(HFE_SOLVER.box('obj.' + ob.o.id, [c.x, c.y, c.z], [d.d / 2, d.h / 2, d.w / 2], [[u.x, u.y, u.z], [0, 1, 0], [w.x, w.y, w.z]], { group: 'objects', skip: held.flatMap(k => ['hand' + k, 'forearm' + k]) }));
+  }
+  return out;
+}
+// the chair's armrests (pads and posts, as drawn for the generic chairs; a product model's armrests sit at the same setting)
+function chairBoxes(W, G) {
+  if (!W.armrests || offSeat(W)) return [];
+  const SV = HFE_SOLVER, out = [];
+  for (const s of [-1, 1]) {
+    const z = s * (W.seatWidth / 2 + 35), x0 = G.seatRearX + 110, y1 = W.seatH + W.armH;
+    out.push(SV.boxFromMinMax('chair.arm', [x0, y1 - 32, z - 37.5], [x0 + 240, y1, z + 37.5], { group: 'chair' }));
+  }
+  return out;
+}
+// soft tissue gives where body parts press together (a forearm against the abdomen, a hand on a thigh): the solver lets
+// self-contact pairs overlap by this much (mm), within the capsules' accuracy, before it moves them (tool convention)
+const SELF_GIVE = -3;
+function sceneObstacles(W, G) { return [...deskBoxes(W, G), ...screenBoxes(G), ...objectBoxes(W, G), ...chairBoxes(W, G), ...envObstacles(W)]; }
 const screenBoxes = G => G.scr.list.map(s => {
   const P = s.P, n = [P.normal.x, P.normal.y, P.normal.z], ux = new V3().subVectors(P.right, P.left).normalize(), uy = new V3().subVectors(P.top, P.bottom).normalize();
   const depth = 40 + s.s, c = [P.centre.x - n[0] * (depth / 2 - s.s), P.centre.y - n[1] * (depth / 2 - s.s), P.centre.z - n[2] * (depth / 2 - s.s)];
@@ -3446,7 +3710,7 @@ function bodyPose(M, W, G0) {
   const regW = sk.dofs.map(d => (d.joint === 'neck' && d.name === 'lat' ? 120 : d.joint === 'hip' && d.name !== 'flex' ? 40 : SV.jointReg(d, REG)) || 0);
   // a backrest stops either level of the spine reclining further than the backrest (flexion from the reference >= 0)
   const lim = Object.fromEntries([['lumbar.flex', 'lumbar'], ['trunk.flex', 'thorax']].map(([k, j]) => [k, [chair.back ? 0 : SV.ROM[j].flex[0] * SV.D2R, SV.ROM[j].flex[1] * SV.D2R]]));
-  const T = [], boxes = deskBoxes(W, G0);
+  const T = [];
   for (const side of [-1, 1]) {
     const k = side < 0 ? 'L' : 'R', a = G0.arms[side], t = a.hand;
     const aim = new V3().subVectors(t.tip, t.Wt).normalize();
@@ -3470,7 +3734,8 @@ function bodyPose(M, W, G0) {
     T.push({ type: 'aim', seg: 'foot' + k, local: [1, 0, 0], world: [1, 0, 0], w: 1 });
     T.push({ type: 'half', seg: 'shank' + k, local: [0, 0, 0], n: [0, 1, 0], d: G0.seatY + G0.dk, w: 10 });
   }
-  T.push({ type: 'avoid', caps: ['upperarm', 'forearm'], boxes: boxes.slice(0, 1), margin: 0, w: 5 });
+  // solid bodies: the whole body clear of the desk, screens, objects, armrests and environment, and of itself
+  T.push({ type: 'collide', obstacles: sceneObstacles(W, G0), grow: kitFx().segs, margin: 2, selfMargin: SELF_GIVE, w: 20 });
   if (W.headMode === 'auto') {
     const Pc = G0.scr.list[G0.scr.primary].P.centre, ed = rad(W.eyeDep);
     T.push({ type: 'look', seg: 'head', origin: sk.lm.eye[1], local: [Math.cos(-ed), Math.sin(-ed), 0], world: [Pc.x, Pc.y, Pc.z], w: 3, scale: 300 });
@@ -3500,9 +3765,9 @@ function stancePose(M, W, G0, st) {
   const SV = HFE_SOLVER, sk = bodySkeleton(M), ix = sk.dofIndex, V = p => new V3(p[0], p[1], p[2]);
   const hands = {};
   if (st !== 'prone') for (const side of [-1, 1]) { const k = side < 0 ? 'L' : 'R'; if (W.hands[k] !== '') { const t = G0.arms[side].hand.Wt; hands[k] = [t.x, t.y, t.z]; } }
-  const Pc = G0.scr.list[G0.scr.primary].P.centre, boxes = deskBoxes(W, G0);
-  const extra = [{ type: 'avoid', caps: ['upperarm', 'forearm'], boxes: boxes.slice(0, 1), margin: 0, w: 5 },
-    { type: 'avoid', caps: ['trunk', 'thigh', 'shank', 'head'], boxes, margin: 0, w: 5 }];
+  const Pc = G0.scr.list[G0.scr.primary].P.centre;
+  // solid bodies: clear of the desk, screens, objects and environment, and of itself
+  const extra = [{ type: 'collide', obstacles: sceneObstacles(W, G0), grow: kitFx().segs, margin: 2, selfMargin: SELF_GIVE, w: 20 }];
   const sex = String(S.pop || '').endsWith('f') ? 'female' : 'male';
   const floor = st === 'standing' || st === 'crouching' ? W.shoe : 0;   // standing on the soles; knees and the prone body on the floor
   const res = SV.pose(sk, { stance: st, floor, x: stanceX(sk, st), hands, gaze: W.headMode === 'auto' && st !== 'prone' ? [Pc.x, Pc.y, Pc.z] : null, eyeDep: W.eyeDep, sex, extra });
@@ -3583,10 +3848,15 @@ function solvePosture(M, W) {
   // clearance capsules grow by the thickest kit item over each segment (core/kit.js `segs`)
   // clearance capsules: from the whole-body solver's own segment frames (twist, side bend and each leg), or the classic posture
   const kfx = kitFx(), caps = SV.capsules(M, body ? SV.capsLandmarks(body.sk, body.F) : postureLandmarks(M, G)).map(c => { const t = kfx.segs[c.id.replace(/[LR]$/, '')] || 0; return t ? { ...c, ra: c.ra + t, rb: c.rb + t } : c; });
-  const cl = SV.clearance(caps, [...deskBoxes(W, G), ...screenBoxes(G)]);
-  G.clear = cl;
-  R.clearDesk = cl.byGroup.desk ? cl.byGroup.desk.d : null;
-  R.clearScreens = cl.byGroup.screens ? cl.byGroup.screens.d : null;
+  // the body against everything solid (sceneObstacles) and against itself: the trunk in its own frame (the whole-body
+  // solver's thorax, or the classic trunk turned by its recline)
+  const trunk = body ? (f => ({ p: f.p, R: f.R }))(body.F[body.sk.index.trunk]) : { p: [(G.trunkO || G.H).x, (G.trunkO || G.H).y, 0], R: SV.rotAxis('z', G.dR) };
+  const ct = SV.contacts(M, caps, sceneObstacles(W, G), trunk);
+  const byGroup = {};
+  for (const p of ct.obstacles) if (!byGroup[p.group] || p.d < byGroup[p.group].d) byGroup[p.group] = p;
+  G.clear = { pairs: ct.obstacles, byGroup, clashes: ct.obstacles.filter(c => c.d < 0), self: ct.self };
+  for (const [k, g] of [['clearDesk', 'desk'], ['clearScreens', 'screens'], ['clearObjects', 'objects'], ['clearChair', 'chair'], ['clearEnv', 'env']]) R[k] = byGroup[g] ? byGroup[g].d : null;
+  R.clearSelf = ct.self.length ? ct.self[0].d : null;
   return out;
 }
 
@@ -3624,7 +3894,7 @@ function evaluate(R, W, G) {
     if (c.id === 'headrest' && R.headrest == null) continue;
     if ((c.id === 'depthRange' || c.id === 'armRange' || c.id === 'lumbarRange') && R[c.id] == null) continue;
     if (c.id === 'homeVsElbow' && R.homeVsElbow == null) continue;
-    if ((c.id === 'rom' || c.id === 'clearDesk' || c.id === 'clearScreens' || c.id === 'clearExact') && R[c.id] == null) continue;
+    if ((c.id === 'rom' || c.group === 'Clearance') && R[c.id] == null) continue;
     if (offSeat(W) && (OFF_SEAT_NA.has(c.id) || offSeat(W) === 'prone' && PRONE_NA.has(c.id))) continue;
     push(c, c.id, c.name, R[c.id]);
   }
@@ -3698,9 +3968,18 @@ function noteFor(id, key, R, W, G, st) {
         : `trunk ${P.trunk}, neck ${P.neck}, legs ${P.legs} → A ${P.scoreA}; upper arm ${P.upperArm}, lower arm ${P.lowerArm}, wrist ${P.wrist} → B ${P.scoreB}; Table C ${P.scoreC}, +${P.activity} activity (static)`;
       return `${id === 'rula' ? r.action.text : r.risk.text}. Worse side (${side}): ${parts}. ${id === 'rula' ? 'McAtamney and Corlett (1993)' : 'Hignett and McAtamney (2000)'}. Assumes a static posture, no load, ${id === 'reba' ? 'good coupling, ' : ''}and the wrist mid-range; arm abducted beyond 20°, twist or side bend beyond 10°, and armrests within 40 mm of elbow height count as adjustments (tool conventions).`;
     }
-    case 'clearDesk': case 'clearScreens': {
-      const grp = id === 'clearDesk' ? 'desk' : 'screens', p = G.clear.byGroup[grp], n = G.clear.clashes.filter(c => c.group === grp).length;
-      return `Closest: ${HFE_SOLVER.partName(p.part)}.${n ? ` ${n} clash${n > 1 ? 'es' : ''} (body part inside the ${grp === 'desk' ? 'desk or modesty panel' : 'screen'}).` : ''} Body as tapered capsules${grp === 'desk' ? '; hands and forearms excluded, as they rest on the desk and objects' : ''}. Green margin as for thigh clearance.`;
+    case 'clearDesk': case 'clearScreens': case 'clearObjects': case 'clearChair': case 'clearEnv': {
+      const grp = { clearDesk: 'desk', clearScreens: 'screens', clearObjects: 'objects', clearChair: 'chair', clearEnv: 'env' }[id], p = G.clear.byGroup[grp];
+      const hit = G.clear.clashes.filter(c => c.group === grp), parts = [...new Set(hit.map(c => HFE_SOLVER.partName(c.part)))];
+      const what = { desk: 'the desk (top, cabinet, legs or modesty panel)', screens: 'a screen', objects: 'a desk object', chair: 'an armrest', env: 'the walls or fittings' }[grp];
+      const why = { desk: '; hands and forearms excluded against the top and modesty panel, as they rest on them', objects: '; a hand (and its forearm) excluded against the object it holds, whose own shape its fingers are solved against', chair: '', screens: '', env: '' }[grp];
+      const solver = G.body ? ' The whole-body solver keeps the body 2 mm clear of everything solid while it meets its targets inside the joint limits; a clash left here could not be avoided that way (the target is inside or behind the object, or the joints cannot reach round it): move the target or the object.'
+        : ` The classic solver draws the feet back from cabinets and panels${R.footBack > 0 ? ` (here by ${fmt(R.footBack)}°)` : ''} but places the arms and trunk without avoiding contact: the whole-body solver avoids it.`;
+      return `Closest: ${HFE_SOLVER.partName(p.part)}.${parts.length ? ` Clash: ${parts.join(', ')} inside ${what}.` : ''} Body as tapered capsules, thickened by the kit${why}.${solver}${grp === 'chair' ? ' A forearm resting on its armrest touches it: the green limit is contact, not a gap.' : ' Green margin as for thigh clearance.'}`;
+    }
+    case 'clearSelf': {
+      const s = G.clear.self.filter(c => c.d < 0), nm = c => `${HFE_SOLVER.partName(c.a)} and ${HFE_SOLVER.partName(c.b)}`;
+      return `Closest: ${nm(G.clear.self[0])}.${s.length ? ` Overlapping: ${s.slice(0, 4).map(c => `${nm(c)} ${fmt(-c.d)} mm`).join('; ')}.` : ''} Pairs of body parts that do not meet at a joint (arms against the trunk, head and thighs, the arms against each other, the legs against each other), each part as a tapered capsule and the trunk as an elliptic prism (chest depth by 74 % of biacromial breadth, hips to shoulders); touching is allowed, as a hand resting on a thigh. ${G.body ? `The whole-body solver keeps these pairs apart, letting them press ${-SELF_GIVE} mm together as soft tissue gives; an overlap beyond that left here is one the targets and joint limits force.` : 'The classic solver keeps the elbows outside the trunk but does not test the other pairs: the whole-body solver keeps them apart.'} Green to 5 mm of overlap (soft tissue, and the capsules' accuracy), amber to 15 mm (tool conventions).`;
     }
     case 'shAbd': {
       const names = [-1, 1].map(s => { const o = W.objects.find(x => x.id === G.arms[s].obj); return o && o.type !== 'keyboard' ? `${s < 0 ? 'Left' : 'Right'} hand on ${objName(o, W.objects).toLowerCase()}` : null; }).filter(Boolean);
@@ -5768,7 +6047,7 @@ let toastT; function toast(m) { $('#toast').textContent = m; clearTimeout(toastT
 /* ---------------- evidence: project files and output stamps (PRJ-01, PRJ-03, VAL-02, VAL-03, VAL-07) ----------------
    core/evidence.js does the hashing, migration and comparison; this gathers the tool's state for it. Every output
    (checks CSV, population CSVs, placement map CSV, image, drawing) carries the same stamp. */
-const TOOL = { name: 'HFE Lab Workspace Visualisation', build: '64dda39fe04c' };
+const TOOL = { name: 'HFE Lab Workspace Visualisation', build: '0b788aae9e18' };
 const VALIDATION = 'Not validated (posture from geometric rules, not a validated posture-prediction model; limits are guidance values unless edited)';
 const solverName = W => W.solver === 'body' ? 'Whole body with joint limits (beta)' : 'Classic seated';
 function subjectText() {
