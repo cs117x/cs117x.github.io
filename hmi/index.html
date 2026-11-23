@@ -1,0 +1,2059 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex, nofollow, noarchive"><link rel="icon" href="/favicon.ico" sizes="32x32"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><meta name="theme-color" content="#1f5a8a"><title>HMI Builder</title></head><body>
+<meta name="hfe-workspace" content="/workspace/">
+<style>
+/* Layout: screens and widget palette on the left, the screen being built in the middle, inspector (widget, variables,
+   displays, problems) on the right; top bar with file actions, edit or run, the Workspace Visualisation link and the theme.
+   Same design tokens as the SysML v2 Editor. The HMI screen itself keeps its own display colours in both themes. */
+:root{
+  --bg:#e9ecef; --chrome:#dfe3e7; --area:#d5dade; --header:#eef0f3; --panel:#ffffff; --panel-2:#f4f6f8;
+  --field:#ffffff; --field-hover:#f0f3f6; --ink:#1c2530; --muted:#5b6672; --faint:#8a949e; --rule:#dde1e6; --rule-strong:#c4ccd5;
+  --accent:#1f5a8a; --accent-ink:#ffffff; --accent-soft:#e1ebf5; --sel:#d97a00;
+  --ok:#2b7a43; --warn:#9f6000; --bad:#bb382c; --ok-bg:#e7f3ea; --warn-bg:#fbf0de; --bad-bg:#fae6e4; --info-bg:#eef1f4;
+  --overlay:rgba(20,28,36,.36); --shadow:0 6px 22px rgba(0,0,0,.12);
+  --f-sans:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Roboto,Arial,sans-serif;
+  --f-mono:ui-monospace,"Cascadia Mono","SFMono-Regular",Menlo,Consolas,"Liberation Mono",monospace;
+  color-scheme:light;
+}
+:root[data-theme="dark"]{
+  --bg:#161616; --chrome:#1f1f1f; --area:#191919; --header:#303030; --panel:#2b2b2b; --panel-2:#323232;
+  --field:#1d1d1d; --field-hover:#3d3d3d; --ink:#e6e6e6; --muted:#b4b4b4; --faint:#828282; --rule:#1c1c1c; --rule-strong:#4a4a4a;
+  --accent:#4c9bff; --accent-ink:#000000; --accent-soft:rgba(76,155,255,.16); --sel:#ff9d1c;
+  --ok:#3fd07e; --warn:#ffb22e; --bad:#ff5c50; --ok-bg:rgba(63,208,126,.13); --warn-bg:rgba(255,178,46,.13); --bad-bg:rgba(255,92,80,.15); --info-bg:#333333;
+  --overlay:rgba(0,0,0,.66); --shadow:0 6px 24px rgba(0,0,0,.5);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;background:var(--bg);color:var(--ink);height:100%}
+body{font-family:var(--f-sans);font-size:12.5px;line-height:1.4;overflow:hidden}
+button,select,input,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+svg.i{width:15px;height:15px;flex:none;stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.shell{display:grid;grid-template-rows:34px minmax(0,1fr) 24px;height:100vh;height:100dvh}
+.topbar{display:flex;align-items:center;gap:4px;padding:0 8px;background:var(--chrome);border-bottom:1px solid var(--rule-strong);min-width:0;overflow-x:auto;scrollbar-width:none}
+.topbar::-webkit-scrollbar{display:none}
+.topbar>*{flex:none}
+.logo{display:inline-flex;align-items:center;gap:7px;font-weight:700;color:var(--accent);padding:0 6px 0 2px;white-space:nowrap;text-decoration:none}
+.logo i{width:12px;height:12px;border-radius:3px;background:var(--accent);display:inline-block}
+.app{font-weight:600;padding-right:8px;margin-right:4px;border-right:1px solid var(--rule-strong);white-space:nowrap}
+.tb{display:inline-flex;align-items:center;gap:5px;border:1px solid transparent;background:transparent;padding:3px 8px;border-radius:4px;cursor:pointer;white-space:nowrap}
+.tb:hover{background:var(--field-hover);border-color:var(--rule-strong)}
+.tb.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.tb-sep{width:1px;height:18px;background:var(--rule-strong);margin:0 4px}
+.spacer{flex:1}
+.seg{display:inline-flex;border:1px solid var(--rule-strong);border-radius:4px;overflow:hidden;flex:none}
+.seg button{border:0;background:var(--panel);padding:3px 10px;cursor:pointer;white-space:nowrap}
+.seg button+button{border-left:1px solid var(--rule-strong)}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--rule-strong);border-radius:12px;padding:2px 10px;background:var(--panel);white-space:nowrap;max-width:380px;overflow:hidden;text-overflow:ellipsis}
+.pill i{width:8px;height:8px;border-radius:50%;background:var(--faint);flex:none}
+.pill.live i{background:var(--ok)}
+.main{display:grid;grid-template-columns:214px minmax(0,1fr) 340px;min-height:0}
+.side{display:flex;flex-direction:column;min-height:0;background:var(--panel);border-right:1px solid var(--rule-strong);overflow:auto}
+.side h3,.insp h3{font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:12px 10px 6px;display:flex;align-items:center;gap:6px}
+.side h3 .spacer{flex:1}
+.mini{border:1px solid var(--rule-strong);background:var(--panel);border-radius:4px;padding:0 6px;cursor:pointer;font-size:12px;line-height:20px}
+.mini:hover{background:var(--field-hover)}
+.scr-list{display:flex;flex-direction:column;padding:0 6px}
+.scr-list button{display:flex;justify-content:space-between;gap:6px;text-align:left;border:1px solid transparent;background:transparent;border-radius:4px;padding:4px 8px;cursor:pointer}
+.scr-list button:hover{background:var(--field-hover)}
+.scr-list button[aria-current="true"]{background:var(--accent-soft);border-color:var(--accent)}
+.scr-list small{color:var(--faint)}
+.pal{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:0 8px}
+.pal button{border:1px solid var(--rule-strong);background:var(--panel-2);border-radius:4px;padding:6px 6px;cursor:grab;text-align:left;font-size:12px}
+.pal button:hover{background:var(--field-hover);border-color:var(--accent)}
+.pal .g{grid-column:1/-1;color:var(--faint);font-size:11px;margin-top:6px}
+.side .note{color:var(--muted);font-size:11.5px;margin:6px 10px 12px;line-height:1.45}
+/* stage */
+.stagewrap{position:relative;padding-top:34px;min-width:0;min-height:0;background:var(--area);overflow:auto;display:flex}
+.stage{position:relative;margin:auto;padding:28px}
+.stage canvas{display:block;box-shadow:0 2px 14px rgba(0,0,0,.35);border-radius:2px;touch-action:none}
+.stage.run canvas{cursor:pointer}
+.ov{position:absolute;left:28px;top:28px;pointer-events:none}
+.selbox{position:absolute;border:1.5px solid var(--sel);box-shadow:0 0 0 1px rgba(0,0,0,.35)}
+.selbox .h{position:absolute;width:10px;height:10px;background:#fff;border:1.5px solid var(--sel);pointer-events:auto}
+.selbox .h[data-h="nw"]{left:-6px;top:-6px;cursor:nwse-resize}.selbox .h[data-h="se"]{right:-6px;bottom:-6px;cursor:nwse-resize}
+.selbox .h[data-h="ne"]{right:-6px;top:-6px;cursor:nesw-resize}.selbox .h[data-h="sw"]{left:-6px;bottom:-6px;cursor:nesw-resize}
+.selbox .tag{position:absolute;left:-1px;top:-20px;background:var(--sel);color:#000;font-size:11px;padding:1px 6px;border-radius:3px 3px 0 0;white-space:nowrap}
+.zoom{position:absolute;left:0;top:0;display:flex;gap:4px;padding:6px;z-index:3}
+.zoom button{border:1px solid var(--rule-strong);background:var(--panel);border-radius:4px;padding:1px 8px;cursor:pointer}
+.runbar{position:absolute;left:50%;top:6px;transform:translateX(-50%);background:var(--ok);color:#fff;padding:2px 10px;border-radius:10px;font-size:11.5px;font-weight:600;z-index:3}
+/* inspector */
+.insp{display:flex;flex-direction:column;min-height:0;background:var(--panel);border-left:1px solid var(--rule-strong)}
+.tabs{display:flex;gap:2px;padding:0 6px;background:var(--header);border-bottom:1px solid var(--rule);flex:none;overflow-x:auto}
+.tabs button{border:0;background:transparent;padding:7px 5px;font-size:12px;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
+.tabs button[aria-selected="true"]{border-bottom-color:var(--accent);font-weight:600}
+.tabs .cnt{display:inline-block;min-width:18px;padding:0 5px;margin-left:3px;border-radius:9px;background:var(--info-bg);font-size:11px;text-align:center}
+.tabs .cnt.e{background:var(--bad-bg);color:var(--bad)}.tabs .cnt.w{background:var(--warn-bg);color:var(--warn)}
+.tp{flex:1;min-height:0;overflow:auto;padding:10px 12px}
+.form{display:grid;grid-template-columns:96px minmax(0,1fr);gap:6px 8px;align-items:center}
+.form label{color:var(--muted)}
+.form .full{grid-column:1/-1}
+.form input,.form select,.form textarea,.vt input,.vt select,.dt select{width:100%;background:var(--field);border:1px solid var(--rule-strong);border-radius:4px;padding:3px 6px;min-width:0}
+.form textarea{font:12px/1.4 var(--f-mono);resize:vertical;min-height:48px}
+.form input.mono{font-family:var(--f-mono);font-size:12px}
+.form input.bad,.form textarea.bad{border-color:var(--bad);background:var(--bad-bg)}
+.form .xy{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}
+.form .xy input{text-align:right}
+.form .err{grid-column:2;color:var(--bad);font-size:11.5px;margin-top:-3px}
+.form .hint{grid-column:1/-1;color:var(--muted);font-size:11.5px;line-height:1.45}
+.form .thumb{max-width:100%;max-height:90px;border:1px solid var(--rule-strong);border-radius:3px;display:block}
+.form input[type="checkbox"]{width:auto}
+h4{margin:14px 0 6px;font-size:12.5px}
+h4:first-child{margin-top:0}
+.btn{border:1px solid var(--rule-strong);background:var(--panel);border-radius:4px;padding:3px 9px;cursor:pointer;white-space:nowrap}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.danger{color:var(--bad)}
+.btn:hover{filter:brightness(.97)}
+.row{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+table{border-collapse:collapse;width:100%}
+th,td{text-align:left;vertical-align:middle;padding:3px 4px;border-bottom:1px solid var(--rule)}
+th{color:var(--muted);font-weight:600;font-size:11.5px}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+.vt td:last-child{width:22px}
+.x{border:0;background:none;cursor:pointer;color:var(--faint);font-size:15px;line-height:1}
+.x:hover{color:var(--bad)}
+.dcard{border:1px solid var(--rule-strong);border-radius:5px;padding:8px;margin-bottom:8px;background:var(--panel-2)}
+.dcard .form{grid-template-columns:86px minmax(0,1fr)}
+.dcard .meta{color:var(--muted);font-size:11.5px;margin-top:6px}
+.muted{color:var(--muted)}
+.probs div{display:flex;gap:8px;padding:4px;border-radius:3px;cursor:pointer}
+.probs div:hover{background:var(--field-hover)}
+.probs .sev{font-weight:700;width:14px;flex:none}
+.probs .sev.error{color:var(--bad)}.probs .sev.warning{color:var(--warn)}
+.status{display:flex;align-items:center;gap:14px;padding:0 10px;background:var(--chrome);border-top:1px solid var(--rule-strong);color:var(--muted);white-space:nowrap;overflow:hidden;font-size:11.5px}
+.status .sp{flex:1}
+.toast{position:fixed;left:50%;bottom:34px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:6px 12px;border-radius:4px;z-index:90;max-width:80vw}
+.toast:empty{display:none}
+.modal{position:fixed;inset:0;background:var(--overlay);display:flex;align-items:center;justify-content:center;z-index:80;padding:16px}
+.dlg{background:var(--panel);border:1px solid var(--rule-strong);border-radius:6px;box-shadow:var(--shadow);max-width:720px;width:100%;max-height:86vh;overflow:auto;padding:18px 20px}
+.dlg h2{font-size:16px;margin:0 0 8px}
+.dlg h3{font-size:13px;margin:14px 0 4px}
+.dlg p,.dlg li{color:var(--muted);line-height:1.5}
+.dlg code,.dlg pre{font-family:var(--f-mono);font-size:12px;background:var(--panel-2);border-radius:3px;padding:1px 4px}
+.dlg pre{padding:8px 10px;overflow:auto;color:var(--ink)}
+.pre{display:grid;grid-template-columns:200px minmax(0,1fr);gap:12px;border:1px solid var(--rule-strong);border-radius:6px;padding:10px;margin-top:10px;background:var(--panel-2)}
+.pre canvas{width:200px;border-radius:3px;background:#000;display:block}
+.pre h3{margin:0 0 4px;font-size:13.5px;color:var(--ink)}
+.pre p{margin:0 0 8px;font-size:12px}
+.pre .tag{display:inline-block;font-size:11px;border-radius:3px;padding:0 6px;background:var(--accent-soft);color:var(--accent);margin-right:6px}
+.dlg kbd{font:11px var(--f-mono);border:1px solid var(--rule-strong);border-radius:3px;padding:0 4px}
+@media (max-width:900px){
+  body{overflow:auto}
+  .shell{height:auto}
+  .main{grid-template-columns:1fr;grid-template-rows:auto 60vh auto}
+  .side{max-height:none;border-right:0;border-bottom:1px solid var(--rule-strong)}
+  .insp{min-height:50vh;border-left:0;border-top:1px solid var(--rule-strong)}
+}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-new" viewBox="0 0 16 16"><path d="M4 1.5h5l3 3v10H4z"/><path d="M9 1.5v3h3"/></symbol>
+  <symbol id="i-open" viewBox="0 0 16 16"><path d="M1.5 4V13h11l2-6h-11l-2 6"/><path d="M1.5 4V2.5h4l1.5 1.5h5V7"/></symbol>
+  <symbol id="i-save" viewBox="0 0 16 16"><path d="M8 2v8M4.5 6.5 8 10l3.5-3.5M2.5 12.5v1h11v-1"/></symbol>
+  <symbol id="i-img" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="1"/><circle cx="5.5" cy="6" r="1.3"/><path d="m2 12 4-4 3 3 2-2 3.5 3.5"/></symbol>
+  <symbol id="i-cube" viewBox="0 0 16 16"><path d="M8 1.5 14 5v6l-6 3.5L2 11V5z"/><path d="M2 5l6 3.5L14 5M8 8.5v6"/></symbol>
+  <symbol id="i-theme" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><path d="M8 2a6 6 0 0 0 0 12z" fill="currentColor"/></symbol>
+  <symbol id="i-help" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5"/><path d="M6.2 6.2a1.9 1.9 0 1 1 2.6 1.8c-.5.2-.8.6-.8 1.1v.4M8 11.6v.2"/></symbol>
+  <symbol id="i-undo" viewBox="0 0 16 16"><path d="M5 3 2 6l3 3"/><path d="M2 6h7.5a4 4 0 0 1 0 8H6"/></symbol>
+  <symbol id="i-redo" viewBox="0 0 16 16"><path d="m11 3 3 3-3 3"/><path d="M14 6H6.5a4 4 0 0 0 0 8H10"/></symbol>
+</svg>
+
+<div class="shell" id="shell">
+  <header class="topbar">
+    <span class="logo" id="logo"><i></i>HFE Lab</span>
+    <span class="app">HMI Builder</span>
+    <button class="tb" id="f-new" title="New HMI prototype"><svg class="i"><use href="#i-new"/></svg>New</button>
+    <button class="tb" id="f-open" title="Open a .hmi.json file (Ctrl+O)"><svg class="i"><use href="#i-open"/></svg>Open</button>
+    <button class="tb" id="f-save" title="Save as .hmi.json (Ctrl+S)"><svg class="i"><use href="#i-save"/></svg>Save</button>
+    <button class="tb" id="f-example" title="Load the ground control station example">Example</button>
+    <button class="tb" id="f-presets" title="Ready-made screens: flight instruments, head-up display, radar, command and control">Presets</button>
+    <span class="tb-sep"></span>
+    <button class="tb" id="f-import" title="Import a picture of a screen (PNG, JPEG or SVG, for example exported from Figma) and add hotspots over it"><svg class="i"><use href="#i-img"/></svg>Import mock-up</button>
+    <button class="tb" id="x-png" title="Save this screen as a PNG">Screen PNG</button>
+    <span class="tb-sep"></span>
+    <button class="tb" id="undo" title="Undo (Ctrl+Z)" aria-label="Undo"><svg class="i"><use href="#i-undo"/></svg></button>
+    <button class="tb" id="redo" title="Redo (Ctrl+Y)" aria-label="Redo"><svg class="i"><use href="#i-redo"/></svg></button>
+    <div class="seg" role="group" aria-label="Mode" style="margin-left:6px">
+      <button id="m-edit" aria-pressed="true" title="Place and edit widgets">Edit</button>
+      <button id="m-run" aria-pressed="false" title="Use the screen as an operator would">Run</button>
+    </div>
+    <input type="file" id="file" accept=".json,application/json" hidden>
+    <input type="file" id="imgfile" accept="image/png,image/jpeg,image/svg+xml,image/webp,image/gif" hidden>
+    <span class="spacer"></span>
+    <span class="pill" id="ws-pill" title="Workspace Visualisation in another tab of this site"><i></i><span id="ws-text">Workspace not open</span></span>
+    <button class="tb primary" id="ws-show" title="Show this HMI on its displays in Workspace Visualisation"><svg class="i"><use href="#i-cube"/></svg>Show in 3D</button>
+    <button class="tb" id="theme" title="Light or dark theme" aria-label="Light or dark theme"><svg class="i"><use href="#i-theme"/></svg></button>
+    <button class="tb" id="help" title="Help: widgets, logic and linking" aria-label="Help"><svg class="i"><use href="#i-help"/></svg></button>
+  </header>
+
+  <div class="main" id="main">
+    <aside class="side" aria-label="Screens and widgets">
+      <h3>Screens<span class="spacer"></span><button class="mini" id="s-add" title="Add a screen">+</button><button class="mini" id="s-dup" title="Duplicate this screen">⧉</button><button class="mini" id="s-del" title="Delete this screen">−</button></h3>
+      <div class="scr-list" id="scr-list"></div>
+      <h3>Widgets</h3>
+      <div class="pal" id="pal"></div>
+      <p class="note">Click a widget to add it, or drag it onto the screen. For a design made elsewhere, use <b>Import mock-up</b> and draw hotspots over it.</p>
+    </aside>
+    <section class="stagewrap" id="stagewrap" aria-label="Screen">
+      <div class="zoom"><button id="z-out" title="Zoom out" aria-label="Zoom out">−</button><button id="z-fit" title="Fit">Fit</button><button id="z-in" title="Zoom in" aria-label="Zoom in">+</button><span class="muted" id="z-txt" style="align-self:center"></span></div>
+      <div class="runbar" id="runbar" hidden>Running: press the screen as an operator would</div>
+      <div class="stage" id="stage">
+        <canvas id="cv" aria-label="The HMI screen being built"></canvas>
+        <div class="ov" id="ov"><div class="selbox" id="selbox" hidden><span class="tag" id="seltag"></span><i class="h" data-h="nw"></i><i class="h" data-h="ne"></i><i class="h" data-h="sw"></i><i class="h" data-h="se"></i></div></div>
+      </div>
+    </section>
+    <section class="insp" aria-label="Inspector">
+      <div class="tabs" role="tablist">
+        <button role="tab" id="t-w" aria-selected="true" aria-controls="p-w">Widget</button>
+        <button role="tab" id="t-v" aria-selected="false" aria-controls="p-v">Variables <span class="cnt" id="c-v">0</span></button>
+        <button role="tab" id="t-d" aria-selected="false" aria-controls="p-d">Displays <span class="cnt" id="c-d">0</span></button>
+        <button role="tab" id="t-p" aria-selected="false" aria-controls="p-p">Problems <span class="cnt" id="c-p">0</span></button>
+      </div>
+      <div class="tp" id="p-w" role="tabpanel"></div>
+      <div class="tp" id="p-v" role="tabpanel" hidden></div>
+      <div class="tp" id="p-d" role="tabpanel" hidden></div>
+      <div class="tp probs" id="p-p" role="tabpanel" hidden></div>
+    </section>
+  </div>
+  <footer class="status"><span id="sb-file">untitled.hmi.json</span><span id="sb-scr"></span><span id="sb-mode">Edit</span><span class="sp"></span><span id="sb-build">Build ff3d1e582a24</span></footer>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<div class="modal" id="presets" hidden>
+  <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="pre-t" style="max-width:820px">
+    <h2 id="pre-t">Presets</h2>
+    <p>Ready-made screens to start from or take apart. Flight and radar screens follow common, public display conventions in HFE Lab's own design; they are not copies of any manufacturer's displays. Maps are made up, not real places.</p>
+    <div id="pre-list"></div>
+    <label style="display:flex;gap:6px;align-items:center;margin-top:10px;color:var(--muted)"><input type="checkbox" id="pre-assign" checked> Also put the screens on their suggested displays in Workspace Visualisation</label>
+    <div style="text-align:right;margin-top:10px"><button class="btn" id="pre-close">Close</button></div>
+  </div>
+</div>
+
+<div class="modal" id="about" hidden>
+  <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="about-t">
+    <h2 id="about-t">HMI Builder</h2>
+    <p>Build the screens of a human-machine interface from widgets, give them simple logic, then show them live on the displays of a workstation in Workspace Visualisation, where they can be pressed and judged at the real size, distance and angle. Everything runs in this page: nothing is sent anywhere.</p>
+    <h3>Building</h3>
+    <p>Add widgets from the left, drag them to move, and drag a corner to resize (they snap to an 8 px grid; hold <kbd>Alt</kbd> to place freely). Each screen has a size in pixels; set it to the display's shape on the <b>Displays</b> tab. <b>Run</b> lets you use the screen as an operator would.</p>
+    <p>A design made in Figma or another tool can come in as a picture: <b>Import mock-up</b> adds it as the screen's background, and <b>Hotspot</b> widgets over it make it clickable, so a static design becomes a working prototype.</p>
+    <p><b>Presets</b> add ready-made screens: a glass-cockpit primary flight and navigation display, a head-up display, a radar scope, and two large command and control screens (operating picture and tasking board). They share variable names, so a flight display and a head-up display show the same flight.</p>
+    <h3>Logic</h3>
+    <p>Variables (number, on or off, or text) hold the HMI's state, shared by every display. Widgets show them, and expressions decide what is visible or lit:</p>
+<pre>link &lt; 20 &amp;&amp; !ack          mode == 'AUTO'          screen == 'map'</pre>
+    <p>Presses run actions, separated by <code>;</code> or new lines:</p>
+<pre>goto map                  show another screen on this display
+link = 8; ack = false     set variables (set link = 8 also works)
+toggle satcom             switch an on or off variable
+hdg = (hdg + 10) % 360    values can be expressions</pre>
+    <p>Text can show variables: <code>MODE {mode}</code>, <code>{alt:0} ft</code>.</p>
+    <h3>Linking to Workspace Visualisation</h3>
+    <p>On the <b>Displays</b> tab, choose the environment, seat and display that each screen appears on. <b>Show in 3D</b> opens Workspace Visualisation there. While both are open in tabs of this site, changes appear in 3D as you make them, and presses on the 3D displays change the same variables here. Air-gapped, save the file and use <b>File, Load HMI prototype</b> in Workspace Visualisation.</p>
+    <p>The <b>Displays</b> tab also measures the screen on its display: the height of each piece of text in millimetres and minutes of arc at the viewing distance, and the size of each touch target. Checks of these against standards (legibility, gloved touch targets, contrast) and timed scenarios are planned.</p>
+    <h3>Keys</h3>
+    <p><kbd>Delete</kbd> remove · arrows nudge (<kbd>Shift</kbd> for 8 px) · <kbd>Ctrl</kbd>+<kbd>D</kbd> duplicate · <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>Ctrl</kbd>+<kbd>Y</kbd> redo · <kbd>Ctrl</kbd>+<kbd>S</kbd> save · <kbd>Esc</kbd> deselect</p>
+    <p style="font-size:12px">Prototype. Colours follow the usual coding (red warning, amber caution, green normal, cyan and white advisory).</p>
+    <div style="text-align:right"><button class="btn primary" id="about-close">Close</button></div>
+  </div>
+</div>
+
+<script>
+/* ---------------- HMI prototypes: model, logic, drawing and measurement (HMI-01 to HMI-05) ----------------
+   An HMI prototype is plain JSON (format 'hfe-lab/hmi'): screens made of widgets, variables, simple logic, and the
+   displays in Workspace Visualisation each screen is shown on. The same code draws a screen in the HMI Builder and on a
+   display in the 3D workspace, so what is assessed in 3D is exactly what was built. No dependencies: it runs in the
+   browser and is unit-tested in Node (tests/hmi.test.js).
+
+   Document
+     { format: 'hfe-lab/hmi', version: 1, name, notes,
+       vars:     [{ name, type: 'number' | 'bool' | 'text', init, unit? }]
+       screens:  [{ id, name, w, h, bg, widgets: [...] }]          w and h are design pixels
+       start:    screen id shown first
+       displays: [{ env, role, node, screen }]                     where screens appear in Workspace Visualisation
+       scenarios: []                                                reserved for timed scenario playback (HMI-07) }
+
+   Widgets: { id, type, x, y, w, h, visibleWhen?, ...type properties (TYPES below) }. A mock-up drawn elsewhere (a PNG or
+   SVG exported from Figma, say) goes in as an image widget, with hotspots over it to make it clickable.
+
+   Logic
+     Expressions (visibleWhen, enabledWhen, activeWhen, when, lamp onWhen, set values): numbers, 'text' or "text",
+     true and false, variable names, `screen` (the screen this display shows), ! - * / % + - < <= > >= == != && ||
+     and brackets. Evaluated by the small parser below; nothing is passed to eval.
+     Actions (onClick, menu items): statements separated by ; or new lines:
+       goto <screen id>        show another screen on this display
+       set <var> = <expr>      (or just <var> = <expr>)
+       toggle <var>
+     Text may include {var} or {var:1} (one decimal place).
+
+   Runtime state: { vars: { name: value }, at: { displayKey: screenId } }. Variables are shared by every display; each
+   display has its own current screen ('builder' is the HMI Builder's own view).
+
+   Hooks for later work, so it fits without changing the format:
+     measure()    physical text heights and touch target sizes on a given display (mm, and arcmin at a viewing
+                  distance). The HMI checks (HMI-06: legibility, gloved touch targets, contrast) will compare these
+                  with traced limits; no pass or fail limits are applied here yet.
+     scenarios    timed events for scenario playback (HMI-07); kept and validated as a list, not yet played. */
+const HFE_HMI = (() => {
+  const FORMAT = 'hfe-lab/hmi', VERSION = 1;
+  const FONT = 'Arial, "Helvetica Neue", Helvetica, sans-serif';
+  // display colours. Meanings follow the usual coding of MIL-STD-1472H 5.2.2.6: red warning, amber caution, green
+  // normal, cyan and white advisory or information.
+  const COLOURS = { green: '#3ccf6e', amber: '#ffb020', red: '#ff4a3d', cyan: '#3fc6ff', white: '#e9eef2', grey: '#8b98a5', magenta: '#ff5ad2', blue: '#4c8dff', black: '#05080b' };
+  const colour = c => COLOURS[c] || (/^#[0-9a-f]{3,8}$/i.test(c || '') ? c : COLOURS.white);
+  const BG = '#0b1219', PANEL = '#131d27', EDGE = '#2c3b4a', DIM = '#6f7f8e', INK = '#dfe7ee';
+
+  /* ---------------- widget types ----------------
+     props: what the Builder's inspector edits. kind: text, num, expr, actions, var, colour, select, items, tracks, bool, image, lines */
+  const P = (k, label, kind, opt) => ({ k, label, kind, ...(opt || {}) });
+  const SIZE = P('size', 'Text size (px)', 'num'), VIS = P('visibleWhen', 'Visible when', 'expr');
+  const CLR = ['green', 'amber', 'red', 'cyan', 'white', 'grey', 'magenta', 'blue'];
+  const TYPES = {
+    panel:   { name: 'Panel', group: 'Layout', w: 240, h: 160, def: { title: '', fill: PANEL, stroke: EDGE },
+               props: [P('title', 'Title', 'text'), P('fill', 'Fill', 'colour'), P('stroke', 'Border', 'colour'), VIS] },
+    label:   { name: 'Label', group: 'Layout', w: 200, h: 32, def: { text: 'Label', size: 18, colour: 'white', align: 'left', bold: false },
+               props: [P('text', 'Text', 'text'), SIZE, P('colour', 'Colour', 'colour'), P('align', 'Align', 'select', { opts: ['left', 'centre', 'right'] }), P('bold', 'Bold', 'bool'), VIS] },
+    button:  { name: 'Button', group: 'Controls', w: 140, h: 48, interactive: true, def: { text: 'Button', size: 18, onClick: '', activeWhen: '', enabledWhen: '' },
+               props: [P('text', 'Text', 'text'), SIZE, P('onClick', 'On press', 'actions'), P('activeWhen', 'Lit when', 'expr'), P('enabledWhen', 'Enabled when', 'expr'), VIS] },
+    toggle:  { name: 'Toggle', group: 'Controls', w: 200, h: 44, interactive: true, def: { text: 'Toggle', size: 18, var: '' },
+               props: [P('text', 'Text', 'text'), SIZE, P('var', 'Variable (on or off)', 'var'), VIS] },
+    slider:  { name: 'Slider', group: 'Controls', w: 240, h: 44, interactive: true, def: { var: '', min: 0, max: 100, step: 1, size: 16 },
+               props: [P('var', 'Variable', 'var'), P('min', 'Minimum', 'num'), P('max', 'Maximum', 'num'), P('step', 'Step', 'num'), SIZE, VIS] },
+    menu:    { name: 'Menu', group: 'Controls', w: 420, h: 44, interactive: true, def: { items: [{ text: 'One', onClick: '' }, { text: 'Two', onClick: '' }], orient: 'row', size: 16 },
+               props: [P('items', 'Items (text | actions, one a line)', 'items'), P('orient', 'Layout', 'select', { opts: ['row', 'column'] }), SIZE, VIS] },
+    readout: { name: 'Readout', group: 'Indicators', w: 160, h: 70, def: { label: 'Value', var: '', decimals: 0, unit: '', size: 28, colour: 'white' },
+               props: [P('label', 'Label', 'text'), P('var', 'Variable', 'var'), P('decimals', 'Decimal places', 'num'), P('unit', 'Unit', 'text'), SIZE, P('colour', 'Colour', 'colour'), VIS] },
+    gauge:   { name: 'Dial gauge', group: 'Indicators', w: 160, h: 160, def: { label: 'Gauge', var: '', min: 0, max: 100, warn: null, alarm: null, dir: 'high', unit: '', size: 18 },
+               props: [P('label', 'Label', 'text'), P('var', 'Variable', 'var'), P('min', 'Minimum', 'num'), P('max', 'Maximum', 'num'), P('warn', 'Caution at', 'num'), P('alarm', 'Warning at', 'num'),
+                       P('dir', 'Bad direction', 'select', { opts: ['high', 'low'] }), P('unit', 'Unit', 'text'), SIZE, VIS] },
+    bar:     { name: 'Bar', group: 'Indicators', w: 240, h: 56, def: { label: 'Bar', var: '', min: 0, max: 100, warn: null, alarm: null, dir: 'high', unit: '', orient: 'row', size: 16 },
+               props: [P('label', 'Label', 'text'), P('var', 'Variable', 'var'), P('min', 'Minimum', 'num'), P('max', 'Maximum', 'num'), P('warn', 'Caution at', 'num'), P('alarm', 'Warning at', 'num'),
+                       P('dir', 'Bad direction', 'select', { opts: ['high', 'low'] }), P('unit', 'Unit', 'text'), P('orient', 'Layout', 'select', { opts: ['row', 'column'] }), SIZE, VIS] },
+    lamp:    { name: 'Annunciator', group: 'Indicators', w: 120, h: 44, def: { text: 'LAMP', onWhen: 'false', colour: 'green', size: 16 },
+               props: [P('text', 'Text', 'text'), P('onWhen', 'Lit when', 'expr'), P('colour', 'Colour', 'select', { opts: CLR }), SIZE, VIS] },
+    alert:   { name: 'Alert banner', group: 'Indicators', w: 420, h: 48, interactive: true, def: { text: 'ALERT', when: 'false', level: 'warning', onClick: '', size: 20 },
+               props: [P('text', 'Text', 'text'), P('when', 'Shown when', 'expr'), P('level', 'Level', 'select', { opts: ['warning', 'caution', 'advisory'] }), P('onClick', 'On press', 'actions'), SIZE, VIS] },
+    // a mock-up imported as a picture (PNG, JPEG or SVG, for example exported from Figma), kept in the file as a data URL
+    image:   { name: 'Image or mock-up', group: 'Layout', w: 320, h: 240, def: { src: '', fit: 'contain', alt: '' },
+               props: [P('src', 'Picture', 'image'), P('fit', 'Fit', 'select', { opts: ['contain', 'cover', 'stretch'] }), P('alt', 'Description', 'text'), VIS] },
+    // an invisible press area, to make a picture of a screen clickable
+    hotspot: { name: 'Hotspot', group: 'Controls', w: 120, h: 60, interactive: true, def: { onClick: '', text: '' },
+               props: [P('text', 'Name (Builder only)', 'text'), P('onClick', 'On press', 'actions'), P('enabledWhen', 'Enabled when', 'expr'), VIS] },
+    map:     { name: 'Map', group: 'Displays', w: 360, h: 300, def: { heading: '', range: 40, unit: 'NM', tracks: [{ x: 0.4, y: 0.3, label: 'TGT', kind: 'unknown' }], size: 14 },
+               props: [P('heading', 'Own heading variable', 'var'), P('range', 'Range (outer ring)', 'num'), P('unit', 'Range unit', 'text'), P('tracks', 'Tracks (x, y, label, kind; x and y from -1 to 1)', 'tracks'), SIZE, VIS] },
+    // ---- flight instruments: generic glass-cockpit conventions (attitude in the middle, speed tape left, altitude tape
+    // right, heading below), drawn in our own style; not the layout or look of any manufacturer's display
+    attitude: { name: 'Attitude indicator', group: 'Flight', w: 400, h: 400, def: { pitch: '', roll: '', range: 25, size: 16 },
+               props: [P('pitch', 'Pitch variable (°, nose up +)', 'var'), P('roll', 'Roll variable (°, right wing down +)', 'var'), P('range', 'Pitch shown above and below (°)', 'num'), SIZE, VIS] },
+    tape:    { name: 'Speed or altitude tape', group: 'Flight', w: 110, h: 400, def: { var: '', label: 'KT', span: 80, step: 10, labelEvery: 2, side: 'left', bug: '', decimals: 0, min: null, size: 20 },
+               props: [P('var', 'Variable', 'var'), P('label', 'Label', 'text'), P('span', 'Range shown (units)', 'num'), P('step', 'Tick every (units)', 'num'), P('labelEvery', 'Number every n ticks', 'num'),
+                       P('side', 'Tape sits on the', 'select', { opts: ['left', 'right'] }), P('bug', 'Selected value variable', 'var'), P('min', 'Red below (units)', 'num'), P('decimals', 'Decimal places', 'num'), SIZE, VIS] },
+    compass: { name: 'Heading rose', group: 'Flight', w: 400, h: 220, def: { var: '', style: 'arc', course: '', bug: '', size: 16 },
+               props: [P('var', 'Heading variable (°)', 'var'), P('style', 'Style', 'select', { opts: ['arc', 'rose'] }), P('course', 'Course variable (°)', 'var'), P('bug', 'Heading bug variable (°)', 'var'), SIZE, VIS] },
+    hud:     { name: 'Head-up display', group: 'Flight', w: 900, h: 700, def: { pitch: '', roll: '', heading: '', speed: '', alt: '', fpa: '', gload: '', colour: '#46ff7a', size: 22 },
+               props: [P('pitch', 'Pitch variable', 'var'), P('roll', 'Roll variable', 'var'), P('heading', 'Heading variable', 'var'), P('speed', 'Airspeed variable', 'var'), P('alt', 'Altitude variable', 'var'),
+                       P('fpa', 'Flight path angle variable (°)', 'var'), P('gload', 'Normal acceleration variable (g)', 'var'), P('colour', 'Symbology colour', 'colour'), SIZE, VIS] },
+    radar:   { name: 'Radar scope', group: 'Sensors', w: 600, h: 600, def: { range: 80, rangeVar: '', unit: 'NM', rings: 4, rpm: 12, heading: '', tracks: [{ x: 0.3, y: 0.4, label: '', kind: 'unknown' }], size: 14 },
+               props: [P('range', 'Range (outer ring)', 'num'), P('rangeVar', 'Range variable (overrides)', 'var'), P('unit', 'Range unit', 'text'), P('rings', 'Range rings', 'num'), P('rpm', 'Sweep (turns a minute, 0 = still)', 'num'),
+                       P('heading', 'Own heading variable', 'var'), P('tracks', 'Contacts (x, y, label, kind; x and y from -1 to 1)', 'tracks'), SIZE, VIS] },
+    // ---- command and control
+    area:    { name: 'Area map (C2)', group: 'C2', w: 900, h: 600, def: { title: 'EXERCISE AREA', seed: 7, land: 0.45, grid: 8, zones: [], units: [], routes: [], zonesWhen: '', unitsWhen: '', routesWhen: '', size: 14 },
+               props: [P('title', 'Title', 'text'), P('seed', 'Terrain (any number)', 'num'), P('land', 'Land share (0 to 1)', 'num'), P('grid', 'Grid squares across', 'num'),
+                       P('zones', 'Areas (name, colour, then x y pairs from 0 to 1)', 'lines'), P('units', 'Units (x, y, label, side, type)', 'lines'), P('routes', 'Routes (colour, label, then x y pairs)', 'lines'),
+                       P('zonesWhen', 'Show areas when', 'expr'), P('unitsWhen', 'Show units when', 'expr'), P('routesWhen', 'Show routes when', 'expr'), SIZE, VIS] },
+    table:   { name: 'Table', group: 'C2', w: 520, h: 220, interactive: true, def: { columns: 'NAME | STATUS', rows: ['Row one | OK', 'Row two | {mode}'], var: '', size: 15 },
+               props: [P('columns', 'Columns (separated by |)', 'text'), P('rows', 'Rows (one a line, cells separated by |)', 'lines'), P('var', 'Selected row variable (number)', 'var'), SIZE, VIS] }
+  };
+  const LEVEL = { warning: 'red', caution: 'amber', advisory: 'cyan' };
+
+  /* ---------------- expressions ---------------- */
+  const OPS = ['&&', '||', '==', '!=', '<=', '>=', '<', '>', '+', '-', '*', '/', '%', '!', '(', ')'];
+  function lex(src) {
+    const out = []; let i = 0; const s = String(src == null ? '' : src);
+    while (i < s.length) {
+      const c = s[i];
+      if (/\s/.test(c)) { i++; continue; }
+      if (/[0-9.]/.test(c)) { const m = /^(\d+\.?\d*|\.\d+)(e[+-]?\d+)?/i.exec(s.slice(i)); if (!m) throw new Error(`Bad number at ${i + 1}`); out.push({ t: 'num', v: +m[0] }); i += m[0].length; continue; }
+      if (c === '"' || c === "'") { const j = s.indexOf(c, i + 1); if (j < 0) throw new Error('Text not closed'); out.push({ t: 'str', v: s.slice(i + 1, j) }); i = j + 1; continue; }
+      if (/[A-Za-z_$]/.test(c)) { const m = /^[A-Za-z_$][\w$.]*/.exec(s.slice(i)); out.push({ t: 'id', v: m[0] }); i += m[0].length; continue; }
+      const op = OPS.find(o => s.startsWith(o, i));
+      if (!op) throw new Error(`Unexpected “${c}”`);
+      out.push({ t: 'op', v: op }); i += op.length;
+    }
+    return out;
+  }
+  const BIN = { '||': 1, '&&': 2, '==': 3, '!=': 3, '<': 4, '<=': 4, '>': 4, '>=': 4, '+': 5, '-': 5, '*': 6, '/': 6, '%': 6 };
+  const CACHE = new Map();
+  function parseExpr(src) {
+    const key = String(src == null ? '' : src);
+    if (CACHE.has(key)) return CACHE.get(key);
+    let r;
+    try {
+      const T = lex(key); let p = 0;
+      if (!T.length) throw new Error('Empty expression');
+      const prim = () => {
+        const t = T[p++];
+        if (!t) throw new Error('Expression ends too soon');
+        if (t.t === 'num' || t.t === 'str') return { k: 'lit', v: t.v };
+        if (t.t === 'id') return t.v === 'true' ? { k: 'lit', v: true } : t.v === 'false' ? { k: 'lit', v: false } : { k: 'var', v: t.v };
+        if (t.v === '(') { const e = bin(0); if (!T[p] || T[p].v !== ')') throw new Error('Missing )'); p++; return e; }
+        if (t.v === '!' || t.v === '-') return { k: 'un', op: t.v, a: prim() };
+        throw new Error(`Unexpected “${t.v}”`);
+      };
+      const bin = min => {
+        let a = prim();
+        for (;;) {
+          const t = T[p]; const pr = t && t.t === 'op' ? BIN[t.v] : 0;
+          if (!pr || pr <= min) return a;
+          p++; a = { k: 'bin', op: t.v, a, b: bin(pr) };
+        }
+      };
+      const ast = bin(0);
+      if (p < T.length) throw new Error(`Unexpected “${T[p].v}”`);
+      r = { ast };
+    } catch (e) { r = { error: e.message }; }
+    if (CACHE.size > 2000) CACHE.clear();
+    CACHE.set(key, r); return r;
+  }
+  function evalAst(n, scope) {
+    switch (n.k) {
+      case 'lit': return n.v;
+      case 'var': return scope[n.v];
+      case 'un': { const a = evalAst(n.a, scope); return n.op === '!' ? !a : -a; }
+      case 'bin': {
+        if (n.op === '&&') return evalAst(n.a, scope) && evalAst(n.b, scope);
+        if (n.op === '||') return evalAst(n.a, scope) || evalAst(n.b, scope);
+        const a = evalAst(n.a, scope), b = evalAst(n.b, scope);
+        switch (n.op) {
+          case '==': return a == b; case '!=': return a != b;   // eslint-disable-line eqeqeq
+          case '<': return a < b; case '<=': return a <= b; case '>': return a > b; case '>=': return a >= b;
+          case '+': return a + b; case '-': return a - b; case '*': return a * b; case '/': return a / b; case '%': return a % b;
+        }
+      }
+    }
+    return undefined;
+  }
+  // an empty expression gives `empty` (so an empty visibleWhen means visible)
+  function evaluate(src, scope, empty) {
+    if (src == null || String(src).trim() === '') return empty;
+    const e = parseExpr(src); return e.error ? undefined : evalAst(e.ast, scope);
+  }
+  const names = (src, out = new Set()) => {
+    const e = parseExpr(src); if (e.error) return out;
+    const walk = n => { if (n.k === 'var') out.add(n.v); if (n.a) walk(n.a); if (n.b) walk(n.b); };
+    walk(e.ast); return out;
+  };
+
+  /* ---------------- actions ---------------- */
+  function parseActions(src) {
+    const out = [], errors = [];
+    String(src || '').split(/[;\n]/).map(s => s.trim()).filter(Boolean).forEach(st => {
+      let m;
+      if ((m = /^goto\s+([\w-]+)$/i.exec(st))) out.push({ op: 'goto', screen: m[1] });
+      else if ((m = /^toggle\s+([A-Za-z_$][\w$.]*)$/i.exec(st))) out.push({ op: 'toggle', var: m[1] });
+      else if ((m = /^(?:set\s+)?([A-Za-z_$][\w$.]*)\s*=(?!=)\s*(.+)$/i.exec(st))) {
+        const e = parseExpr(m[2]); if (e.error) errors.push(`“${st}”: ${e.error}`); else out.push({ op: 'set', var: m[1], expr: m[2] });
+      } else errors.push(`“${st}” is not an action. Use goto <screen>, set <variable> = <value> or toggle <variable>.`);
+    });
+    return { actions: out, errors };
+  }
+
+  /* ---------------- documents ---------------- */
+  const uid = (p, used) => { let i = 1; while (used.has(p + i)) i++; return p + i; };
+  function blankScreen(id, name, w = 1024, h = 768) { return { id, name, w, h, bg: BG, widgets: [] }; }
+  function newDoc(name = 'Untitled HMI') {
+    return { format: FORMAT, version: VERSION, name, notes: '', vars: [], screens: [blankScreen('main', 'Main')], start: 'main', displays: [], scenarios: [] };
+  }
+  function create(type, x, y, used) {
+    const T = TYPES[type]; if (!T) throw new Error('Unknown widget type ' + type);
+    return { id: uid(type, used || new Set()), type, x: Math.round(x || 0), y: Math.round(y || 0), w: T.w, h: T.h, ...structuredCopy(T.def) };
+  }
+  const structuredCopy = o => JSON.parse(JSON.stringify(o));
+  // read a document from JSON or an object; fills defaults, keeps unknown fields (later versions), throws if not an HMI
+  function normalise(input) {
+    const d = typeof input === 'string' ? JSON.parse(input) : structuredCopy(input);
+    if (!d || d.format !== FORMAT) throw new Error('Not an HFE Lab HMI file (format should be ' + FORMAT + ')');
+    if ((d.version | 0) > VERSION) throw new Error(`This file is HMI format version ${d.version}; this build reads up to version ${VERSION}.`);
+    d.version = VERSION; d.name = d.name || 'Untitled HMI'; d.notes = d.notes || '';
+    d.vars = Array.isArray(d.vars) ? d.vars.filter(v => v && v.name) : [];
+    d.screens = Array.isArray(d.screens) && d.screens.length ? d.screens : [blankScreen('main', 'Main')];
+    d.screens.forEach((s, i) => {
+      s.id = s.id || 'screen' + (i + 1); s.name = s.name || s.id; s.w = +s.w > 0 ? +s.w : 1024; s.h = +s.h > 0 ? +s.h : 768; s.bg = s.bg || BG;
+      s.widgets = (Array.isArray(s.widgets) ? s.widgets : []).filter(w => w && TYPES[w.type]).map(w => ({ ...structuredCopy(TYPES[w.type].def), ...w }));
+    });
+    if (!d.screens.some(s => s.id === d.start)) d.start = d.screens[0].id;
+    d.displays = Array.isArray(d.displays) ? d.displays.filter(x => x && x.node) : [];
+    d.scenarios = Array.isArray(d.scenarios) ? d.scenarios : [];
+    return d;
+  }
+  const screenOf = (doc, id) => doc.screens.find(s => s.id === id) || doc.screens[0];
+  const displayKey = x => [x.env || '', x.role || '', x.node].join('/');
+
+  /* ---------------- checks on the document ---------------- */
+  function validate(doc) {
+    const out = [], vars = new Set(doc.vars.map(v => v.name)), scr = new Set(doc.screens.map(s => s.id));
+    const add = (sev, msg, s, w) => out.push({ sev, msg, screen: s && s.id, widget: w && w.id });
+    const known = new Set([...vars, 'screen']);
+    const seenV = new Set(); doc.vars.forEach(v => { if (seenV.has(v.name)) add('error', `Variable ${v.name} is defined twice`); seenV.add(v.name); if (!/^[A-Za-z_$][\w$.]*$/.test(v.name)) add('error', `“${v.name}” is not a valid variable name`); });
+    const seenS = new Set(); doc.screens.forEach(s => { if (seenS.has(s.id)) add('error', `Screen id ${s.id} is used twice`); seenS.add(s.id); });
+    const expr = (src, s, w, what) => {
+      if (src == null || String(src).trim() === '') return;
+      const e = parseExpr(src); if (e.error) return add('error', `${what}: ${e.error}`, s, w);
+      names(src).forEach(n => { if (!known.has(n)) add('warning', `${what} uses ${n}, which is not a variable`, s, w); });
+    };
+    const acts = (src, s, w, what) => {
+      const { actions, errors } = parseActions(src);
+      errors.forEach(m => add('error', `${what}: ${m}`, s, w));
+      actions.forEach(a => {
+        if (a.op === 'goto' && !scr.has(a.screen)) add('error', `${what} goes to screen ${a.screen}, which does not exist`, s, w);
+        if ((a.op === 'set' || a.op === 'toggle') && !vars.has(a.var)) add('warning', `${what} changes ${a.var}, which is not a variable`, s, w);
+        if (a.op === 'set') expr(a.expr, s, w, what);
+      });
+    };
+    for (const s of doc.screens) {
+      const ids = new Set();
+      for (const w of s.widgets) {
+        const nm = `${TYPES[w.type].name} ${w.id}`;
+        if (ids.has(w.id)) add('error', `${nm}: id used twice on this screen`, s, w); ids.add(w.id);
+        if (w.x < 0 || w.y < 0 || w.x + w.w > s.w || w.y + w.h > s.h) add('warning', `${nm} is partly off the screen`, s, w);
+        if (!(w.w > 0 && w.h > 0)) add('error', `${nm} has no size`, s, w);
+        for (const k of ['visibleWhen', 'enabledWhen', 'activeWhen', 'when', 'onWhen', 'zonesWhen', 'unitsWhen', 'routesWhen']) if (k in w) expr(w[k], s, w, `${nm} ${k}`);
+        if ('onClick' in w) acts(w.onClick, s, w, nm);
+        if (w.type === 'menu') (w.items || []).forEach((it, i) => { acts(it.onClick, s, w, `${nm} item ${i + 1}`); if (it.activeWhen) expr(it.activeWhen, s, w, `${nm} item ${i + 1}`); });
+        if (TYPES[w.type].props.some(p => p.k === 'var' && p.kind === 'var') && w.var && !vars.has(w.var)) add('warning', `${nm} shows ${w.var}, which is not a variable`, s, w);
+        for (const p of TYPES[w.type].props) if (p.kind === 'var' && p.k !== 'var' && w[p.k] && !vars.has(w[p.k])) add('warning', `${nm} ${p.label.toLowerCase()} ${w[p.k]} is not a variable`, s, w);
+        if (w.type === 'table') String(w.columns || '').concat('\n', (w.rows || []).join('\n')).replace(/\{([^}:]+)(?::\d+)?\}/g, (_, n) => { if (!known.has(n.trim())) add('warning', `${nm} shows {${n}}, which is not a variable`, s, w); });
+        if (w.type === 'toggle' && !w.var) add('warning', `${nm} has no variable to switch`, s, w);
+        String(w.text || w.label || '').replace(/\{([^}:]+)(?::\d+)?\}/g, (_, n) => { if (!known.has(n.trim())) add('warning', `${nm} text shows {${n}}, which is not a variable`, s, w); });
+      }
+    }
+    doc.displays.forEach(x => { if (!scr.has(x.screen)) add('error', `The display ${x.node} shows screen ${x.screen}, which does not exist`); });
+    if (!Array.isArray(doc.scenarios)) add('error', 'scenarios should be a list');
+    return out;
+  }
+
+  /* ---------------- runtime ---------------- */
+  function initState(doc) {
+    const vars = {};
+    for (const v of doc.vars) vars[v.name] = v.type === 'bool' ? !!(v.init === true || v.init === 'true') : v.type === 'number' ? +v.init || 0 : String(v.init == null ? '' : v.init);
+    const at = { builder: doc.start };
+    for (const x of doc.displays) at[displayKey(x)] = x.screen;
+    return { vars, at };
+  }
+  const scopeOf = (state, screenId) => ({ ...state.vars, screen: screenId });
+  const current = (doc, state, key) => screenOf(doc, (state.at && state.at[key]) || doc.start);
+  function coerce(doc, name, v) {
+    const d = doc.vars.find(x => x.name === name);
+    if (!d) return v;
+    return d.type === 'number' ? (Number.isFinite(+v) ? +v : 0) : d.type === 'bool' ? !!v : String(v);
+  }
+  // run actions on this display; returns true when anything changed
+  function run(doc, state, src, key) {
+    const { actions } = parseActions(src); let changed = false;
+    for (const a of actions) {
+      const scope = scopeOf(state, current(doc, state, key).id);
+      if (a.op === 'goto') { if (doc.screens.some(s => s.id === a.screen) && state.at[key] !== a.screen) { state.at[key] = a.screen; changed = true; } }
+      else if (a.op === 'toggle') { state.vars[a.var] = !state.vars[a.var]; changed = true; }
+      else if (a.op === 'set') { const v = coerce(doc, a.var, evaluate(a.expr, scope)); if (state.vars[a.var] !== v) { state.vars[a.var] = v; changed = true; } }
+    }
+    return changed;
+  }
+  const visible = (w, scope) => !!evaluate(w.visibleWhen, scope, true) && (w.type !== 'alert' || !!evaluate(w.when, scope, false));
+  const enabled = (w, scope) => !!evaluate(w.enabledWhen, scope, true);
+  // the menu item under x, y in widget coordinates
+  function menuItem(w, x, y) {
+    const n = (w.items || []).length; if (!n) return -1;
+    const i = Math.floor(w.orient === 'column' ? (y / w.h) * n : (x / w.w) * n);
+    return i >= 0 && i < n ? i : -1;
+  }
+  // the topmost interactive widget at (x, y) in screen pixels
+  function hit(doc, state, key, x, y) {
+    const s = current(doc, state, key), scope = scopeOf(state, s.id);
+    for (let i = s.widgets.length - 1; i >= 0; i--) {
+      const w = s.widgets[i];
+      if (x < w.x || y < w.y || x > w.x + w.w || y > w.y + w.h) continue;
+      if (!visible(w, scope)) continue;
+      if (TYPES[w.type].interactive && enabled(w, scope)) return w;
+      if (w.type !== 'panel' && w.type !== 'label' && w.type !== 'image') return null;   // an indicator on top blocks what is under it
+    }
+    return null;
+  }
+  // a press at (x, y) on a display: returns { widget, changed } (widget null when nothing was hit)
+  function press(doc, state, key, x, y) {
+    const w = hit(doc, state, key, x, y); if (!w) return { widget: null, changed: false };
+    let changed = false;
+    if (w.type === 'button' || w.type === 'alert' || w.type === 'hotspot') changed = run(doc, state, w.onClick, key);
+    else if (w.type === 'toggle' && w.var) { state.vars[w.var] = !state.vars[w.var]; changed = true; }
+    else if (w.type === 'slider' && w.var) {
+      const f = Math.min(1, Math.max(0, (x - w.x - 10) / Math.max(1, w.w - 20))), st = +w.step || 0;
+      let v = +w.min + f * (+w.max - +w.min); if (st > 0) v = Math.round(v / st) * st;
+      v = +v.toFixed(6); if (state.vars[w.var] !== v) { state.vars[w.var] = v; changed = true; }
+    } else if (w.type === 'table' && w.var) {
+      const n = (w.rows || []).length, rh = tableRow(w), i = Math.floor((y - w.y - rh) / rh);
+      if (i >= 0 && i < n && state.vars[w.var] !== i + 1) { state.vars[w.var] = i + 1; changed = true; }
+    } else if (w.type === 'menu') { const i = menuItem(w, x - w.x, y - w.y); if (i >= 0) changed = run(doc, state, w.items[i].onClick, key); }
+    return { widget: w, changed };
+  }
+
+  const tableRow = w => Math.max(18, (+w.size || 15) * 1.9);
+
+  /* ---------------- text ---------------- */
+  function text(t, scope) {
+    return String(t == null ? '' : t).replace(/\{([^}:]+)(?::(\d+))?\}/g, (_, n, dp) => {
+      const v = scope[n.trim()];
+      if (v == null) return '–';
+      if (typeof v === 'number' && dp != null) return v.toFixed(+dp);
+      if (typeof v === 'boolean') return v ? 'ON' : 'OFF';
+      return String(v);
+    });
+  }
+  const num = (v, dp) => (typeof v === 'number' && Number.isFinite(v) ? v.toFixed(Math.max(0, dp | 0)) : v == null ? '–' : String(v));
+  function levelOf(w, v) {
+    if (typeof v !== 'number') return 'none';
+    const bad = (t) => t != null && t !== '' && (w.dir === 'low' ? v <= +t : v >= +t);
+    return bad(w.alarm) ? 'red' : bad(w.warn) ? 'amber' : 'green';
+  }
+
+  /* ---------------- drawing ----------------
+     render(g, doc, state, key, opt): draws the display's current screen on a 2D canvas context g, scaled by opt.scale
+     (canvas size = screen size × scale), moved by opt.offX, opt.offY canvas pixels. opt.editing shows hidden widgets faintly and alerts as outlines, for the Builder;
+     opt.screen draws that screen instead of the display's current one. */
+  function render(g, doc, state, key, opt = {}) {
+    const s = opt.screen ? screenOf(doc, opt.screen) : current(doc, state, key), k = opt.scale || 1, scope = scopeOf(state, s.id);
+    g.save(); g.setTransform(k, 0, 0, k, opt.offX || 0, opt.offY || 0);
+    g.fillStyle = s.bg || BG; g.fillRect(0, 0, s.w, s.h);
+    for (const w of s.widgets) {
+      let vis = visible(w, scope), ghost = false;
+      if (!vis && opt.editing) { vis = true; ghost = true; }
+      if (!vis) continue;
+      g.save(); g.globalAlpha = ghost ? 0.35 : 1;
+      g.beginPath(); g.rect(w.x, w.y, w.w, w.h); g.clip();
+      try { DRAW[w.type](g, w, scope, enabled(w, scope), opt); } catch (e) { /* a widget that cannot draw is skipped */ }
+      g.restore();
+    }
+    g.restore();
+    return s;
+  }
+  const font = (px, bold) => `${bold ? 'bold ' : ''}${px}px ${FONT}`;
+  function rr(g, x, y, w, h, r) { r = Math.min(r, w / 2, h / 2); g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+  function txt(g, t, x, y, px, c, align = 'center', bold = false, base = 'middle') { g.font = font(px, bold); g.fillStyle = c; g.textAlign = align; g.textBaseline = base; g.fillText(t, x, y); }
+  // a unit symbol in the style of the public NATO joint symbology (APP-6): the frame shape and fill show the side
+  // (friend rectangle, hostile diamond, neutral square, unknown quatrefoil-like circle); a simple mark shows the type
+  function symbol(g, x, y, side, type, s) {
+    const F = { friend: ['#80c8ff', '#0b3b66'], hostile: ['#ff8080', '#6a1010'], neutral: ['#aaffaa', '#0e4d18'], unknown: ['#ffff80', '#5c5200'] }[side] || ['#ffff80', '#5c5200'];
+    g.fillStyle = F[0]; g.strokeStyle = '#000'; g.lineWidth = 1.5; g.beginPath();
+    const w = s * 1.5, h = s;
+    if (side === 'friend') g.rect(x - w / 2, y - h / 2, w, h);
+    else if (side === 'hostile') { g.moveTo(x, y - h * 0.75); g.lineTo(x + h * 0.75, y); g.lineTo(x, y + h * 0.75); g.lineTo(x - h * 0.75, y); g.closePath(); }
+    else if (side === 'neutral') g.rect(x - h / 2, y - h / 2, h, h);
+    else g.arc(x, y, h * 0.62, 0, Math.PI * 2);
+    g.fill(); g.stroke();
+    g.strokeStyle = F[1]; g.fillStyle = F[1]; g.lineWidth = 1.6; const a = h * 0.32;
+    g.beginPath();
+    if (type === 'inf') { g.moveTo(x - a, y - a); g.lineTo(x + a, y + a); g.moveTo(x + a, y - a); g.lineTo(x - a, y + a); g.stroke(); }
+    else if (type === 'armour') { g.ellipse ? g.ellipse(x, y, a * 1.3, a * 0.7, 0, 0, Math.PI * 2) : g.arc(x, y, a, 0, Math.PI * 2); g.stroke(); }
+    else if (type === 'arty') { g.arc(x, y, a * 0.45, 0, Math.PI * 2); g.fill(); }
+    else if (type) txt(g, type.slice(0, 3).toUpperCase(), x, y + 1, h * 0.42, F[1], 'center', true);
+  }
+  // pictures: the page supplies a loader (src → a drawable that is ready, or null while it loads, calling back when it is)
+  let loadImage = () => null;
+  const setImageLoader = f => { loadImage = f; };
+  const DRAW = {
+    image(g, w, sc, en, opt) {
+      const im = w.src ? loadImage(w.src) : null;
+      if (!im) { g.fillStyle = '#16212b'; g.fillRect(w.x, w.y, w.w, w.h); g.strokeStyle = '#3a4a5a'; g.setLineDash([6, 5]); g.lineWidth = 2; g.strokeRect(w.x + 1, w.y + 1, w.w - 2, w.h - 2); g.setLineDash([]); txt(g, w.src ? 'Loading picture…' : 'No picture', w.x + w.w / 2, w.y + w.h / 2, 16, DIM); return; }
+      const iw = im.naturalWidth || im.width || w.w, ih = im.naturalHeight || im.height || w.h;
+      if (w.fit === 'stretch') return g.drawImage(im, w.x, w.y, w.w, w.h);
+      const k = w.fit === 'cover' ? Math.max(w.w / iw, w.h / ih) : Math.min(w.w / iw, w.h / ih);
+      g.drawImage(im, w.x + (w.w - iw * k) / 2, w.y + (w.h - ih * k) / 2, iw * k, ih * k);
+    },
+    hotspot(g, w, sc, en, opt) {
+      if (!opt.editing) return;
+      g.fillStyle = 'rgba(63,198,255,.12)'; g.fillRect(w.x, w.y, w.w, w.h);
+      g.strokeStyle = COLOURS.cyan; g.setLineDash([5, 4]); g.lineWidth = 2; g.strokeRect(w.x + 1, w.y + 1, w.w - 2, w.h - 2); g.setLineDash([]);
+      if (w.text) txt(g, String(w.text), w.x + 6, w.y + 12, 12, COLOURS.cyan, 'left');
+    },
+    panel(g, w) {
+      rr(g, w.x + 1, w.y + 1, w.w - 2, w.h - 2, 6); g.fillStyle = w.fill ? colour(w.fill) : PANEL; g.fill();
+      g.lineWidth = 2; g.strokeStyle = w.stroke ? colour(w.stroke) : EDGE; g.stroke();
+      if (w.title) txt(g, w.title, w.x + 12, w.y + 16, 13, DIM, 'left', true);
+    },
+    label(g, w, sc) {
+      const a = w.align === 'right' ? 'right' : w.align === 'centre' ? 'center' : 'left';
+      txt(g, text(w.text, sc), a === 'left' ? w.x + 4 : a === 'right' ? w.x + w.w - 4 : w.x + w.w / 2, w.y + w.h / 2, +w.size || 18, colour(w.colour), a, !!w.bold);
+    },
+    button(g, w, sc, en) {
+      const on = !!evaluate(w.activeWhen, sc, false);
+      rr(g, w.x + 2, w.y + 2, w.w - 4, w.h - 4, 6);
+      g.fillStyle = !en ? '#161e26' : on ? '#1d6fa5' : '#22303d'; g.fill();
+      g.lineWidth = 2; g.strokeStyle = !en ? '#26313b' : on ? COLOURS.cyan : '#4a5d70'; g.stroke();
+      txt(g, text(w.text, sc), w.x + w.w / 2, w.y + w.h / 2 + 1, +w.size || 18, !en ? '#55626e' : INK, 'center', true);
+    },
+    toggle(g, w, sc) {
+      const on = !!sc[w.var], pw = Math.min(56, w.w * 0.3), ph = Math.min(28, w.h - 10), px = w.x + w.w - pw - 8, py = w.y + (w.h - ph) / 2;
+      rr(g, w.x + 1, w.y + 1, w.w - 2, w.h - 2, 6); g.fillStyle = '#18232d'; g.fill(); g.lineWidth = 1.5; g.strokeStyle = '#3a4a5a'; g.stroke();
+      txt(g, text(w.text, sc), w.x + 12, w.y + w.h / 2 + 1, +w.size || 18, INK, 'left');
+      rr(g, px, py, pw, ph, ph / 2); g.fillStyle = on ? COLOURS.green : '#3a4652'; g.fill();
+      g.beginPath(); g.arc(on ? px + pw - ph / 2 : px + ph / 2, py + ph / 2, ph / 2 - 3, 0, Math.PI * 2); g.fillStyle = '#f4f7f9'; g.fill();
+    },
+    slider(g, w, sc) {
+      const v = +sc[w.var], lo = +w.min, hi = +w.max, f = Number.isFinite(v) && hi > lo ? Math.min(1, Math.max(0, (v - lo) / (hi - lo))) : 0;
+      const x0 = w.x + 10, x1 = w.x + w.w - 10, y = w.y + w.h * 0.68;
+      g.lineCap = 'round'; g.lineWidth = 6; g.strokeStyle = '#33414f'; g.beginPath(); g.moveTo(x0, y); g.lineTo(x1, y); g.stroke();
+      g.strokeStyle = COLOURS.cyan; g.beginPath(); g.moveTo(x0, y); g.lineTo(x0 + (x1 - x0) * f, y); g.stroke();
+      g.beginPath(); g.arc(x0 + (x1 - x0) * f, y, 9, 0, Math.PI * 2); g.fillStyle = '#f4f7f9'; g.fill();
+      txt(g, `${w.var || ''} ${num(v, (+w.step || 1) < 1 ? 1 : 0)}`, w.x + 10, w.y + w.h * 0.28, +w.size || 16, DIM, 'left');
+    },
+    menu(g, w, sc) {
+      const n = (w.items || []).length || 1, col = w.orient === 'column';
+      (w.items || []).forEach((it, i) => {
+        const bw = col ? w.w : w.w / n, bh = col ? w.h / n : w.h, bx = col ? w.x : w.x + i * bw, by = col ? w.y + i * bh : w.y;
+        const go = parseActions(it.onClick).actions.find(a => a.op === 'goto');
+        const on = it.activeWhen ? !!evaluate(it.activeWhen, sc, false) : !!(go && go.screen === sc.screen);
+        rr(g, bx + 2, by + 2, bw - 4, bh - 4, 5); g.fillStyle = on ? '#1d6fa5' : '#1c2733'; g.fill();
+        g.lineWidth = 1.5; g.strokeStyle = on ? COLOURS.cyan : '#3a4a5a'; g.stroke();
+        txt(g, text(it.text, sc), bx + bw / 2, by + bh / 2 + 1, +w.size || 16, INK, 'center', on);
+      });
+    },
+    readout(g, w, sc) {
+      rr(g, w.x + 1, w.y + 1, w.w - 2, w.h - 2, 5); g.fillStyle = '#0f171f'; g.fill(); g.lineWidth = 1.5; g.strokeStyle = '#2f3e4c'; g.stroke();
+      const lab = text(w.label, sc), px = +w.size || 28;
+      if (lab) txt(g, lab, w.x + 10, w.y + 14, Math.max(11, px * 0.45), DIM, 'left');
+      txt(g, num(sc[w.var], w.decimals) + (w.unit ? ' ' + w.unit : ''), w.x + w.w - 10, w.y + (lab ? w.h * 0.62 : w.h / 2), px, colour(w.colour), 'right', true);
+    },
+    gauge(g, w, sc) {
+      const v = +sc[w.var], lo = +w.min, hi = +w.max, cx = w.x + w.w / 2, cy = w.y + w.h * 0.55, r = Math.min(w.w, w.h * 1.1) * 0.4;
+      const a0 = Math.PI * 0.75, a1 = Math.PI * 2.25, at = t => a0 + (a1 - a0) * Math.min(1, Math.max(0, (t - lo) / ((hi - lo) || 1)));
+      g.lineWidth = Math.max(4, r * 0.12); g.lineCap = 'butt';
+      g.strokeStyle = '#2b3946'; g.beginPath(); g.arc(cx, cy, r, a0, a1); g.stroke();
+      const band = (from, to, c) => { g.strokeStyle = c; g.beginPath(); g.arc(cx, cy, r, at(from), at(to)); g.stroke(); };
+      const has = t => t != null && t !== '' && Number.isFinite(+t);
+      if (w.dir === 'low') { if (has(w.warn)) band(lo, +w.warn, COLOURS.amber); if (has(w.alarm)) band(lo, +w.alarm, COLOURS.red); }
+      else { if (has(w.warn)) band(+w.warn, hi, COLOURS.amber); if (has(w.alarm)) band(+w.alarm, hi, COLOURS.red); }
+      if (Number.isFinite(v)) { const a = at(v); g.lineWidth = 3; g.strokeStyle = INK; g.beginPath(); g.moveTo(cx, cy); g.lineTo(cx + Math.cos(a) * r * 0.92, cy + Math.sin(a) * r * 0.92); g.stroke(); }
+      g.beginPath(); g.arc(cx, cy, 5, 0, Math.PI * 2); g.fillStyle = INK; g.fill();
+      const lv = levelOf(w, v), px = +w.size || 18;
+      txt(g, num(v, 0) + (w.unit ? ' ' + w.unit : ''), cx, cy + r * 0.55, px, lv === 'none' ? INK : COLOURS[lv], 'center', true);
+      txt(g, text(w.label, sc), cx, w.y + 12, Math.max(11, px * 0.7), DIM, 'center');
+    },
+    bar(g, w, sc) {
+      const v = +sc[w.var], lo = +w.min, hi = +w.max, f = Number.isFinite(v) && hi > lo ? Math.min(1, Math.max(0, (v - lo) / (hi - lo))) : 0, px = +w.size || 16, lv = levelOf(w, v);
+      const c = lv === 'none' ? COLOURS.cyan : COLOURS[lv];
+      if (w.orient === 'column') {
+        const bx = w.x + w.w * 0.3, bw = w.w * 0.4, by = w.y + px + 8, bh = w.h - 2 * px - 20;
+        g.fillStyle = '#1c2732'; g.fillRect(bx, by, bw, bh); g.fillStyle = c; g.fillRect(bx, by + bh * (1 - f), bw, bh * f);
+        g.strokeStyle = '#3a4a5a'; g.lineWidth = 1.5; g.strokeRect(bx, by, bw, bh);
+        txt(g, text(w.label, sc), w.x + w.w / 2, w.y + px / 2 + 2, px * 0.8, DIM);
+        txt(g, num(v, 0) + (w.unit ? ' ' + w.unit : ''), w.x + w.w / 2, w.y + w.h - px / 2 - 4, px, c, 'center', true);
+      } else {
+        const by = w.y + w.h * 0.55, bh = Math.max(8, w.h * 0.3), bx = w.x + 6, bw = w.w - 12;
+        g.fillStyle = '#1c2732'; g.fillRect(bx, by, bw, bh); g.fillStyle = c; g.fillRect(bx, by, bw * f, bh);
+        g.strokeStyle = '#3a4a5a'; g.lineWidth = 1.5; g.strokeRect(bx, by, bw, bh);
+        txt(g, text(w.label, sc), bx, w.y + w.h * 0.28, px * 0.85, DIM, 'left');
+        txt(g, num(v, 0) + (w.unit ? ' ' + w.unit : ''), bx + bw, w.y + w.h * 0.28, px, c, 'right', true);
+      }
+    },
+    lamp(g, w, sc) {
+      const on = !!evaluate(w.onWhen, sc, false), c = colour(w.colour);
+      rr(g, w.x + 2, w.y + 2, w.w - 4, w.h - 4, 4); g.fillStyle = on ? c : '#131b23'; g.fill();
+      g.lineWidth = 2; g.strokeStyle = on ? c : '#34424f'; g.stroke();
+      txt(g, text(w.text, sc), w.x + w.w / 2, w.y + w.h / 2 + 1, +w.size || 16, on ? '#06090c' : '#4f5d6a', 'center', true);
+    },
+    alert(g, w, sc) {
+      const shown = !!evaluate(w.when, sc, false), c = COLOURS[LEVEL[w.level] || 'red'];
+      rr(g, w.x + 2, w.y + 2, w.w - 4, w.h - 4, 4);
+      if (shown) { g.fillStyle = c; g.fill(); } else { g.setLineDash([6, 5]); g.lineWidth = 2; g.strokeStyle = c; g.stroke(); g.setLineDash([]); }
+      txt(g, text(w.text, sc), w.x + w.w / 2, w.y + w.h / 2 + 1, +w.size || 20, shown ? '#06090c' : c, 'center', true);
+    },
+    map(g, w, sc) {
+      const cx = w.x + w.w / 2, cy = w.y + w.h / 2, R = Math.min(w.w, w.h) / 2 - 18, px = +w.size || 14;
+      g.fillStyle = '#071018'; g.fillRect(w.x, w.y, w.w, w.h);
+      g.strokeStyle = '#1f3a4c'; g.lineWidth = 1;
+      for (const f of [1 / 3, 2 / 3, 1]) { g.beginPath(); g.arc(cx, cy, R * f, 0, Math.PI * 2); g.stroke(); }
+      g.beginPath(); g.moveTo(cx - R, cy); g.lineTo(cx + R, cy); g.moveTo(cx, cy - R); g.lineTo(cx, cy + R); g.stroke();
+      txt(g, 'N', cx, cy - R - 9, px, DIM, 'center', true);
+      txt(g, `${num(+w.range, 0)} ${w.unit || ''}`, cx + R * 0.72, cy + R * 0.72 + 10, px * 0.85, DIM, 'left');
+      const hd = +sc[w.heading];
+      if (Number.isFinite(hd)) { const a = (hd - 90) * Math.PI / 180; g.strokeStyle = COLOURS.cyan; g.lineWidth = 2; g.beginPath(); g.moveTo(cx, cy); g.lineTo(cx + Math.cos(a) * R * 0.5, cy + Math.sin(a) * R * 0.5); g.stroke(); }
+      g.save(); g.translate(cx, cy); g.fillStyle = COLOURS.cyan; g.beginPath(); g.moveTo(0, -8); g.lineTo(6, 7); g.lineTo(-6, 7); g.closePath(); g.fill(); g.restore();
+      for (const t of w.tracks || []) {
+        const x = cx + (+t.x || 0) * R, y = cy - (+t.y || 0) * R, k = t.kind || 'unknown', c = { friend: COLOURS.cyan, hostile: COLOURS.red, neutral: COLOURS.green, unknown: COLOURS.amber }[k] || COLOURS.amber;
+        g.strokeStyle = c; g.lineWidth = 2; g.beginPath();
+        if (k === 'friend') g.arc(x, y, 8, 0, Math.PI * 2);
+        else if (k === 'hostile') { g.moveTo(x, y - 9); g.lineTo(x + 9, y); g.lineTo(x, y + 9); g.lineTo(x - 9, y); g.closePath(); }
+        else if (k === 'neutral') g.rect(x - 8, y - 8, 16, 16);
+        else { g.moveTo(x - 8, y); g.arc(x, y, 8, Math.PI, 0); g.lineTo(x + 8, y + 8); g.lineTo(x - 8, y + 8); g.closePath(); }
+        g.stroke();
+        if (t.label) txt(g, String(t.label), x + 12, y - 10, px, c, 'left');
+      }
+    },
+    attitude(g, w, sc) {
+      const p = +sc[w.pitch] || 0, r = +sc[w.roll] || 0, cx = w.x + w.w / 2, cy = w.y + w.h / 2, R = Math.min(w.w, w.h) / 2, k = (R * 0.8) / (+w.range || 25), px = +w.size || 16;
+      g.save(); g.beginPath(); g.rect(w.x, w.y, w.w, w.h); g.clip();
+      g.translate(cx, cy); g.rotate(-r * Math.PI / 180);
+      const big = Math.hypot(w.w, w.h) * 2, hy = p * k;
+      g.fillStyle = '#1f6fc0'; g.fillRect(-big, -big + hy, 2 * big, big); g.fillStyle = '#7b4a1e'; g.fillRect(-big, hy, 2 * big, big);
+      g.strokeStyle = '#ffffff'; g.lineWidth = 2; g.beginPath(); g.moveTo(-big, hy); g.lineTo(big, hy); g.stroke();
+      // pitch ladder every 2.5°, numbered every 10°
+      g.lineWidth = 1.6;
+      for (let a = -90; a <= 90; a += 2.5) {
+        if (!a) continue; const y = hy - a * k; if (Math.abs(y) > R * 0.95) continue;
+        const L = a % 10 === 0 ? R * 0.42 : a % 5 === 0 ? R * 0.22 : R * 0.1;
+        g.beginPath(); g.moveTo(-L / 2, y); g.lineTo(L / 2, y); g.stroke();
+        if (a % 10 === 0) { txt(g, String(Math.abs(a)), -L / 2 - 6, y, px * 0.85, '#fff', 'right', true); txt(g, String(Math.abs(a)), L / 2 + 6, y, px * 0.85, '#fff', 'left', true); }
+      }
+      g.restore();
+      // roll scale (fixed) and pointer (moves with the sky)
+      g.save(); g.translate(cx, cy); g.strokeStyle = '#fff'; g.lineWidth = 2; const rr2 = R * 0.88;
+      g.beginPath(); g.arc(0, 0, rr2, -Math.PI / 2 - Math.PI / 3, -Math.PI / 2 + Math.PI / 3); g.stroke();
+      for (const a of [-60, -45, -30, -20, -10, 10, 20, 30, 45, 60]) { const t = (a - 90) * Math.PI / 180, l = Math.abs(a) % 30 === 0 ? 14 : 8; g.beginPath(); g.moveTo(Math.cos(t) * rr2, Math.sin(t) * rr2); g.lineTo(Math.cos(t) * (rr2 + l), Math.sin(t) * (rr2 + l)); g.stroke(); }
+      g.fillStyle = '#fff'; g.beginPath(); g.moveTo(0, -rr2 - 2); g.lineTo(-8, -rr2 - 14); g.lineTo(8, -rr2 - 14); g.closePath(); g.fill();
+      g.rotate(-r * Math.PI / 180); g.fillStyle = '#ffd23f'; g.beginPath(); g.moveTo(0, -rr2 + 2); g.lineTo(-9, -rr2 + 16); g.lineTo(9, -rr2 + 16); g.closePath(); g.fill();
+      g.restore();
+      // aircraft reference symbol (fixed)
+      g.save(); g.translate(cx, cy); g.fillStyle = '#ffd23f'; g.strokeStyle = '#000'; g.lineWidth = 1.5;
+      for (const sgn of [-1, 1]) { g.beginPath(); g.rect(sgn * R * 0.62, -4, -sgn * R * 0.3, 8); g.fill(); g.stroke(); }
+      g.beginPath(); g.rect(-5, -5, 10, 10); g.fill(); g.stroke(); g.restore();
+    },
+    tape(g, w, sc) {
+      const v = +sc[w.var], ok = Number.isFinite(v), span = +w.span || 80, step = +w.step || 10, k = w.h / span, px = +w.size || 20, right = w.side === 'right';
+      const cy = w.y + w.h / 2, edge = right ? w.x : w.x + w.w, dir = right ? 1 : -1;
+      g.fillStyle = 'rgba(40,52,66,.78)'; g.fillRect(w.x, w.y, w.w, w.h);
+      // the label sits in its own band at the top, so the scale is clipped below it
+      const hb = w.label ? px * 1.2 : 0;
+      if (ok) {
+        g.save(); g.beginPath(); g.rect(w.x - 14, w.y + hb, w.w + 28, w.h - hb); g.clip();
+        if (w.min != null && w.min !== '' && Number.isFinite(+w.min)) { const y0 = cy - (+w.min - v) * k; g.fillStyle = '#ff4a3d'; g.fillRect(right ? w.x : w.x + w.w - 8, Math.max(w.y, y0), 8, Math.max(0, w.y + w.h - Math.max(w.y, y0))); }
+        g.strokeStyle = '#e9eef2'; g.lineWidth = 2;
+        const first = Math.ceil((v - span / 2) / step) * step;
+        for (let t = first, i = 0; t <= v + span / 2; t += step, i++) {
+          const y = cy - (t - v) * k, n = Math.round(t / step), major = n % (+w.labelEvery || 2) === 0;
+          g.beginPath(); g.moveTo(edge, y); g.lineTo(edge + dir * (major ? 16 : 9), y); g.stroke();
+          if (major) txt(g, String(Math.round(t)), edge + dir * 22, y, px * 0.8, '#e9eef2', right ? 'left' : 'right');
+        }
+        const b = +sc[w.bug];
+        if (w.bug && Number.isFinite(b)) { const y = Math.min(w.y + w.h, Math.max(w.y, cy - (b - v) * k)); g.fillStyle = COLOURS.magenta; g.beginPath(); g.moveTo(edge, y); g.lineTo(edge - dir * 12, y - 9); g.lineTo(edge - dir * 12, y + 9); g.closePath(); g.fill(); }
+        g.restore();
+      }
+      // value window
+      const bh = px * 1.7; g.fillStyle = '#000'; g.strokeStyle = '#e9eef2'; g.lineWidth = 2;
+      g.beginPath(); if (right) { g.moveTo(w.x - 10, cy); g.lineTo(w.x, cy - bh / 2); g.lineTo(w.x + w.w - 2, cy - bh / 2); g.lineTo(w.x + w.w - 2, cy + bh / 2); g.lineTo(w.x, cy + bh / 2); }
+      else { g.moveTo(w.x + w.w + 10, cy); g.lineTo(w.x + w.w, cy - bh / 2); g.lineTo(w.x + 2, cy - bh / 2); g.lineTo(w.x + 2, cy + bh / 2); g.lineTo(w.x + w.w, cy + bh / 2); }
+      g.closePath(); g.fill(); g.stroke();
+      txt(g, ok ? v.toFixed(Math.max(0, w.decimals | 0)) : '–', w.x + w.w / 2, cy + 1, px, '#ffffff', 'center', true);
+      if (w.label) { g.fillStyle = '#000'; g.fillRect(w.x, w.y, w.w, hb); txt(g, w.label, w.x + w.w / 2, w.y + hb / 2, px * 0.7, COLOURS.cyan, 'center', true); }
+    },
+    compass(g, w, sc) {
+      const h = +sc[w.var] || 0, px = +w.size || 16, rose = w.style === 'rose', top = px * 1.5 + 18;
+      const R = rose ? Math.min(w.w / 2, (w.h - top) / 2) - 4 : Math.min(w.w / 2, (w.h - top) * 1.6) * 0.9;
+      const cx = w.x + w.w / 2, cy = w.y + top + R, rad = d => (d - h - 90) * Math.PI / 180;
+      g.strokeStyle = '#e9eef2'; g.lineWidth = 2;
+      for (let d = 0; d < 360; d += 5) {
+        const a = rad(d); if (!rose && Math.sin(a) > -0.35) continue;
+        const l = d % 30 === 0 ? 16 : d % 10 === 0 ? 11 : 6;
+        g.beginPath(); g.moveTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R); g.lineTo(cx + Math.cos(a) * (R - l), cy + Math.sin(a) * (R - l)); g.stroke();
+        if (d % 30 === 0) { const lab = { 0: 'N', 90: 'E', 180: 'S', 270: 'W' }[d] || String(d / 10); txt(g, lab, cx + Math.cos(a) * (R - 30), cy + Math.sin(a) * (R - 30), px * 0.9, '#e9eef2', 'center', true); }
+      }
+      const pointer = (d, c, kind) => {
+        if (!Number.isFinite(d)) return; const a = rad(d);
+        g.save(); g.translate(cx, cy); g.rotate(a + Math.PI / 2); g.fillStyle = c; g.strokeStyle = c; g.lineWidth = 3;
+        if (kind === 'bug') { g.beginPath(); g.rect(-9, -R - 2, 18, 8); g.fill(); }
+        else { g.beginPath(); g.moveTo(0, -R + 20); g.lineTo(0, R - 20); g.stroke(); g.beginPath(); g.moveTo(0, -R + 6); g.lineTo(-9, -R + 24); g.lineTo(9, -R + 24); g.closePath(); g.fill(); }
+        g.restore();
+      };
+      if (w.course) pointer(+sc[w.course], COLOURS.magenta, 'course');
+      if (w.bug) pointer(+sc[w.bug], COLOURS.cyan, 'bug');
+      // lubber line and the heading box
+      g.fillStyle = '#fff'; g.beginPath(); g.moveTo(cx, cy - R + 1); g.lineTo(cx - 8, cy - R - 12); g.lineTo(cx + 8, cy - R - 12); g.closePath(); g.fill();
+      const bw = px * 3.4, bh = px * 1.5; g.fillStyle = '#000'; g.fillRect(cx - bw / 2, cy - R - 14 - bh, bw, bh); g.strokeStyle = '#fff'; g.lineWidth = 1.5; g.strokeRect(cx - bw / 2, cy - R - 14 - bh, bw, bh);
+      txt(g, String(Math.round(((h % 360) + 360) % 360)).padStart(3, '0') + '°', cx, cy - R - 14 - bh / 2 + 1, px, '#fff', 'center', true);
+      if (rose) { g.strokeStyle = '#ffd23f'; g.lineWidth = 3; g.beginPath(); g.moveTo(cx - 14, cy); g.lineTo(cx + 14, cy); g.moveTo(cx, cy - 10); g.lineTo(cx, cy + 18); g.moveTo(cx - 7, cy + 14); g.lineTo(cx + 7, cy + 14); g.stroke(); }
+    },
+    hud(g, w, sc) {
+      const c = colour(w.colour || '#46ff7a'), px = +w.size || 22, cx = w.x + w.w / 2, cy = w.y + w.h * 0.52, k = w.h / 40;   // 40° of pitch fill the height
+      const p = +sc[w.pitch] || 0, r = +sc[w.roll] || 0, hd = +sc[w.heading] || 0, fpa = w.fpa ? +sc[w.fpa] || 0 : p;
+      g.strokeStyle = c; g.fillStyle = c; g.lineWidth = 2.2;
+      // pitch ladder: solid above the horizon, dashed below, numbered
+      g.save(); g.beginPath(); g.rect(w.x + w.w * 0.18, w.y + w.h * 0.14, w.w * 0.64, w.h * 0.74); g.clip();
+      g.translate(cx, cy); g.rotate(-r * Math.PI / 180);
+      for (let a = -90; a <= 90; a += 5) {
+        const y = (p - a) * k; if (Math.abs(y) > w.h) continue;
+        const L = a === 0 ? w.w * 0.6 : w.w * 0.12, gap = a === 0 ? w.w * 0.06 : w.w * 0.05;
+        g.setLineDash(a < 0 ? [10, 7] : []);
+        for (const sgn of [-1, 1]) { g.beginPath(); g.moveTo(sgn * gap, y); g.lineTo(sgn * (gap + L / 2), y); if (a) g.lineTo(sgn * (gap + L / 2), y + (a > 0 ? 10 : -10)); g.stroke(); }
+        g.setLineDash([]);
+        if (a) { txt(g, String(Math.abs(a)), -(gap + L / 2) - 8, y, px * 0.8, c, 'right'); txt(g, String(Math.abs(a)), gap + L / 2 + 8, y, px * 0.8, c, 'left'); }
+      }
+      g.restore();
+      // flight path marker, and the waterline (boresight) mark
+      const fy = cy + (p - fpa) * k; g.beginPath(); g.arc(cx, fy, 10, 0, Math.PI * 2); g.stroke();
+      g.beginPath(); g.moveTo(cx - 10, fy); g.lineTo(cx - 28, fy); g.moveTo(cx + 10, fy); g.lineTo(cx + 28, fy); g.moveTo(cx, fy - 10); g.lineTo(cx, fy - 20); g.stroke();
+      g.beginPath(); g.moveTo(cx - 22, cy - 2); g.lineTo(cx - 10, cy - 2); g.lineTo(cx - 5, cy + 6); g.lineTo(cx, cy - 2); g.lineTo(cx + 5, cy + 6); g.lineTo(cx + 10, cy - 2); g.lineTo(cx + 22, cy - 2); g.stroke();
+      // heading scale along the top
+      const ty = w.y + px * 2.4, span = 30, hk = (w.w * 0.5) / span;
+      for (let d = Math.ceil((hd - span / 2) / 5) * 5; d <= hd + span / 2; d += 5) {
+        const x = cx + (d - hd) * hk, major = d % 10 === 0; g.beginPath(); g.moveTo(x, ty); g.lineTo(x, ty + (major ? 14 : 8)); g.stroke();
+        if (major) txt(g, String(((d % 360) + 360) % 360 / 10).padStart(2, '0'), x, ty - px * 0.6, px * 0.8, c);
+      }
+      g.beginPath(); g.moveTo(cx, ty + 18); g.lineTo(cx - 7, ty + 28); g.lineTo(cx + 7, ty + 28); g.closePath(); g.stroke();
+      // airspeed (left) and altitude (right) boxes
+      const box = (x, t, al) => { const bw = px * 4.2, bh = px * 1.6; g.strokeRect(x - (al === 'right' ? bw : 0), cy - bh / 2, bw, bh); txt(g, t, x + (al === 'right' ? -8 : 8), cy + 1, px, c, al); };
+      if (w.speed) box(w.x + w.w * 0.08, String(Math.round(+sc[w.speed] || 0)), 'left');
+      if (w.alt) box(w.x + w.w * 0.92, String(Math.round(+sc[w.alt] || 0)), 'right');
+      if (w.speed) txt(g, 'KT', w.x + w.w * 0.08 + px * 2.1, cy + px * 1.6, px * 0.7, c);
+      if (w.alt) txt(g, 'FT', w.x + w.w * 0.92 - px * 2.1, cy + px * 1.6, px * 0.7, c);
+      if (w.gload) txt(g, `G ${(+sc[w.gload] || 0).toFixed(1)}`, w.x + w.w * 0.08, w.y + w.h * 0.86, px * 0.9, c, 'left');
+    },
+    radar(g, w, sc, en, opt) {
+      const cx = w.x + w.w / 2, cy = w.y + w.h / 2, R = Math.min(w.w, w.h) / 2 - 22, px = +w.size || 14, G = '#4dff88';
+      g.fillStyle = '#020b06'; g.fillRect(w.x, w.y, w.w, w.h);
+      g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2); g.fillStyle = '#031a0c'; g.fill();
+      const rings = Math.max(1, +w.rings || 4), range = +(w.rangeVar && Number.isFinite(+sc[w.rangeVar]) ? sc[w.rangeVar] : w.range) || 0;
+      g.strokeStyle = 'rgba(77,255,136,.35)'; g.lineWidth = 1;
+      for (let i = 1; i <= rings; i++) { g.beginPath(); g.arc(cx, cy, R * i / rings, 0, Math.PI * 2); g.stroke(); if (range) txt(g, String(Math.round(range * i / rings)), cx + 4, cy - R * i / rings + 9, px * 0.8, 'rgba(77,255,136,.7)', 'left'); }
+      for (let d = 0; d < 360; d += 10) {
+        const a = (d - 90) * Math.PI / 180, l = d % 30 === 0 ? 12 : 6;
+        g.beginPath(); g.moveTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R); g.lineTo(cx + Math.cos(a) * (R + l), cy + Math.sin(a) * (R + l)); g.strokeStyle = 'rgba(77,255,136,.7)'; g.stroke();
+        if (d % 30 === 0) txt(g, String(d).padStart(3, '0'), cx + Math.cos(a) * (R + 13), cy + Math.sin(a) * (R + 13), px * 0.75, 'rgba(77,255,136,.85)');
+      }
+      // the sweep, with a fading trail
+      const t = (opt && opt.time) || 0, sweep = (+w.rpm || 0) > 0 ? (t * +w.rpm * 6) % 360 : 0;
+      if (+w.rpm > 0) for (let i = 0; i < 24; i++) {
+        const a1 = (sweep - i * 2 - 90) * Math.PI / 180, a0 = a1 - 2.2 * Math.PI / 180;
+        g.beginPath(); g.moveTo(cx, cy); g.arc(cx, cy, R, a0, a1); g.closePath(); g.fillStyle = `rgba(77,255,136,${0.32 * (1 - i / 24)})`; g.fill();
+      }
+      // own heading
+      const hd = +sc[w.heading];
+      if (w.heading && Number.isFinite(hd)) { const a = (hd - 90) * Math.PI / 180; g.setLineDash([6, 5]); g.strokeStyle = 'rgba(255,255,255,.6)'; g.beginPath(); g.moveTo(cx, cy); g.lineTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R); g.stroke(); g.setLineDash([]); }
+      // contacts: brightest just after the sweep has passed
+      for (const tr of w.tracks || []) {
+        const x = cx + (+tr.x || 0) * R, y = cy - (+tr.y || 0) * R, brg = (Math.atan2(+tr.x || 0, +tr.y || 0) * 180 / Math.PI + 360) % 360;
+        const age = +w.rpm > 0 ? ((sweep - brg) % 360 + 360) % 360 : 0, al = 1 - 0.75 * age / 360;
+        const c = { friend: COLOURS.cyan, hostile: COLOURS.red, neutral: G, unknown: COLOURS.amber }[tr.kind] || G;
+        g.globalAlpha *= al; g.fillStyle = c; g.beginPath(); g.arc(x, y, 5, 0, Math.PI * 2); g.fill();
+        if (tr.label) txt(g, String(tr.label), x + 9, y - 9, px, c, 'left');
+        g.globalAlpha /= al;
+      }
+      g.fillStyle = G; g.beginPath(); g.arc(cx, cy, 3, 0, Math.PI * 2); g.fill();
+      if (range) txt(g, `${range} ${w.unit || ''}`, w.x + 8, w.y + 12, px, G, 'left', true);
+    },
+    area(g, w, sc) {
+      const px = +w.size || 14;
+      // procedural terrain (no real geography): sea, land from a seeded sum of sines, and a lighter coast band
+      const S = +w.seed || 1, cell = Math.max(6, Math.round(Math.max(w.w, w.h) / 110)), land = Math.min(0.95, Math.max(0.05, +w.land || 0.45));
+      const f = (u, v) => Math.sin(u * 3.1 + S) * 0.5 + Math.sin(v * 2.3 + S * 1.7) * 0.5 + Math.sin((u + v) * 5.3 + S * 2.9) * 0.28 + Math.sin((u - v) * 8.9 + S * 0.7) * 0.16 + Math.sin(u * 13.7 - v * 11.3 + S) * 0.08;
+      const thr = (0.5 - land) * 1.6;
+      g.fillStyle = '#0b2232'; g.fillRect(w.x, w.y, w.w, w.h);
+      for (let y = 0; y < w.h; y += cell) for (let x = 0; x < w.w; x += cell) {
+        const v = f(x / w.w * 2, y / w.h * 2);
+        if (v > thr) { g.fillStyle = v > thr + 0.55 ? '#3a4a35' : v > thr + 0.25 ? '#33432f' : '#2b3a2a'; g.fillRect(w.x + x, w.y + y, cell + 0.5, cell + 0.5); }
+        else if (v > thr - 0.07) { g.fillStyle = '#123247'; g.fillRect(w.x + x, w.y + y, cell + 0.5, cell + 0.5); }
+      }
+      // grid with lettered columns and numbered rows
+      const n = Math.max(1, +w.grid || 8), gw = w.w / n, rowsN = Math.max(1, Math.round(w.h / gw)), gh = w.h / rowsN;
+      g.strokeStyle = 'rgba(200,220,235,.18)'; g.lineWidth = 1;
+      for (let i = 1; i < n; i++) { g.beginPath(); g.moveTo(w.x + i * gw, w.y); g.lineTo(w.x + i * gw, w.y + w.h); g.stroke(); }
+      for (let j = 1; j < rowsN; j++) { g.beginPath(); g.moveTo(w.x, w.y + j * gh); g.lineTo(w.x + w.w, w.y + j * gh); g.stroke(); }
+      for (let i = 0; i < n; i++) txt(g, String.fromCharCode(65 + (i % 26)), w.x + i * gw + gw / 2, w.y + px * 0.8, px * 0.8, 'rgba(200,220,235,.6)');
+      for (let j = 0; j < rowsN; j++) txt(g, String(j + 1), w.x + 6, w.y + j * gh + gh / 2, px * 0.8, 'rgba(200,220,235,.6)', 'left');
+      const P = (a, b) => [w.x + (+a || 0) * w.w, w.y + (+b || 0) * w.h], cells = l => String(l).split(',').map(x => x.trim());
+      const nums = a => a.join(' ').split(/\s+/).filter(Boolean).map(Number);
+      // areas (polygons), routes (lines) and units (symbols)
+      if (evaluate(w.zonesWhen, sc, true)) for (const l of w.zones || []) {
+        const c = cells(l), name = c[0], col = colour(c[1]), pts = nums(c.slice(2)); if (pts.length < 6) continue;
+        g.beginPath(); for (let i = 0; i + 1 < pts.length; i += 2) { const [x, y] = P(pts[i], pts[i + 1]); i ? g.lineTo(x, y) : g.moveTo(x, y); } g.closePath();
+        g.globalAlpha *= 0.18; g.fillStyle = col; g.fill(); g.globalAlpha /= 0.18; g.setLineDash([8, 5]); g.strokeStyle = col; g.lineWidth = 2; g.stroke(); g.setLineDash([]);
+        const [lx, ly] = P(pts[0], pts[1]); txt(g, name, lx + 6, ly + px, px, col, 'left', true);
+      }
+      if (evaluate(w.routesWhen, sc, true)) for (const l of w.routes || []) {
+        const c = cells(l), col = colour(c[0]), lab = c[1], pts = nums(c.slice(2)); if (pts.length < 4) continue;
+        g.strokeStyle = col; g.lineWidth = 2.5; g.beginPath(); for (let i = 0; i + 1 < pts.length; i += 2) { const [x, y] = P(pts[i], pts[i + 1]); i ? g.lineTo(x, y) : g.moveTo(x, y); } g.stroke();
+        for (let i = 0; i + 1 < pts.length; i += 2) { const [x, y] = P(pts[i], pts[i + 1]); g.fillStyle = col; g.fillRect(x - 4, y - 4, 8, 8); }
+        const [x, y] = P(pts[pts.length - 2], pts[pts.length - 1]); if (lab) txt(g, lab, x + 8, y - 8, px * 0.9, col, 'left');
+      }
+      if (evaluate(w.unitsWhen, sc, true)) for (const l of w.units || []) {
+        const c = cells(l), [x, y] = P(c[0], c[1]); symbol(g, x, y, c[3] || 'unknown', c[4] || '', px * 1.6);
+        if (c[2]) txt(g, text(c[2], sc), x, y + px * 1.6, px * 0.9, '#e9eef2', 'center', true);
+      }
+      if (w.title) { const t = text(w.title, sc), tw = Math.min(w.w - 8, Math.max(px * 6, t.length * px * 0.62 + px)); g.fillStyle = 'rgba(5,10,15,.7)'; g.fillRect(w.x + w.w - tw - 4, w.y + 4, tw, px * 1.6); txt(g, t, w.x + w.w - 4 - tw / 2, w.y + 4 + px * 0.8, px * 0.9, '#e9eef2', 'center', true); }
+      g.strokeStyle = '#2c3b4a'; g.lineWidth = 2; g.strokeRect(w.x + 1, w.y + 1, w.w - 2, w.h - 2);
+    },
+    table(g, w, sc) {
+      const px = +w.size || 15, rh = tableRow(w), cols = String(w.columns || '').split('|').map(c => c.trim()), n = Math.max(1, cols.length), cw = w.w / n;
+      const sel = w.var ? +sc[w.var] : 0;
+      g.fillStyle = '#0f171f'; g.fillRect(w.x, w.y, w.w, w.h);
+      g.fillStyle = '#1c2a38'; g.fillRect(w.x, w.y, w.w, rh);
+      cols.forEach((c, i) => txt(g, c, w.x + i * cw + 8, w.y + rh / 2 + 1, px * 0.85, COLOURS.cyan, 'left', true));
+      (w.rows || []).forEach((r, j) => {
+        const y = w.y + rh * (j + 1); if (y + rh > w.y + w.h + 1) return;
+        if (sel === j + 1) { g.fillStyle = '#1d4f78'; g.fillRect(w.x, y, w.w, rh); } else if (j % 2) { g.fillStyle = '#131e28'; g.fillRect(w.x, y, w.w, rh); }
+        String(r).split('|').forEach((c, i) => { const t = text(c.trim(), sc), hot = /^(RED|HOSTILE|HOS|ALERT|LOST|FAIL|NO GO|U\/S)/i.test(t), warn = /^(AMBER|DEGRADED|DELAYED|LOW)/i.test(t), good = /^(GREEN|OK|READY|ON TASK|GO)$/i.test(t);
+          txt(g, t, w.x + i * cw + 8, y + rh / 2 + 1, px, hot ? COLOURS.red : warn ? COLOURS.amber : good ? COLOURS.green : INK, 'left'); });
+      });
+      g.strokeStyle = '#2c3b4a'; g.lineWidth = 1.5; g.strokeRect(w.x + 0.5, w.y + 0.5, w.w - 1, w.h - 1);
+    },
+  };
+
+  // screens with moving parts (a radar sweep) are redrawn on a timer by the pages; everything else only on change
+  const animated = s => !!s && s.widgets.some(w => w.type === 'radar' && +w.rpm > 0);
+
+  /* ---------------- measurement (hook for the HMI checks, HMI-06) ----------------
+     On a display of physical size wMm × hMm (the active area), the screen is scaled to fit and centred. For each visible
+     widget: its text's cap height (about 0.72 of the font size for Arial-like faces) in mm and, given distMm, the angle it
+     subtends in minutes of arc; and for each control its touch target width and height in mm. */
+  const CAP = 0.72;
+  function fit(s, disp) {
+    const k = Math.min(disp.wMm / s.w, disp.hMm / s.h);
+    return { mmPerPx: k, offX: (disp.wMm - s.w * k) / 2, offY: (disp.hMm - s.h * k) / 2 };
+  }
+  const arcmin = (mm, d) => (d > 0 ? 2 * Math.atan(mm / 2 / d) * 180 / Math.PI * 60 : null);
+  function measure(doc, screenId, disp, state) {
+    const s = screenOf(doc, screenId), F = fit(s, disp), st = state || initState(doc), scope = scopeOf(st, s.id), out = { screen: s.id, mmPerPx: F.mmPerPx, text: [], targets: [] };
+    const r1 = v => Math.round(v * 10) / 10;
+    for (const w of s.widgets) {
+      if (!evaluate(w.visibleWhen, scope, true)) continue;
+      const px = w.type === 'hotspot' || w.type === 'image' ? 0 : +w.size || (TYPES[w.type].def.size || 0);
+      // a table's rows are its targets when it selects
+      if (w.type === 'table' && w.var) { const rh = tableRow(w), n = (w.rows || []).length; if (n) out.targets.push({ widget: w.id, type: w.type, wMm: r1(w.w * F.mmPerPx), hMm: r1(rh * F.mmPerPx), count: n }); }
+      if (px > 0) { const mm = px * CAP * F.mmPerPx; out.text.push({ widget: w.id, type: w.type, px, capMm: r1(mm), arcmin: disp.distMm ? r1(arcmin(mm, disp.distMm)) : null }); }
+      if (TYPES[w.type].interactive && w.type !== 'table') {
+        const n = w.type === 'menu' ? (w.items || []).length || 1 : 1, col = w.orient === 'column';
+        const tw = w.type === 'menu' && !col ? w.w / n : w.w, th = w.type === 'menu' && col ? w.h / n : w.h;
+        out.targets.push({ widget: w.id, type: w.type, wMm: r1(tw * F.mmPerPx), hMm: r1(th * F.mmPerPx), count: n });
+      }
+    }
+    return out;
+  }
+  // screen pixel from a display's texture coordinate (u, v from 0 to 1, v up), with the same fit as measure()
+  function pixelAt(doc, state, key, u, v, aspect) {
+    const s = current(doc, state, key), disp = { wMm: aspect || s.w / s.h, hMm: 1 }, F = fit(s, disp);
+    return { x: (u * disp.wMm - F.offX) / F.mmPerPx, y: ((1 - v) * disp.hMm - F.offY) / F.mmPerPx };
+  }
+
+
+  /* ---------------- presets ----------------
+     Ready-made screens to start from. Flight and sensor screens follow common, public display conventions (attitude in
+     the middle with speed left and altitude right, heading below; a plan position radar scope; a head-up display's pitch
+     ladder and flight path marker) in our own design: they are not the layout, symbols or look of any manufacturer's
+     product. Maps are procedural (no real geography); unit symbols follow the public NATO joint symbology in outline.
+     Each preset's screens go to each other only, so a preset is complete on its own; variables with the same name are
+     shared, so a PFD and a HUD from two presets show the same flight. */
+  const L = (id, x, y, w, h, text, size, colour, extra) => ({ id, type: 'label', x, y, w, h, text, size, colour: colour || 'white', align: 'left', bold: false, ...(extra || {}) });
+  const FLIGHT_VARS = [{ name: 'ias', type: 'number', init: 320, unit: 'kt' }, { name: 'alt', type: 'number', init: 15000, unit: 'ft' }, { name: 'hdg', type: 'number', init: 45, unit: '°' },
+    { name: 'pitch', type: 'number', init: 3, unit: '°' }, { name: 'roll', type: 'number', init: 10, unit: '°' }, { name: 'vs', type: 'number', init: 1200, unit: 'ft/min' },
+    { name: 'fpa', type: 'number', init: 1.5, unit: '°' }, { name: 'gload', type: 'number', init: 1.0, unit: 'g' }, { name: 'mach', type: 'number', init: 0.62 },
+    { name: 'selSpd', type: 'number', init: 330, unit: 'kt' }, { name: 'selAlt', type: 'number', init: 20000, unit: 'ft' }, { name: 'selHdg', type: 'number', init: 60, unit: '°' },
+    { name: 'crs', type: 'number', init: 50, unit: '°' }, { name: 'apMode', type: 'text', init: 'HDG' }, { name: 'vMode', type: 'text', init: 'ALT ACQ' }, { name: 'ap', type: 'bool', init: true }];
+  const softkeys = (y, items) => ({ id: 'keys', type: 'menu', x: 12, y, w: 1000, h: 50, orient: 'row', size: 17, items });
+  const PRESETS = {
+    flight: { name: 'Glass cockpit: primary flight and navigation displays', group: 'Flight', screens: 2,
+      summary: 'A primary flight display (attitude, speed and altitude tapes with selected-value bugs, vertical speed, heading arc and a mode strip) and a navigation display (heading rose with course and heading bug, waypoints). Soft keys change the selected heading and altitude and switch pages.',
+      suggest: [{ env: 'fast-jet', role: 'pilot', node: 'ws.scr.0', screen: 'pfd' }, { env: 'fast-jet', role: 'pilot', node: 'ws.scr.1', screen: 'nd' }],
+      build: () => ({ vars: FLIGHT_VARS.concat([{ name: 'wpt', type: 'number', init: 1 }]), screens: [
+        { id: 'pfd', name: 'Primary flight display', w: 1024, h: 768, bg: '#05080b', widgets: [
+          { id: 'fma', type: 'panel', x: 0, y: 0, w: 1024, h: 60, title: '', fill: '#0b1117', stroke: '#26323d' },
+          L('m1', 140, 12, 200, 36, 'SPD {selSpd}', 20, 'green', { align: 'centre' }), L('m2', 412, 12, 200, 36, '{apMode}', 20, 'green', { align: 'centre', bold: true }),
+          L('m3', 684, 12, 200, 36, '{vMode}', 20, 'cyan', { align: 'centre' }), { id: 'apl', type: 'lamp', x: 900, y: 12, w: 100, h: 36, text: 'AP', onWhen: 'ap', colour: 'green', size: 18 },
+          { id: 'adi', type: 'attitude', x: 262, y: 80, w: 500, h: 500, pitch: 'pitch', roll: 'roll', range: 25, size: 16 },
+          { id: 'spd', type: 'tape', x: 120, y: 80, w: 120, h: 500, var: 'ias', label: 'KT', span: 80, step: 10, labelEvery: 2, side: 'left', bug: 'selSpd', min: 160, decimals: 0, size: 22 },
+          { id: 'altt', type: 'tape', x: 784, y: 80, w: 130, h: 500, var: 'alt', label: 'FT', span: 800, step: 100, labelEvery: 2, side: 'right', bug: 'selAlt', min: null, decimals: 0, size: 22 },
+          { id: 'vsb', type: 'bar', x: 930, y: 120, w: 84, h: 420, label: 'V/S', var: 'vs', min: -4000, max: 4000, warn: null, alarm: null, dir: 'high', unit: '', orient: 'column', size: 16 },
+          L('mach', 120, 590, 120, 30, 'M {mach:2}', 20, 'white', { align: 'centre' }),
+          L('salt', 784, 590, 130, 30, '{selAlt}', 20, 'cyan', { align: 'centre' }),
+          { id: 'hsi', type: 'compass', x: 262, y: 586, w: 500, h: 120, var: 'hdg', style: 'arc', course: 'crs', bug: 'selHdg', size: 16 },
+          softkeys(712, [{ text: 'HDG −', onClick: 'selHdg = (selHdg + 355) % 360' }, { text: 'HDG +', onClick: 'selHdg = (selHdg + 5) % 360' },
+            { text: 'ALT −', onClick: 'selAlt = selAlt - 500' }, { text: 'ALT +', onClick: 'selAlt = selAlt + 500' }, { text: 'AP', onClick: 'toggle ap', activeWhen: 'ap' }, { text: 'NAV ▸', onClick: 'goto nd' }])] },
+        { id: 'nd', name: 'Navigation display', w: 1024, h: 768, bg: '#05080b', widgets: [
+          { id: 'rose', type: 'compass', x: 152, y: 20, w: 620, h: 680, var: 'hdg', style: 'rose', course: 'crs', bug: 'selHdg', size: 20 },
+          L('gs', 16, 16, 220, 30, 'GS {ias} KT', 20, 'white'), L('wind', 16, 52, 220, 30, 'WIND 270/25', 18, 'cyan'),
+          L('nxt', 790, 16, 220, 30, 'NEXT WPT', 16, 'grey'),
+          { id: 'wpts', type: 'table', x: 790, y: 50, w: 222, h: 260, columns: 'WPT | BRG | NM', rows: ['ALPHA | 052 | 18', 'BRAVO | 071 | 46', 'CHARLIE | 118 | 83', 'HOME | 228 | 140'], var: 'wpt', size: 16 },
+          L('tip', 790, 320, 222, 60, 'Press a waypoint to select it', 14, 'grey'),
+          softkeys(712, [{ text: '◂ PFD', onClick: 'goto pfd' }, { text: 'CRS −', onClick: 'crs = (crs + 355) % 360' }, { text: 'CRS +', onClick: 'crs = (crs + 5) % 360' },
+            { text: 'HDG −', onClick: 'selHdg = (selHdg + 355) % 360' }, { text: 'HDG +', onClick: 'selHdg = (selHdg + 5) % 360' }])] }
+      ] }) },
+    hud: { name: 'Head-up display', group: 'Flight', screens: 1,
+      summary: 'Monochrome green symbology on black: pitch ladder (dashed below the horizon), flight path marker, waterline mark, heading scale, airspeed and altitude boxes and normal acceleration. Shares its flight variables with the glass cockpit preset.',
+      suggest: [{ env: 'fast-jet', role: 'pilot', node: 'ws.scr.2', screen: 'hud' }],
+      build: () => ({ vars: FLIGHT_VARS, screens: [{ id: 'hud', name: 'Head-up display', w: 1024, h: 768, bg: '#000000', widgets: [
+        { id: 'h', type: 'hud', x: 0, y: 0, w: 1024, h: 768, pitch: 'pitch', roll: 'roll', heading: 'hdg', speed: 'ias', alt: 'alt', fpa: 'fpa', gload: 'gload', colour: '#46ff7a', size: 24 },
+        L('mode', 60, 700, 300, 40, '{apMode}', 22, '#46ff7a'), L('mach', 860, 700, 140, 40, 'M {mach:2}', 22, '#46ff7a', { align: 'right' })] }] }) },
+    radar: { name: 'Surveillance radar scope', group: 'Sensors', screens: 1,
+      summary: 'A plan position (PPI) scope with a rotating sweep and fading contacts, range rings and bearings, range and mode selection, transmit control with a silent warning, and a selectable track table.',
+      suggest: [{ env: 'ship-ops-room', role: null, node: 'ws.scr.0', screen: 'radar' }],
+      build: () => ({ vars: [{ name: 'rng', type: 'number', init: 80, unit: 'NM' }, { name: 'rmode', type: 'text', init: 'SEARCH' }, { name: 'tx', type: 'bool', init: true },
+        { name: 'trk', type: 'number', init: 0 }, { name: 'hdg', type: 'number', init: 45, unit: '°' }], screens: [{ id: 'radar', name: 'Radar', w: 1024, h: 768, bg: '#020604', widgets: [
+        { id: 'ppi', type: 'radar', x: 8, y: 8, w: 752, h: 752, range: 80, rangeVar: 'rng', unit: 'NM', rings: 4, rpm: 12, heading: 'hdg', size: 15, visibleWhen: 'tx',
+          tracks: [{ x: 0.42, y: 0.55, label: '4001', kind: 'hostile' }, { x: -0.3, y: 0.62, label: '4002', kind: 'unknown' }, { x: 0.65, y: -0.2, label: '4003', kind: 'friend' },
+            { x: -0.55, y: -0.4, label: '4004', kind: 'neutral' }, { x: 0.12, y: -0.7, label: '4005', kind: 'unknown' }, { x: -0.1, y: 0.2, label: '4006', kind: 'friend' }] },
+        { id: 'off', type: 'panel', x: 8, y: 8, w: 752, h: 752, title: '', fill: '#020604', stroke: '#14301e', visibleWhen: '!tx' },
+        L('offt', 8, 360, 752, 40, 'TRANSMITTER OFF', 28, 'amber', { align: 'centre', bold: true, visibleWhen: '!tx' }),
+        L('rt', 776, 12, 236, 28, 'RANGE {rng} NM', 20, 'green', { bold: true }),
+        { id: 'rngm', type: 'menu', x: 776, y: 46, w: 236, h: 48, orient: 'row', size: 17, items: [20, 40, 80, 160].map(r => ({ text: String(r), onClick: `rng = ${r}`, activeWhen: `rng == ${r}` })) },
+        L('mt', 776, 108, 236, 24, 'MODE', 16, 'grey'),
+        { id: 'modem', type: 'menu', x: 776, y: 134, w: 236, h: 132, orient: 'column', size: 17, items: ['SEARCH', 'TRACK', 'STBY'].map(m => ({ text: m, onClick: `rmode = '${m}'`, activeWhen: `rmode == '${m}'` })) },
+        { id: 'txt', type: 'toggle', x: 776, y: 280, w: 236, h: 50, text: 'TRANSMIT', var: 'tx', size: 18 },
+        { id: 'silent', type: 'alert', x: 776, y: 340, w: 236, h: 44, text: 'RADAR SILENT', when: '!tx', level: 'caution', onClick: '', size: 18 },
+        { id: 'trks', type: 'table', x: 776, y: 396, w: 236, h: 280, columns: 'TN | BRG | ID', rows: ['4001 | 037 | HOS', '4002 | 334 | UNK', '4003 | 107 | FND', '4004 | 234 | NEU', '4005 | 170 | UNK', '4006 | 333 | FND'], var: 'trk', size: 15 },
+        L('sel', 776, 690, 236, 30, 'Selected track: {trk}', 15, 'grey')] }] }) },
+    c2: { name: 'Command and control: operating picture and tasking', group: 'C2', screens: 2,
+      summary: 'Two large 1920 × 1080 screens for a command and control exercise. The common operating picture has an area map (procedural terrain, grid, areas, routes and units with NATO-style frames) with layer toggles, an alert to acknowledge, unit and event tables; the tasking board has a task list with status, asset readiness and controls.',
+      suggest: [{ env: 'control-centre', role: null, node: 'ws.scr.0', screen: 'cop' }, { env: 'control-centre', role: null, node: 'ws.scr.1', screen: 'tasking' }],
+      build: () => {
+        const top = t => [{ id: 'bar', type: 'panel', x: 0, y: 0, w: 1920, h: 64, title: '', fill: '#0d151d', stroke: '#0d151d' },
+          L('title', 24, 14, 900, 36, t, 26, 'white', { bold: true }), L('ex', 940, 14, 560, 36, 'EXERCISE {exName} · NOT FOR OPERATIONAL USE', 18, 'amber', { align: 'centre' }),
+          L('clock', 1520, 14, 376, 36, 'D+{day} {zulu}Z', 24, 'cyan', { align: 'right', bold: true })];
+        const nav = { id: 'nav', type: 'menu', x: 16, y: 84, w: 200, h: 150, orient: 'column', size: 20, items: [{ text: 'PICTURE', onClick: 'goto cop' }, { text: 'TASKING', onClick: 'goto tasking' }] };
+        return { vars: [{ name: 'exName', type: 'text', init: 'NORTHERN GUARD' }, { name: 'day', type: 'number', init: 3 }, { name: 'zulu', type: 'text', init: '1420' },
+          { name: 'showZones', type: 'bool', init: true }, { name: 'showUnits', type: 'bool', init: true }, { name: 'showRoutes', type: 'bool', init: true },
+          { name: 'incursion', type: 'bool', init: false }, { name: 'ack', type: 'bool', init: false }, { name: 'unitSel', type: 'number', init: 0 }, { name: 'taskSel', type: 'number', init: 0 },
+          { name: 't3', type: 'text', init: 'ON TASK' }, { name: 't5', type: 'text', init: 'READY' }, { name: 'tasksOpen', type: 'number', init: 7 }], screens: [
+          { id: 'cop', name: 'Operating picture', w: 1920, h: 1080, bg: '#071017', widgets: [...top('COMMON OPERATING PICTURE'), nav,
+            L('lay', 16, 256, 200, 28, 'LAYERS', 16, 'grey'),
+            { id: 'lz', type: 'toggle', x: 16, y: 288, w: 200, h: 50, text: 'Areas', var: 'showZones', size: 18 },
+            { id: 'lu', type: 'toggle', x: 16, y: 346, w: 200, h: 50, text: 'Units', var: 'showUnits', size: 18 },
+            { id: 'lr', type: 'toggle', x: 16, y: 404, w: 200, h: 50, text: 'Routes', var: 'showRoutes', size: 18 },
+            { id: 'inj', type: 'button', x: 16, y: 480, w: 200, h: 50, text: 'Inject contact', size: 17, onClick: 'incursion = true; ack = false' },
+            { id: 'clr', type: 'button', x: 16, y: 538, w: 200, h: 50, text: 'Clear contact', size: 17, onClick: 'incursion = false' },
+            { id: 'map', type: 'area', x: 232, y: 80, w: 1240, h: 860, title: 'AREA OF OPERATIONS (FICTITIOUS)', seed: 7, land: 0.5, grid: 10, size: 16,
+              zonesWhen: 'showZones', unitsWhen: 'showUnits', routesWhen: 'showRoutes',
+              zones: ['ROZ ALPHA, cyan, 0.08 0.1 0.34 0.1 0.34 0.32 0.08 0.32', 'NO-FLY 1, red, 0.62 0.55 0.8 0.5 0.86 0.72 0.66 0.78', 'AOR BLUE, blue, 0.05 0.4 0.55 0.4 0.55 0.95 0.05 0.95', 'KILL BOX K3, amber, 0.68 0.12 0.92 0.12 0.92 0.36 0.68 0.36'],
+              routes: ['cyan, MSR 1, 0.1 0.9 0.25 0.7 0.42 0.62 0.6 0.45', 'amber, CAP, 0.4 0.2 0.55 0.15 0.6 0.25 0.45 0.3 0.4 0.2', 'green, SUPPLY, 0.05 0.6 0.2 0.55 0.3 0.6'],
+              units: ['0.2, 0.75, 1 BN, friend, inf', '0.32, 0.66, A SQN, friend, armour', '0.15, 0.55, 29 BTY, friend, arty', '0.28, 0.85, HQ, friend, hq', '0.45, 0.22, CAP 1, friend, air',
+                '0.78, 0.25, OPFOR 1, hostile, armour', '0.84, 0.3, OPFOR 2, hostile, inf', '0.72, 0.65, UNK 07, unknown, air', '0.58, 0.82, MV TALIS, neutral, ship'] },
+            { id: 'inc', type: 'alert', x: 232, y: 952, w: 1240, h: 56, text: 'CONTACT UNK 07 ENTERING ROZ ALPHA: PRESS TO ACKNOWLEDGE', when: 'incursion && !ack', level: 'caution', onClick: 'ack = true', size: 22 },
+            L('ul', 1490, 84, 414, 30, 'UNITS', 18, 'grey'),
+            { id: 'units', type: 'table', x: 1488, y: 116, w: 416, h: 400, columns: 'UNIT | SIDE | STATUS', var: 'unitSel', size: 17,
+              rows: ['1 BN | FRIEND | READY', 'A SQN | FRIEND | ON TASK', '29 BTY | FRIEND | READY', 'CAP 1 | FRIEND | ON TASK', 'OPFOR 1 | HOSTILE | ADVANCING', 'OPFOR 2 | HOSTILE | STATIC', 'UNK 07 | UNKNOWN | {incursion}'] },
+            L('el', 1490, 532, 414, 30, 'EVENTS', 18, 'grey'),
+            { id: 'log', type: 'table', x: 1488, y: 564, w: 416, h: 376, columns: 'TIME | EVENT', var: '', size: 16,
+              rows: ['1402Z | CAP 1 on station', '1406Z | OPFOR 1 moving west', '1411Z | 29 BTY ready to fire', '1415Z | MSR 1 open', '1418Z | Weather: wind 270/25'] },
+            { id: 'ro1', type: 'readout', x: 1488, y: 952, w: 200, h: 100, label: 'TASKS OPEN', var: 'tasksOpen', decimals: 0, unit: '', size: 40, colour: 'white' },
+            { id: 'ro2', type: 'lamp', x: 1704, y: 952, w: 200, h: 100, text: 'ROZ BREACH', onWhen: 'incursion', colour: 'amber', size: 22 }] },
+          { id: 'tasking', name: 'Tasking board', w: 1920, h: 1080, bg: '#071017', widgets: [...top('TASKING AND ASSETS'), nav,
+            L('tl', 232, 84, 900, 30, 'TASKS', 18, 'grey'),
+            { id: 'tasks', type: 'table', x: 232, y: 116, w: 1100, h: 560, columns: 'TASK | ASSET | AREA | TIME ON | STATUS', var: 'taskSel', size: 19,
+              rows: ['T-01 | CAP 1 | ROZ ALPHA | 1400Z | ON TASK', 'T-02 | 29 BTY | K3 | 1430Z | READY', 'T-03 | A SQN | MSR 1 | 1415Z | {t3}', 'T-04 | ISTAR 2 | AOR BLUE | 1500Z | READY',
+                'T-05 | 1 BN | GRID C6 | 1530Z | {t5}', 'T-06 | TANKER | TRACK 2 | 1545Z | DELAYED', 'T-07 | CSAR | ALERT | -- | READY'] },
+            L('al', 1352, 84, 552, 30, 'ASSET READINESS', 18, 'grey'),
+            { id: 'r1', type: 'bar', x: 1352, y: 120, w: 552, h: 64, label: 'AIR', var: 'airR', min: 0, max: 100, warn: 60, alarm: 40, dir: 'low', unit: '%', orient: 'row', size: 18 },
+            { id: 'r2', type: 'bar', x: 1352, y: 196, w: 552, h: 64, label: 'LAND', var: 'landR', min: 0, max: 100, warn: 60, alarm: 40, dir: 'low', unit: '%', orient: 'row', size: 18 },
+            { id: 'r3', type: 'bar', x: 1352, y: 272, w: 552, h: 64, label: 'ISTAR', var: 'istarR', min: 0, max: 100, warn: 60, alarm: 40, dir: 'low', unit: '%', orient: 'row', size: 18 },
+            { id: 'b1', type: 'button', x: 1352, y: 368, w: 270, h: 60, text: 'Delay T-03', size: 18, onClick: "t3 = 'DELAYED'" },
+            { id: 'b2', type: 'button', x: 1634, y: 368, w: 270, h: 60, text: 'T-03 back on task', size: 18, onClick: "t3 = 'ON TASK'" },
+            { id: 'b3', type: 'button', x: 1352, y: 440, w: 270, h: 60, text: 'Launch T-05', size: 18, onClick: "t5 = 'ON TASK'; tasksOpen = tasksOpen - 1" },
+            { id: 'b4', type: 'button', x: 1634, y: 440, w: 270, h: 60, text: 'Lose ISTAR', size: 18, onClick: 'istarR = 30' },
+            { id: 'warnI', type: 'alert', x: 232, y: 700, w: 1100, h: 56, text: 'ISTAR READINESS BELOW 40%', when: 'istarR < 40', level: 'warning', onClick: 'istarR = 75', size: 22 },
+            L('sel', 232, 776, 1100, 30, 'Selected task: {taskSel}', 18, 'grey')] }] };
+      }, extraVars: [{ name: 'airR', type: 'number', init: 82 }, { name: 'landR', type: 'number', init: 68 }, { name: 'istarR', type: 'number', init: 75 }] }
+  };
+  // add a preset's screens and variables to a document. Screen ids that are taken get a suffix, and the preset's own
+  // goto actions follow them. opt.assign: also put the screens on their suggested displays where those are free.
+  function addPreset(doc, id, opt = {}) {
+    const P = PRESETS[id]; if (!P) throw new Error('Unknown preset ' + id);
+    const b = P.build(), vars = b.vars.concat(P.extraVars || []);
+    for (const v of vars) if (!doc.vars.some(x => x.name === v.name)) doc.vars.push({ ...v });
+    // an empty starting document is replaced rather than added to
+    if (doc.screens.length === 1 && !doc.screens[0].widgets.length && !doc.displays.length) doc.screens = [];
+    const taken = new Set(doc.screens.map(s => s.id)), map = {};
+    for (const s of b.screens) { let nid = s.id, i = 2; while (taken.has(nid)) nid = s.id + '-' + i++; taken.add(nid); map[s.id] = nid; }
+    const fix = src => String(src || '').replace(/(^|[;\n]\s*)goto\s+([\w-]+)/g, (m, pre, sid) => pre + 'goto ' + (map[sid] || sid));
+    for (const s of b.screens) {
+      s.id = map[s.id];
+      for (const w of s.widgets) { if ('onClick' in w) w.onClick = fix(w.onClick); if (w.items) w.items.forEach(it => { it.onClick = fix(it.onClick); }); }
+      doc.screens.push(s);
+    }
+    if (!doc.screens.some(s => s.id === doc.start)) doc.start = doc.screens[0].id;
+    if (opt.assign) for (const x of P.suggest || []) {
+      const d = { env: x.env, role: x.role || '', node: x.node, screen: map[x.screen] };
+      if (!doc.displays.some(q => HFE_HMI_KEY(q) === HFE_HMI_KEY(d))) doc.displays.push(d);
+    }
+    return { first: map[b.screens[0].id], screens: b.screens.map(s => s.id) };
+  }
+  const HFE_HMI_KEY = x => [x.env || '', x.role || '', x.node].join('/');
+
+  /* ---------------- example: a "new system" status display for an RPAS ground control station ---------------- */
+  function example() {
+    const L = (id, x, y, w, h, text, size, colour, extra) => ({ id, type: 'label', x, y, w, h, text, size, colour: colour || 'white', align: 'left', bold: false, ...(extra || {}) });
+    const nav = { id: 'nav', type: 'menu', x: 16, y: 696, w: 992, h: 56, orient: 'row', size: 20,
+      items: [{ text: 'LINK', onClick: 'goto link' }, { text: 'MAP', onClick: 'goto map' }, { text: 'SYSTEM', onClick: 'goto system' }] };
+    const alert = { id: 'lost', type: 'alert', x: 16, y: 72, w: 992, h: 56, text: 'DATALINK LOST: PRESS TO ACKNOWLEDGE', when: 'link < 20 && !ack', level: 'warning', onClick: 'ack = true', size: 22 };
+    const head = t => [{ id: 'bar', type: 'panel', x: 0, y: 0, w: 1024, h: 60, title: '', fill: '#101a24', stroke: '#101a24' },
+      L('title', 16, 12, 600, 36, t, 24, 'white', { bold: true }), L('mode', 700, 12, 308, 36, 'MODE {mode}', 20, 'cyan', { align: 'right' })];
+    return normalise({
+      format: FORMAT, version: VERSION, name: 'GCS add-on datalink display',
+      notes: 'Example: a new system’s display added to an RPAS ground control station console, to try its layout and alerting on the real console before any software exists.',
+      vars: [{ name: 'link', type: 'number', init: 82, unit: '%' }, { name: 'satcom', type: 'bool', init: true }, { name: 'los', type: 'bool', init: false },
+        { name: 'ack', type: 'bool', init: false }, { name: 'mode', type: 'text', init: 'AUTO' }, { name: 'alt', type: 'number', init: 18500, unit: 'ft' },
+        { name: 'hdg', type: 'number', init: 45, unit: '°' }, { name: 'gain', type: 'number', init: 60, unit: '%' }],
+      start: 'link',
+      screens: [
+        { id: 'link', name: 'Link status', w: 1024, h: 768, bg: BG, widgets: [...head('DATALINK'), alert,
+          { id: 'q', type: 'gauge', x: 40, y: 150, w: 280, h: 280, label: 'LINK QUALITY', var: 'link', min: 0, max: 100, warn: 40, alarm: 20, dir: 'low', unit: '%', size: 30 },
+          { id: 'pl', type: 'panel', x: 350, y: 150, w: 640, h: 280, title: 'PATHS', fill: PANEL, stroke: EDGE },
+          { id: 'l1', type: 'lamp', x: 380, y: 190, w: 180, h: 60, text: 'SATCOM', onWhen: 'satcom && link >= 20', colour: 'green', size: 22 },
+          { id: 'l2', type: 'lamp', x: 580, y: 190, w: 180, h: 60, text: 'LOS', onWhen: 'los', colour: 'green', size: 22 },
+          { id: 'l3', type: 'lamp', x: 780, y: 190, w: 180, h: 60, text: 'NO LINK', onWhen: 'link < 20', colour: 'red', size: 22 },
+          { id: 't1', type: 'toggle', x: 380, y: 280, w: 280, h: 56, text: 'SATCOM', var: 'satcom', size: 22 },
+          { id: 't2', type: 'toggle', x: 680, y: 280, w: 280, h: 56, text: 'LOS', var: 'los', size: 22 },
+          { id: 'b1', type: 'bar', x: 380, y: 352, w: 580, h: 64, label: 'RX GAIN', var: 'gain', min: 0, max: 100, warn: 85, alarm: 95, dir: 'high', unit: '%', orient: 'row', size: 18 },
+          { id: 'r1', type: 'readout', x: 40, y: 460, w: 300, h: 100, label: 'ALTITUDE', var: 'alt', decimals: 0, unit: 'ft', size: 40, colour: 'white' },
+          { id: 'r2', type: 'readout', x: 360, y: 460, w: 300, h: 100, label: 'HEADING', var: 'hdg', decimals: 0, unit: '°', size: 40, colour: 'white' },
+          { id: 'sim', type: 'button', x: 690, y: 460, w: 300, h: 44, text: 'Simulate link loss', size: 18, onClick: 'link = 8; ack = false; satcom = false', activeWhen: 'link < 20' },
+          { id: 'rst', type: 'button', x: 690, y: 516, w: 300, h: 44, text: 'Restore link', size: 18, onClick: 'link = 82; satcom = true', activeWhen: '' },
+          { id: 'g1', type: 'slider', x: 40, y: 590, w: 620, h: 72, var: 'gain', min: 0, max: 100, step: 1, size: 18 },
+          nav] },
+        { id: 'map', name: 'Map', w: 1024, h: 768, bg: BG, widgets: [...head('MAP'), alert,
+          { id: 'm', type: 'map', x: 16, y: 140, w: 700, h: 540, heading: 'hdg', range: 40, unit: 'NM', size: 16,
+            tracks: [{ x: 0.35, y: 0.42, label: 'TGT 01', kind: 'hostile' }, { x: -0.5, y: 0.1, label: 'RELAY', kind: 'friend' }, { x: 0.1, y: -0.55, label: 'UNK 07', kind: 'unknown' }] },
+          { id: 'hd', type: 'readout', x: 732, y: 140, w: 276, h: 100, label: 'HEADING', var: 'hdg', decimals: 0, unit: '°', size: 40, colour: 'cyan' },
+          { id: 'hl', type: 'button', x: 732, y: 256, w: 132, h: 56, text: '◀ 10°', size: 20, onClick: 'hdg = (hdg + 350) % 360' },
+          { id: 'hr', type: 'button', x: 876, y: 256, w: 132, h: 56, text: '10° ▶', size: 20, onClick: 'hdg = (hdg + 10) % 360' },
+          { id: 'q2', type: 'bar', x: 732, y: 330, w: 276, h: 64, label: 'LINK', var: 'link', min: 0, max: 100, warn: 40, alarm: 20, dir: 'low', unit: '%', orient: 'row', size: 18 },
+          nav] },
+        { id: 'system', name: 'System', w: 1024, h: 768, bg: BG, widgets: [...head('SYSTEM'), alert,
+          { id: 'mp', type: 'panel', x: 16, y: 140, w: 480, h: 300, title: 'MODE', fill: PANEL, stroke: EDGE },
+          { id: 'mm', type: 'menu', x: 40, y: 180, w: 432, h: 240, orient: 'column', size: 22,
+            items: [{ text: 'AUTO', onClick: "mode = 'AUTO'", activeWhen: "mode == 'AUTO'" }, { text: 'MANUAL', onClick: "mode = 'MANUAL'", activeWhen: "mode == 'MANUAL'" }, { text: 'STANDBY', onClick: "mode = 'STANDBY'", activeWhen: "mode == 'STANDBY'" }] },
+          L('note', 520, 150, 480, 30, 'Alert acknowledged: {ack}', 18, 'grey'),
+          { id: 'clr', type: 'button', x: 520, y: 190, w: 240, h: 56, text: 'Reset alert', size: 20, onClick: 'ack = false' },
+          nav] }
+      ],
+      // the add-on display goes on the right-hand small console screen; the main tactical display shows its map
+      displays: [{ env: 'gcs-container', role: 'pilot', node: 'ws.scr.3', screen: 'link' }, { env: 'gcs-container', role: 'pilot', node: 'ws.scr.0', screen: 'map' }],
+      scenarios: []
+    });
+  }
+
+  return { FORMAT, VERSION, TYPES, COLOURS, colour, newDoc, blankScreen, create, normalise, validate, example, screenOf, displayKey, current,
+    parseExpr, evaluate, names, parseActions, initState, run, hit, press, visible, text, render, measure, pixelAt, fit, menuItem, setImageLoader, animated, symbol, PRESETS, addPreset };
+})();
+if (typeof module !== 'undefined' && module.exports) module.exports = HFE_HMI;
+
+/* ---------------- environment library (ENV-07, ENV-08) ----------------
+   Each environment is a template held as data: an enclosure (shell), seated roles, fixtures, defaults for the
+   workstation model, and the checks that apply now or are planned. The tool loads a template by id (?env=<id> in the
+   URL, the Environment tab, or the library shown before any model loads). New templates are added here, not in the
+   tool's code. See docs/ENVIRONMENTS_AND_KIT.md section 3.
+
+   Every dimension here is INDICATIVE: generic, illustrative geometry built from public, approximate figures, so that
+   layouts can be explored. None of it is the geometry of a real platform. Real platform geometry is project data and is
+   never added to this file (docs/ENVIRONMENTS_AND_KIT.md section 7).
+
+   Frames. All lengths in mm, angles in degrees.
+     Shell frame: origin on the floor at the centre of the enclosure; Y up; +X towards the front wall (the wall the
+       consoles face); Z along the enclosure's length.
+     Role frame: the tool's world frame for the role being assessed: origin at that seat's front edge on the floor, +X
+       forward, +Z to the operator's right. Roles marked mirror: true are left-right mirror images of the template's
+       console (its ws), for example the right-hand seat of a pair.
+
+   Fields
+     id, name, family (domain and sub-domain), domain (office | air | land | maritime | submarine)
+     status       available | preview | planned (planned templates are listed but cannot be loaded)
+     summary      one or two sentences for the library card
+     roles        [{ id, name, z, dx, mirror }]: z = the seat's centreline along the shell; each console's far edge sits
+                  frontGap from the front wall, then dx (negative = further back, for rows)
+     shell        optional enclosure:
+                    { kind: 'box', internal: { length, width, height }, ceiling, frontGap, door }
+                    { kind: 'tube', internal: { length, diameter, axis }, frontAt, frontGap, door }
+                  box: length along Z, width along X. tube: a fuselage or hull along Z, axis = height of its centreline
+                  above the floor, frontAt = height at which the curved wall is taken as the front.
+     fixtures     shared items in the shell frame; x may be given as front: distance back from the front wall
+     roleFixtures items repeated at every role, in that role's frame (mirrored with the role)
+                    { k: 'box', x, y, z, d (along X), h, w (along Z), mat, yaw }    centre position
+                    { k: 'disp', x, y, z, w, h, yaw, tilt } or { k: 'disp', size, aspect, ... }   a display, facing -X at yaw 0
+                    { k: 'cyl', x, z, y0, y1, r, mat }  { k: 'dome', x, y, z, rx, ry, rz, mat }   mat: console | rack | dark | metal | glass | wall
+     stations     'mirror': every other role gets a copy of the active console, screens and seat
+     params       user-adjustable geometry: [{ key, label, path, min, max, step }] (path into the template)
+     ws           partial workstation settings merged over the tool's defaults when the template loads
+     checks       { now: [check groups that apply], planned: [plain-language checks still to come] }
+     sources      public references behind the indicative geometry
+     reqs         requirement IDs the template serves */
+const HFE_ENV = (() => {
+  const ALL_NOW = ['Vision', 'Head and neck', 'Upper limb', 'Trunk and seat', 'Lower limb', 'Furniture', 'Joint range of motion', 'Posture scores', 'Clearance'];
+  // a display given by diagonal (inches) and aspect ratio
+  const disp = (size, aspect, o) => { const [a, b] = aspect.split(':').map(Number), k = size * 25.4 / Math.hypot(a, b); return { k: 'disp', w: a * k, h: b * k, ...o }; };
+  const scr = (size, aspect, x, z, yaw, dy, tilt = null) => ({ size, aspect, orient: 'landscape', curve: 0, tilt, dy, x, z, yaw });
+  const room = (L, W, H, extra) => ({ length: { key: 'length', label: L, path: ['shell', 'internal', 'length'], min: 2000, max: 30000, step: 10 },
+    width: { key: 'width', label: W, path: ['shell', 'internal', 'width'], min: 1200, max: 20000, step: 10 },
+    height: { key: 'height', label: H, path: ['shell', 'internal', 'height'], min: 1500, max: 6000, step: 10 }, ...extra });
+
+  const T = [
+    {
+      id: 'desk-workstation', name: 'Seated desk workstation', family: 'Office and general', domain: 'office', status: 'available',
+      summary: 'An office or control-room desk with a chair, one to four screens and desk items. The original Seated Workstation Fit model.',
+      roles: [{ id: 'user', name: 'Desk user', z: 0 }],
+      ws: {},
+      checks: { now: ALL_NOW, planned: [] },
+      sources: ['ISO 9241-5', 'BS EN 1335-1:2020', 'MIL-STD-1472', 'ANSUR II'],
+      reqs: ['ENV-02', 'ENV-03', 'ENV-05']
+    },
+    {
+      id: 'gcs-container', name: 'Ground control station (RPAS)', family: 'Air: remotely piloted', domain: 'air', status: 'preview',
+      summary: 'Two reclining operator seats side by side in a shipping-container shelter, a radio and phone pedestal between them, and each operator facing a keyboard, joystick, small console screens and a two-tier wall of large displays. Laid out after public photographs of MQ-9 class stations; indicative dimensions only.',
+      roles: [{ id: 'pilot', name: 'Pilot (left seat)', z: -720 }, { id: 'sensor', name: 'Sensor operator (right seat)', z: 720, mirror: true }],
+      // typical internal dimensions of an ISO 668 20 ft container; consoles against the front long wall
+      shell: { kind: 'box', internal: { length: 5898, width: 2352, height: 2393 }, frontGap: 260, door: { side: 'rear', z: 2300, width: 900, height: 2000 } },
+      stations: 'mirror',
+      params: Object.values(room('Shelter internal length', 'Shelter internal width', 'Shelter internal height')),
+      ws: {
+        chair: 'operator', armrests: true, armH: 230, recline: 12, footrest: 0,
+        deskSize: 'custom', deskWidth: 900, deskDepth: 620, deskH: 740, deskT: 40, legroom: 430, deskStyle: 'console',
+        screens: {
+          count: 4, layout: 'custom', bottom: 250, tilt: 0,
+          // main tactical display, the display above it, and two small console screens on the desk
+          list: [scr(20.1, '4:3', 560, 0, 0, 0), scr(20.1, '4:3', 580, 0, 0, 335, -10), scr(10.4, '4:3', 330, -125, 0, -235, 18), scr(10.4, '4:3', 330, 125, 0, -235, 18)]
+        },
+        objects: [
+          { id: 'o1', type: 'keyboard', kb: 'full', x: 150, z: -40, yaw: 0, homeRowH: 30, tilt: 4, use: 'frequent' },
+          { id: 'o2', type: 'stick', x: 170, z: 300, yaw: 0, use: 'frequent' },
+          { id: 'o3', type: 'throttle', x: 170, z: -340, yaw: 0, use: 'frequent' }
+        ],
+        hands: { L: 'o3', R: 'o2' }
+      },
+      roleFixtures: [
+        // outboard stack of large displays, turned towards the seat
+        disp(20.1, '4:3', { x: 470, y: 1180, z: -720, yaw: 38, tilt: 0 }),
+        disp(20.1, '4:3', { x: 520, y: 1530, z: -760, yaw: 38, tilt: -10 }),
+        // equipment rack behind the displays
+        { k: 'box', x: 760, y: 1100, z: -120, d: 240, h: 2200, w: 1500, mat: 'rack' }
+      ],
+      fixtures: [
+        // pedestal between the seats: radios, phone, papers
+        { k: 'box', front: 600, y: 520, z: 0, d: 560, h: 1040, w: 420, mat: 'console' },
+        { k: 'box', front: 640, y: 1080, z: 0, d: 200, h: 80, w: 210, mat: 'dark' },
+        // shared displays above the pedestal
+        disp(20.1, '4:3', { front: 300, y: 1230, z: 0, yaw: 0, tilt: 0 }),
+        disp(20.1, '4:3', { front: 300, y: 1580, z: 0, yaw: 0, tilt: -10 })
+      ],
+      checks: {
+        now: ALL_NOW,
+        planned: [
+          'Every display checked for every operator: viewing distance, legibility, gaze and head rotation, off-axis angle (ENV-11)',
+          'Display priority and frequency of use, so a high-priority display outside the primary zone fails (ENV-11)',
+          'The outboard and shared displays are drawn but not yet assessed; the four nearest displays are',
+          'Occlusion of one display by another, by the console or by the operator’s arms (ENV-11)',
+          'Seat recline and push-back clearance to the rear wall, shared passage, door ingress and egress',
+          'Baseline against “with new displays” comparison for display creep (PRJ-02)'
+        ]
+      },
+      sources: ['Typical internal dimensions of an ISO 668 20 ft container', 'Layout after public photographs of MQ-9 class ground control stations (US Air Force imagery); no measured dimensions',
+        'Def Stan 00-250, MIL-STD-1472 and BS EN ISO 9241 for the planned display checks'],
+      reqs: ['ENV-07', 'ENV-08', 'ENV-11']
+    },
+    {
+      id: 'control-centre', name: 'Busy control centre', family: 'Land and joint: operations centre', domain: 'land', status: 'preview',
+      summary: 'Two rows of four operator consoles facing a wall of large displays, with a supervisor desk behind. For sightlines to the video wall over the front row, console spacing and display layout.',
+      roles: [
+        { id: 'r1p2', name: 'Front row, seat 2', z: -950 }, { id: 'r1p1', name: 'Front row, seat 1', z: -2850 }, { id: 'r1p3', name: 'Front row, seat 3', z: 950 }, { id: 'r1p4', name: 'Front row, seat 4', z: 2850 },
+        { id: 'r2p2', name: 'Back row, seat 2', z: -950, dx: -2300 }, { id: 'r2p1', name: 'Back row, seat 1', z: -2850, dx: -2300 }, { id: 'r2p3', name: 'Back row, seat 3', z: 950, dx: -2300 }, { id: 'r2p4', name: 'Back row, seat 4', z: 2850, dx: -2300 }
+      ],
+      shell: { kind: 'box', internal: { length: 13000, width: 10000, height: 3300 }, frontGap: 3600, door: { side: 'rear', z: 5200, width: 1000, height: 2100 } },
+      stations: 'mirror',
+      params: Object.values(room('Room length (side to side)', 'Room depth (front to back)', 'Room height')),
+      ws: {
+        chair: 'taskHead', armrests: true,
+        deskSize: '1800x900', deskWidth: 1800, deskDepth: 900, deskH: 720, legroom: 650, deskStyle: 'console',
+        screens: { count: 3, layout: 'row', wrap: 25, gap: 10, dist: 620, bottom: 90, tilt: 5, list: [scr(27, '16:9', 450, 0, 0, 0), scr(27, '16:9', 450, 0, 0, 0), scr(27, '16:9', 450, 0, 0, 0), scr(27, '16:9', 450, 0, 0, 0)] }
+      },
+      fixtures: [
+        // video wall: 6 x 2 tiles of 55 inch 16:9, bottom edge 1000 mm above the floor
+        ...[0, 1].flatMap(r => [-2.5, -1.5, -0.5, 0.5, 1.5, 2.5].map(c => disp(55, '16:9', { front: 60, y: 1000 + 685 / 2 + r * 690, z: c * 1222, yaw: 0, tilt: 0 }))),
+        // supervisor desk at the back
+        { k: 'box', front: 8300, y: 370, z: 0, d: 900, h: 740, w: 3000, mat: 'console' }
+      ],
+      checks: { now: ALL_NOW, planned: ['Sightline from each seat to the video wall over the front row and its displays (ISO 11064-3)', 'Viewing distance and character size for the video wall', 'Console spacing and circulation routes', 'Supervisor sightlines to every operator'] },
+      sources: ['ISO 11064-3 (control room layout) and ISO 11064-4 (workstation layout) for the planned checks', 'Indicative dimensions; 55 inch tiles at their nominal size'],
+      reqs: ['ENV-07', 'ENV-08']
+    },
+    {
+      id: 'mission-crew', name: 'Airborne mission crew cabin', family: 'Air: airborne surveillance (E-3 class)', domain: 'air', status: 'preview',
+      summary: 'Mission consoles along the side of a narrow-body fuselage, as in E-3 class airborne early-warning aircraft: seated operators facing the cabin wall, each with two large displays, in a tube with a curved wall and low headroom.',
+      roles: [{ id: 'c2', name: 'Console 2', z: 0 }, { id: 'c1', name: 'Console 1', z: -1150 }, { id: 'c3', name: 'Console 3', z: 1150 }],
+      // narrow-body fuselage: Boeing 707 class, about 3.76 m outside diameter; floor below the centreline
+      shell: { kind: 'tube', internal: { length: 7000, diameter: 3550, axis: 620 }, frontAt: 1300, frontGap: 120 },
+      stations: 'mirror',
+      params: [
+        { key: 'diameter', label: 'Cabin internal diameter', path: ['shell', 'internal', 'diameter'], min: 2500, max: 6000, step: 10 },
+        { key: 'axis', label: 'Fuselage centreline above the floor', path: ['shell', 'internal', 'axis'], min: 0, max: 1500, step: 10 },
+        { key: 'length', label: 'Cabin length shown', path: ['shell', 'internal', 'length'], min: 3000, max: 30000, step: 10 }
+      ],
+      ws: {
+        chair: 'operator', armrests: true, recline: 8,
+        deskSize: 'custom', deskWidth: 1000, deskDepth: 520, deskH: 720, deskT: 40, legroom: 420, deskStyle: 'console',
+        screens: { count: 2, layout: 'custom', bottom: 70, tilt: 8, list: [scr(21.3, '4:3', 470, -245, 8, 0), scr(21.3, '4:3', 470, 245, -8, 0), scr(24, '16:10', 450, 0, 0, 0), scr(24, '16:10', 450, 0, 0, 0)] },
+        objects: [
+          { id: 'o1', type: 'keyboard', kb: 'full', x: 150, z: 60, yaw: 0, homeRowH: 30, tilt: 4, use: 'frequent' },
+          { id: 'o2', type: 'tbThumb', x: 170, z: 380, yaw: 0, use: 'frequent' }
+        ],
+        hands: { L: 'o1', R: 'o2' }
+      },
+      fixtures: [
+        // overhead stowage along the far wall
+        { k: 'box', front: 640, y: 1850, z: 0, d: 300, h: 200, w: 6800, mat: 'wall' }
+      ],
+      checks: { now: ALL_NOW, planned: ['Head clearance to the curved cabin wall and overhead stowage', 'Aisle width behind the seats with seats rotated, and egress', 'Seat track and harness reach constraints', 'Restraint of loose equipment and turbulence (later)'] },
+      sources: ['Boeing 707-320 fuselage, about 3.76 m outside diameter (public type data); cabin diameter, floor height and console sizes are indicative', 'MIL-STD-1472 and Def Stan 00-250 for the planned checks'],
+      reqs: ['ENV-07', 'ENV-08']
+    },
+    {
+      id: 'submarine-control', name: 'Submarine control room', family: 'Maritime: submarine', domain: 'submarine', status: 'preview',
+      summary: 'A cramped control room: operator consoles along the side, low deckhead with pipe runs, and the periscope well in the middle. For head clearance, reach in restricted headroom and console layout.',
+      roles: [{ id: 'c2', name: 'Console 2', z: 0 }, { id: 'c1', name: 'Console 1', z: -1000 }, { id: 'c3', name: 'Console 3', z: 1000 }],
+      shell: { kind: 'box', internal: { length: 7000, width: 4200, height: 2150 }, frontGap: 80, door: { side: 'rear', z: -2900, width: 650, height: 1500 } },
+      stations: 'mirror',
+      params: Object.values(room('Compartment length', 'Compartment width', 'Deckhead height')),
+      ws: {
+        chair: 'operator', armrests: true, recline: 6,
+        deskSize: 'custom', deskWidth: 900, deskDepth: 520, deskH: 720, deskT: 40, legroom: 400, deskStyle: 'console',
+        screens: { count: 2, layout: 'custom', bottom: 60, tilt: 10, list: [scr(19, '4:3', 430, 0, 0, 0), scr(15, '4:3', 470, 0, 0, 330, -15), scr(24, '16:10', 450, 0, 0, 0), scr(24, '16:10', 450, 0, 0, 0)] },
+        objects: [
+          { id: 'o1', type: 'keyboard', kb: 'tkl', x: 150, z: 40, yaw: 0, homeRowH: 30, tilt: 4, use: 'frequent' },
+          { id: 'o2', type: 'tbThumb', x: 170, z: 330, yaw: 0, use: 'frequent' }
+        ],
+        hands: { L: 'o1', R: 'o2' }
+      },
+      fixtures: [
+        // periscope well and the pipe runs under the deckhead
+        { k: 'cyl', front: 2600, z: 600, y0: 0, y1: 2150, r: 260, mat: 'metal' },
+        { k: 'cyl', front: 2600, z: 600, y0: 1250, y1: 1700, r: 330, mat: 'dark' },
+        ...[-200, 400, 1000].map(x => ({ k: 'cyl', axis: 'z', x, y: 2060, z: 0, len: 7000, r: 40, mat: 'metal' })),
+        { k: 'box', front: 300, y: 1850, z: 0, d: 600, h: 300, w: 6800, mat: 'rack' }
+      ],
+      checks: { now: ALL_NOW, planned: ['Head clearance to the deckhead and pipe runs, with and without a helmet', 'Passage width between consoles and the periscope well', 'Watertight door and hatch transit', 'Reach in restricted headroom when standing'] },
+      sources: ['Illustrative only: not any class of submarine', 'Def Stan 00-250 and MIL-STD-1472 for the planned clearance checks'],
+      reqs: ['ENV-07', 'ENV-08']
+    },
+    {
+      id: 'fast-jet', name: 'Fast-jet cockpit', family: 'Air: fixed wing', domain: 'air', status: 'preview',
+      summary: 'A single-seat cockpit with a reclined ejection seat, side-stick and throttle on the side consoles, an instrument panel with multifunction displays, and a canopy. For panel reach, knee clearance to the panel and sightlines to the displays.',
+      roles: [{ id: 'pilot', name: 'Pilot', z: 0 }],
+      shell: { kind: 'box', internal: { length: 1050, width: 2400, height: 1150 }, ceiling: false, frontGap: 40 },
+      params: [{ key: 'length', label: 'Cockpit width between sills', path: ['shell', 'internal', 'length'], min: 800, max: 1600, step: 10 }],
+      ws: {
+        chair: 'ejection', armrests: false, recline: 17, seatH: 380, seatMin: 300, seatMax: 450, seatDepth: 420, seatWidth: 460, seatGap: 330, footFwd: 34, footrest: 0,
+        deskSize: 'custom', deskWidth: 900, deskDepth: 260, deskH: 900, deskT: 230, legroom: 300, deskStyle: 'panel',
+        screens: { count: 3, layout: 'custom', bottom: -205, tilt: 10, list: [scr(8.4, '4:3', -6, -125, 0, 0), scr(8.4, '4:3', -6, 125, 0, 0), scr(6, '4:3', -6, 0, 0, 160, 12), scr(24, '16:10', 450, 0, 0, 0)] },
+        objects: [
+          { id: 'o1', type: 'stick', x: -230, z: 330, yaw: 0, base: 600, use: 'frequent' },
+          { id: 'o2', type: 'throttle', x: -260, z: -330, yaw: 0, base: 600, use: 'frequent' }
+        ],
+        hands: { L: 'o2', R: 'o1' }
+      },
+      roleFixtures: [
+        // side consoles carrying the stick and throttle
+        { k: 'box', x: -330, y: 300, z: 400, d: 700, h: 600, w: 200, mat: 'dark' },
+        { k: 'box', x: -330, y: 300, z: -400, d: 700, h: 600, w: 200, mat: 'dark' },
+        // head-up display combiner and the canopy
+        { k: 'box', x: 70, y: 1080, z: 0, d: 10, h: 180, w: 160, mat: 'glass', tilt: 30 },
+        { k: 'dome', x: -250, y: 1150, z: 0, rx: 1300, ry: 520, rz: 525, mat: 'glass' }
+      ],
+      checks: { now: ALL_NOW, planned: ['Design eye point and over-the-nose vision (MIL-STD-1333)', 'Ejection clearance lines for knees and helmet', 'Reach to panel controls with harness locked', 'Stick and throttle motion envelopes'] },
+      sources: ['MIL-STD-1333 (aircrew station geometry) for the planned checks', 'Seat back angle, panel and console positions are indicative'],
+      reqs: ['ENV-07', 'ENV-08']
+    },
+    {
+      id: 'ship-ops-room', name: 'Ship’s operations room', family: 'Maritime: surface', domain: 'maritime', status: 'preview',
+      summary: 'A low, dim operations room with a line of multi-display consoles against the bulkhead and a command position behind. For display layout and passage behind the seats in a tight space.',
+      roles: [{ id: 'c2', name: 'Console 2', z: -600 }, { id: 'c1', name: 'Console 1', z: -1800 }, { id: 'c3', name: 'Console 3', z: 600 }, { id: 'c4', name: 'Console 4', z: 1800 }],
+      shell: { kind: 'box', internal: { length: 8000, width: 5200, height: 2250 }, frontGap: 100, door: { side: 'rear', z: 3300, width: 750, height: 1800 } },
+      stations: 'mirror',
+      params: Object.values(room('Compartment length', 'Compartment width', 'Deckhead height')),
+      ws: {
+        chair: 'operator', armrests: true, recline: 6,
+        deskSize: 'custom', deskWidth: 1150, deskDepth: 600, deskH: 720, legroom: 450, deskStyle: 'console',
+        screens: { count: 3, layout: 'custom', bottom: 60, tilt: 8, list: [scr(24, '16:10', 480, 0, 0, 0), scr(24, '16:10', 520, 0, 0, 355, -12), scr(12.1, '4:3', 260, 360, -30, -40, 30), scr(24, '16:10', 450, 0, 0, 0)] },
+        objects: [
+          { id: 'o1', type: 'keyboard', kb: 'tkl', x: 150, z: 0, yaw: 0, homeRowH: 30, tilt: 4, use: 'frequent' },
+          { id: 'o2', type: 'tbThumb', x: 170, z: -300, yaw: 0, use: 'frequent' }
+        ],
+        hands: { L: 'o2', R: 'o1' }
+      },
+      fixtures: [{ k: 'box', front: 3900, y: 450, z: 0, d: 900, h: 900, w: 2200, mat: 'console' }],
+      checks: { now: ALL_NOW, planned: ['Passage width behind occupied seats', 'Head clearance to deckhead fittings', 'Static deck inclination (ENV-10)', 'Display legibility in low lighting'] },
+      sources: ['Illustrative only: not any class of ship', 'Def Stan 00-250 and BS EN ISO 11064 for the planned checks'],
+      reqs: ['ENV-07', 'ENV-08', 'ENV-10']
+    },
+    // planned templates (ENV-08): listed so users can see the roadmap; they cannot be loaded yet
+    { id: 'vehicle-commander', name: 'Vehicle commander station with roof hatch', family: 'Land: vehicle', domain: 'land', status: 'planned',
+      summary: 'Commander and gunner stations under a roof hatch: head and helmet clearance, hatch transit with kit, vision blocks and sights. Needs the kit model and standing postures.',
+      checks: { planned: ['Head and helmet clearance', 'Hatch transit with kit', 'Vision block and periscope sightlines', 'Reach to controls'] } },
+    { id: 'vehicle-driver', name: 'Vehicle driver station', family: 'Land: vehicle', domain: 'land', status: 'planned',
+      summary: 'Driver seat, pedals, steering and vision blocks, head-out and closed-down.', checks: { planned: ['Pedal and control reach', 'Knee clearance', 'Vision blocks'] } },
+    { id: 'dismounted', name: 'Doorways, steps and firing positions', family: 'Land: dismounted', domain: 'land', status: 'planned',
+      summary: 'Apertures, step heights, trench and firing-step profiles, kneeling and prone positions.', checks: { planned: ['Aperture transit', 'Step heights', 'Weapon sight alignment'] } },
+    { id: 'rotary-cabin', name: 'Rotary-wing cockpit and cabin', family: 'Air: rotary', domain: 'air', status: 'planned',
+      summary: 'Pilot stations with cyclic and collective, troop seats, door and ramp, with cabin headroom.', checks: { planned: ['Cyclic and collective reach', 'Cabin headroom', 'Door transit with kit'] } },
+    { id: 'ship-bridge', name: 'Ship’s bridge', family: 'Maritime: surface', domain: 'maritime', status: 'planned',
+      summary: 'Standing and seated bridge consoles, bridge windows and sightlines over the bow, bridge wings.', checks: { planned: ['Sightlines over the console to the horizon', 'Standing console reach', 'Window and mullion obscuration'] } },
+    { id: 'atc-tower', name: 'Air traffic control tower cab', family: 'Air: ground', domain: 'air', status: 'planned',
+      summary: 'Controller positions in a glazed tower cab: sightlines to the runway thresholds over the consoles, and glare.', checks: { planned: ['Sightlines to the airfield over the consoles', 'Glazing mullion obscuration'] } }
+  ];
+  const BY = Object.fromEntries(T.map(e => [e.id, e]));
+  const DEFAULT = 'desk-workstation';
+  const loadable = e => !!e && e.status !== 'planned';
+  const get = id => BY[id] || null;
+  const getPath = (o, p) => p.reduce((a, k) => (a == null ? a : a[k]), o);
+  // a working copy of a template with the user's parameter values applied
+  function resolve(id, params) {
+    const e = structuredClone(BY[id] || BY[DEFAULT]);
+    for (const p of e.params || []) {
+      const v = params && params[p.key];
+      if (v == null || !isFinite(v)) continue;
+      const parent = getPath(e, p.path.slice(0, -1)); if (parent) parent[p.path[p.path.length - 1]] = Math.min(p.max, Math.max(p.min, +v));
+    }
+    return e;
+  }
+  const paramValue = (e, p) => getPath(e, p.path);
+  // left-right mirror image of a workstation (for the right-hand seat of a mirrored pair)
+  function mirrorWs(ws) {
+    const w = structuredClone(ws);
+    if (w.screens && w.screens.list) w.screens.list.forEach(s => { s.z = -(+s.z || 0); s.yaw = -(+s.yaw || 0); });
+    if (w.objects) w.objects.forEach(o => { o.z = -o.z; o.yaw = -(o.yaw || 0); });
+    if (w.hands) w.hands = { L: w.hands.R, R: w.hands.L };
+    return w;
+  }
+  return { list: T, get, resolve, paramValue, loadable, mirrorWs, DEFAULT };
+})();
+if (typeof module !== 'undefined' && module.exports) module.exports = HFE_ENV;
+
+const BUILD = 'ff3d1e582a24';
+const H = HFE_HMI;
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); return true; } catch { return false; } } };
+let toastT; function toast(m) { $('#toast').textContent = m; clearTimeout(toastT); toastT = setTimeout(() => { $('#toast').textContent = ''; }, 4000); }
+const KEY = 'builder';
+
+/* ---------------- pictures ---------------- */
+const IMGS = new Map();
+H.setImageLoader(src => {
+  let im = IMGS.get(src);
+  if (!im) { im = new Image(); im.onload = () => draw(); im.src = src; IMGS.set(src, im); }
+  return im.complete && im.naturalWidth ? im : null;
+});
+
+/* ---------------- displays: from the environment templates, or live from an open workspace ---------------- */
+const ASPECT = { '16:9': [16, 9], '16:10': [16, 10], '21:9': [21, 9], '32:9': [32, 9], '3:2': [3, 2], '4:3': [4, 3], '5:4': [5, 4] };
+const ENVS = HFE_ENV.list.filter(e => HFE_ENV.loadable(e));
+function templateDisplays(envId) {
+  const E = HFE_ENV.get(envId), sc = E && E.ws && E.ws.screens, n = sc ? sc.count : 1;
+  const list = sc && sc.list ? sc.list : [{ size: 27, aspect: '16:9' }];
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const s = list[i] || list[0], [a, b] = ASPECT[s.aspect] || [16, 9], k = s.size * 25.4 / Math.hypot(a, b);
+    let w = a * k, h = b * k; if (s.orient === 'portrait') [w, h] = [h, w];
+    out.push({ node: 'ws.scr.' + i, label: `Screen ${i + 1}, ${s.size}″ ${s.aspect}`, wMm: w, hMm: h, distMm: null });
+  }
+  return out;
+}
+const LIVE = { env: null, role: null, envName: '', displays: null, at: 0, hmi: null };
+function displaysFor(env, role) {
+  if (LIVE.displays && LIVE.env === env && (!role || LIVE.role === role)) return { list: LIVE.displays, live: true };
+  return { list: templateDisplays(env), live: false };
+}
+const displayOf = x => (displaysFor(x.env, x.role).list.find(d => d.node === x.node)) || null;
+
+/* ---------------- document and history ---------------- */
+const B = { doc: null, state: null, screen: null, sel: null, mode: 'edit', fname: 'untitled.hmi.json', zoom: 0, fit: true, undo: [], redo: [], lastSnap: 0 };
+const scr = () => H.screenOf(B.doc, B.screen);
+const selW = () => (B.sel ? scr().widgets.find(w => w.id === B.sel) : null);
+function snap(force) {
+  const now = Date.now(); if (!force && now - B.lastSnap < 700) return;
+  B.lastSnap = now; B.undo.push(JSON.stringify(B.doc)); if (B.undo.length > 80) B.undo.shift(); B.redo = [];
+}
+function restore(json) { B.doc = H.normalise(json); if (!B.doc.screens.some(s => s.id === B.screen)) B.screen = B.doc.start; if (!selW()) B.sel = null; syncState(); changed(true); }
+$('#undo').onclick = () => { if (!B.undo.length) return; B.redo.push(JSON.stringify(B.doc)); restore(B.undo.pop()); };
+$('#redo').onclick = () => { if (!B.redo.length) return; B.undo.push(JSON.stringify(B.doc)); restore(B.redo.pop()); };
+// keep variable values across edits; new variables start at their initial value
+function syncState() {
+  const fresh = H.initState(B.doc), old = B.state;
+  if (old) for (const v of B.doc.vars) if (v.name in old.vars && typeof old.vars[v.name] === typeof fresh.vars[v.name]) fresh.vars[v.name] = old.vars[v.name];
+  fresh.at[KEY] = B.screen; B.state = fresh;
+}
+function setDoc(d, name) {
+  B.doc = H.normalise(d); B.fname = name || B.fname; B.screen = B.doc.start; B.sel = null; B.state = null; B.undo = []; B.redo = []; syncState(); B.fit = true; changed(true);
+}
+let pubT = 0;
+// after any change: redraw, refresh the panels, keep the draft, tell the workspace
+function changed(all) {
+  B.state.at[KEY] = B.screen;
+  draw(); renderScreens(); if (all !== 'canvas') renderInspector(); renderProblems(); renderVars(); renderDisplays();
+  $('#sb-file').textContent = B.fname; $('#sb-scr').textContent = `${scr().name} · ${scr().w} × ${scr().h} px · ${scr().widgets.length} widgets`;
+  clearTimeout(pubT); pubT = setTimeout(publish, 250);
+}
+
+/* ---------------- drawing the screen ---------------- */
+const cv = $('#cv'), g = cv.getContext('2d');
+function zoomNow() {
+  const s = scr();
+  if (B.fit) { const wr = $('#stagewrap').getBoundingClientRect(); B.zoom = Math.max(0.15, Math.min(2, (wr.width - 64) / s.w, (wr.height - 100) / s.h)); }
+  return B.zoom;
+}
+function draw() {
+  if (!B.doc) return;
+  const s = scr(), z = zoomNow(), dpr = Math.min(2, window.devicePixelRatio || 1);
+  cv.width = Math.round(s.w * z * dpr); cv.height = Math.round(s.h * z * dpr); cv.style.width = s.w * z + 'px'; cv.style.height = s.h * z + 'px';
+  H.render(g, B.doc, B.state, KEY, { scale: z * dpr, screen: s.id, editing: B.mode === 'edit', time: performance.now() / 1000 });
+  if (B.mode === 'edit' && B.grid !== false) {
+    g.save(); g.setTransform(z * dpr, 0, 0, z * dpr, 0, 0); g.fillStyle = 'rgba(255,255,255,.07)';
+    if (z >= 0.5) for (let x = 0; x < s.w; x += 32) for (let y = 0; y < s.h; y += 32) g.fillRect(x - 0.75, y - 0.75, 1.5, 1.5);
+    g.restore();
+  }
+  $('#z-txt').textContent = Math.round(z * 100) + '%';
+  placeSel();
+}
+function placeSel() {
+  const w = B.mode === 'edit' ? selW() : null, sb = $('#selbox');
+  if (!w) { sb.hidden = true; return; }
+  const z = B.zoom; sb.hidden = false;
+  Object.assign(sb.style, { left: w.x * z + 'px', top: w.y * z + 'px', width: w.w * z + 'px', height: w.h * z + 'px' });
+  $('#seltag').textContent = `${H.TYPES[w.type].name} ${w.id} · ${w.w} × ${w.h}`;
+}
+new ResizeObserver(() => { if (B.doc && B.fit) draw(); }).observe($('#stagewrap'));
+// a radar sweep moves: redraw about 20 times a second while such a screen shows (and the page is visible)
+let lastAnim = 0;
+(function tick(t) { if (B.doc && !drag && t - lastAnim > 50 && !document.hidden && H.animated(scr())) { lastAnim = t; draw(); } requestAnimationFrame(tick); })(0);
+$('#z-in').onclick = () => { B.fit = false; B.zoom = Math.min(4, zoomNow() * 1.25); draw(); };
+$('#z-out').onclick = () => { B.fit = false; B.zoom = Math.max(0.1, zoomNow() / 1.25); draw(); };
+$('#z-fit').onclick = () => { B.fit = true; draw(); };
+
+/* ---------------- editing on the canvas ---------------- */
+const GRID = 8, snapv = (v, e) => (e && e.altKey ? Math.round(v) : Math.round(v / GRID) * GRID);
+function toScreen(e) { const r = cv.getBoundingClientRect(), s = scr(); return { x: (e.clientX - r.left) / r.width * s.w, y: (e.clientY - r.top) / r.height * s.h }; }
+function pickAny(x, y) { const ws = scr().widgets; for (let i = ws.length - 1; i >= 0; i--) { const w = ws[i]; if (x >= w.x && y >= w.y && x <= w.x + w.w && y <= w.y + w.h) return w; } return null; }
+let drag = null;
+cv.addEventListener('pointerdown', e => {
+  if (e.button !== 0) return;
+  const p = toScreen(e);
+  if (B.mode === 'run') {
+    const r = H.press(B.doc, B.state, KEY, p.x, p.y);
+    if (r.changed) { B.screen = B.state.at[KEY]; draw(); renderScreens(); renderVars(); sendVars(); $('#sb-scr').textContent = `${scr().name} · ${scr().w} × ${scr().h} px`; }
+    return;
+  }
+  const w = pickAny(p.x, p.y); B.sel = w ? w.id : null; renderInspector(); draw();
+  if (w) { cv.setPointerCapture(e.pointerId); drag = { kind: 'move', w, p0: p, x0: w.x, y0: w.y, moved: false }; }
+});
+$('#selbox').addEventListener('pointerdown', e => {
+  const h = e.target.closest('.h'); if (!h || e.button !== 0) return;
+  e.preventDefault(); e.stopPropagation(); const w = selW(); if (!w) return;
+  h.setPointerCapture(e.pointerId); drag = { kind: h.dataset.h, w, p0: toScreen(e), x0: w.x, y0: w.y, w0: w.w, h0: w.h, el: h, moved: false };
+  const mv = ev => dragMove(ev), up = () => { h.removeEventListener('pointermove', mv); h.removeEventListener('pointerup', up); dragEnd(); };
+  h.addEventListener('pointermove', mv); h.addEventListener('pointerup', up);
+});
+cv.addEventListener('pointermove', e => {
+  if (drag) return dragMove(e);
+  if (B.mode === 'run') { const p = toScreen(e); cv.style.cursor = H.hit(B.doc, B.state, KEY, p.x, p.y) ? 'pointer' : 'default'; }
+  else { const p = toScreen(e); cv.style.cursor = pickAny(p.x, p.y) ? 'move' : 'default'; }
+});
+cv.addEventListener('pointerup', dragEnd); cv.addEventListener('pointercancel', dragEnd);
+function dragMove(e) {
+  const d = drag; if (!d) return; const p = toScreen(e), dx = p.x - d.p0.x, dy = p.y - d.p0.y;
+  if (!d.moved && Math.hypot(dx, dy) < 2) return;
+  if (!d.moved) { snap(true); d.moved = true; }
+  const w = d.w;
+  if (d.kind === 'move') { w.x = snapv(d.x0 + dx, e); w.y = snapv(d.y0 + dy, e); }
+  else {
+    const L = d.kind.includes('w'), T = d.kind.includes('n');
+    let x0 = d.x0, y0 = d.y0, x1 = d.x0 + d.w0, y1 = d.y0 + d.h0;
+    if (L) x0 = Math.min(x1 - 8, snapv(d.x0 + dx, e)); else x1 = Math.max(x0 + 8, snapv(x1 + dx, e));
+    if (T) y0 = Math.min(y1 - 8, snapv(d.y0 + dy, e)); else y1 = Math.max(y0 + 8, snapv(y1 + dy, e));
+    Object.assign(w, { x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
+  }
+  draw(); syncGeom();
+}
+function dragEnd() { if (drag && drag.moved) changed(); drag = null; }
+// keep the geometry fields in the inspector in step while dragging
+function syncGeom() { const w = selW(); if (!w) return; for (const k of ['x', 'y', 'w', 'h']) { const f = $(`#p-w [data-g="${k}"]`); if (f) f.value = w[k]; } }
+
+function addWidget(type, at) {
+  snap(true); const s = scr(), T = H.TYPES[type], used = new Set(s.widgets.map(w => w.id));
+  let x, y;
+  if (at) { x = snapv(at.x - T.w / 2); y = snapv(at.y - T.h / 2); }
+  else { const n = s.widgets.length % 8; x = snapv((s.w - T.w) / 2 + n * 16); y = snapv((s.h - T.h) / 2 + n * 16); }
+  const w = H.create(type, Math.max(0, Math.min(s.w - T.w, x)), Math.max(0, Math.min(s.h - T.h, y)), used);
+  // a new widget that shows a variable picks the first variable of a suitable type
+  const want = { toggle: 'bool', slider: 'number', readout: 'number', gauge: 'number', bar: 'number', tape: 'number', compass: 'number' }[type];
+  if (want) { const v = B.doc.vars.find(v => v.type === want); if (v) w.var = v.name; }
+  s.widgets.push(w); B.sel = w.id; if (B.mode === 'run') setMode('edit'); changed(true); tab('w');
+}
+const PAL_ORDER = ['Layout', 'Controls', 'Indicators', 'Displays', 'Flight', 'Sensors', 'C2'];
+$('#pal').innerHTML = PAL_ORDER.map(gp => `<span class="g">${gp}</span>` + Object.entries(H.TYPES).filter(([, T]) => T.group === gp).map(([k, T]) => `<button draggable="true" data-type="${k}" title="Add a ${T.name.toLowerCase()}">${esc(T.name)}</button>`).join('')).join('');
+$('#pal').addEventListener('click', e => { const b = e.target.closest('[data-type]'); if (b) addWidget(b.dataset.type); });
+$('#pal').addEventListener('dragstart', e => { const b = e.target.closest('[data-type]'); if (b) e.dataTransfer.setData('text/x-hfe-widget', b.dataset.type); });
+cv.addEventListener('dragover', e => { if ([...e.dataTransfer.types].includes('text/x-hfe-widget')) e.preventDefault(); });
+cv.addEventListener('drop', e => { const t = e.dataTransfer.getData('text/x-hfe-widget'); if (t) { e.preventDefault(); addWidget(t, toScreen(e)); } });
+
+function deleteSel() { const s = scr(), i = s.widgets.findIndex(w => w.id === B.sel); if (i < 0) return; snap(true); s.widgets.splice(i, 1); B.sel = null; changed(true); }
+function duplicateSel() {
+  const w = selW(); if (!w) return; snap(true); const s = scr(), used = new Set(s.widgets.map(x => x.id));
+  let i = 2; const base = w.id.replace(/\d+$/, ''); while (used.has(base + i)) i++;
+  const c = { ...JSON.parse(JSON.stringify(w)), id: base + i, x: w.x + 16, y: w.y + 16 }; s.widgets.push(c); B.sel = c.id; changed(true);
+}
+function order(dir) { const s = scr(), i = s.widgets.findIndex(w => w.id === B.sel); if (i < 0) return; snap(true); const [w] = s.widgets.splice(i, 1); s.widgets.splice(dir > 0 ? s.widgets.length : 0, 0, w); changed(true); }
+
+/* ---------------- mode ---------------- */
+function setMode(m) {
+  B.mode = m; $('#m-edit').setAttribute('aria-pressed', m === 'edit'); $('#m-run').setAttribute('aria-pressed', m === 'run');
+  $('#stage').classList.toggle('run', m === 'run'); $('#runbar').hidden = m !== 'run'; $('#sb-mode').textContent = m === 'run' ? 'Run' : 'Edit';
+  if (m === 'run') { B.state.at[KEY] = B.screen; } draw(); renderVars();
+}
+$('#m-edit').onclick = () => setMode('edit');
+$('#m-run').onclick = () => setMode('run');
+
+/* ---------------- screens ---------------- */
+function renderScreens() {
+  $('#scr-list').innerHTML = B.doc.screens.map(s => `<button data-s="${esc(s.id)}" aria-current="${s.id === B.screen}"><span>${esc(s.name)}${s.id === B.doc.start ? ' ★' : ''}</span><small>${s.w}×${s.h}</small></button>`).join('');
+}
+$('#scr-list').addEventListener('click', e => { const b = e.target.closest('[data-s]'); if (!b) return; B.screen = b.dataset.s; B.sel = null; B.state.at[KEY] = B.screen; changed(true); tab('w'); });
+function newScreenId(base) { const used = new Set(B.doc.screens.map(s => s.id)); let i = 1; while (used.has(base + i)) i++; return base + i; }
+$('#s-add').onclick = () => { snap(true); const c = scr(), id = newScreenId('screen'); B.doc.screens.push(H.blankScreen(id, 'Screen ' + id.slice(6), c.w, c.h)); B.screen = id; B.sel = null; changed(true); tab('w'); };
+$('#s-dup').onclick = () => { snap(true); const c = scr(), id = newScreenId(c.id.replace(/\d+$/, '') + '-'); B.doc.screens.splice(B.doc.screens.indexOf(c) + 1, 0, { ...JSON.parse(JSON.stringify(c)), id, name: c.name + ' (copy)' }); B.screen = id; changed(true); };
+$('#s-del').onclick = () => {
+  if (B.doc.screens.length < 2) return toast('An HMI needs at least one screen.');
+  snap(true); const i = B.doc.screens.indexOf(scr()); B.doc.screens.splice(i, 1);
+  if (!B.doc.screens.some(s => s.id === B.doc.start)) B.doc.start = B.doc.screens[0].id;
+  B.screen = B.doc.screens[Math.max(0, i - 1)].id; B.sel = null; syncState(); changed(true); toast('Screen deleted. Undo brings it back.');
+};
+
+/* ---------------- inspector: properties ---------------- */
+function tab(k) { $$('.tabs [role="tab"]').forEach(t => { const on = t.id === 't-' + k; t.setAttribute('aria-selected', on); $('#' + t.getAttribute('aria-controls')).hidden = !on; }); }
+$$('.tabs [role="tab"]').forEach(t => t.addEventListener('click', () => tab(t.id.slice(2))));
+const COLOUR_NAMES = ['green', 'amber', 'red', 'cyan', 'white', 'grey', 'magenta', 'blue', 'black'];
+function fieldHtml(p, w) {
+  const v = w[p.k], id = 'f-' + p.k;
+  switch (p.kind) {
+    case 'num': return `<label for="${id}">${esc(p.label)}</label><input id="${id}" data-k="${p.k}" data-kind="num" type="number" step="any" value="${v == null ? '' : esc(v)}">`;
+    case 'bool': return `<label for="${id}">${esc(p.label)}</label><span><input id="${id}" data-k="${p.k}" data-kind="bool" type="checkbox"${v ? ' checked' : ''}></span>`;
+    case 'select': return `<label for="${id}">${esc(p.label)}</label><select id="${id}" data-k="${p.k}">${p.opts.map(o => `<option${o === v ? ' selected' : ''}>${o}</option>`).join('')}</select>`;
+    case 'colour': return `<label for="${id}">${esc(p.label)}</label><input id="${id}" data-k="${p.k}" list="dl-col" value="${esc(v)}" placeholder="name or #hex">`;
+    case 'var': return `<label for="${id}">${esc(p.label)}</label><input id="${id}" data-k="${p.k}" data-kind="var" class="mono" list="dl-vars" value="${esc(v)}">`;
+    case 'expr': return `<label for="${id}">${esc(p.label)}</label><input id="${id}" data-k="${p.k}" data-kind="expr" class="mono" value="${esc(v)}" placeholder="always">`;
+    case 'actions': return `<label for="${id}">${esc(p.label)}</label><textarea id="${id}" data-k="${p.k}" data-kind="actions" rows="2" placeholder="goto map; link = 8">${esc(v)}</textarea>`;
+    case 'items': return `<label class="full" for="${id}">${esc(p.label)}</label><textarea class="full" id="${id}" data-k="${p.k}" data-kind="items" rows="4">${esc((v || []).map(it => it.text + (it.onClick ? ' | ' + it.onClick : '') + (it.activeWhen ? ' | ' + it.activeWhen : '')).join('\n'))}</textarea><span class="hint">One item a line: <code>text | actions</code>, and optionally <code>| lit when</code>. An item that goes to a screen is lit while that screen shows.</span>`;
+    case 'lines': return `<label class="full" for="${id}">${esc(p.label)}</label><textarea class="full" id="${id}" data-k="${p.k}" data-kind="lines" rows="5">${esc((v || []).join('\n'))}</textarea>`;
+    case 'tracks': return `<label class="full" for="${id}">${esc(p.label)}</label><textarea class="full" id="${id}" data-k="${p.k}" data-kind="tracks" rows="4">${esc((v || []).map(t => [t.x, t.y, t.label, t.kind].join(', ')).join('\n'))}</textarea><span class="hint">Kinds: friend, hostile, neutral, unknown. North is up.</span>`;
+    case 'image': return `<label>${esc(p.label)}</label><span>${v ? `<img class="thumb" src="${esc(v)}" alt="">` : '<span class="muted">None</span>'}</span><span></span><span class="row" style="margin:0"><button class="btn" data-act="pick-img">Choose picture…</button><button class="btn" data-act="fill-img" title="Make it fill the screen, behind everything">Fill the screen</button></span>`;
+    default: return `<label for="${id}">${esc(p.label)}</label><input id="${id}" data-k="${p.k}" value="${esc(v)}">`;
+  }
+}
+function renderInspector() {
+  const P = $('#p-w'), w = selW(), s = scr();
+  const vars = `<datalist id="dl-vars">${B.doc.vars.map(v => `<option value="${esc(v.name)}">`).join('')}</datalist><datalist id="dl-col">${COLOUR_NAMES.map(c => `<option value="${c}">`).join('')}</datalist>`;
+  if (!w) {
+    P.innerHTML = `<h4>HMI</h4><div class="form">
+      <label for="d-name">Name</label><input id="d-name" data-doc="name" value="${esc(B.doc.name)}">
+      <label for="d-notes">Notes</label><textarea id="d-notes" data-doc="notes" rows="3" style="font-family:var(--f-sans)">${esc(B.doc.notes)}</textarea></div>
+      <h4>Screen</h4><div class="form">
+      <label for="s-name">Name</label><input id="s-name" data-scr="name" value="${esc(s.name)}">
+      <label for="s-id">Id</label><input id="s-id" data-scr="id" class="mono" value="${esc(s.id)}">
+      <label>Size (px)</label><div class="xy" style="grid-template-columns:1fr 1fr"><input data-scr="w" type="number" min="64" max="4096" value="${s.w}" aria-label="Width"><input data-scr="h" type="number" min="64" max="4096" value="${s.h}" aria-label="Height"></div>
+      <label for="s-bg">Background</label><input id="s-bg" data-scr="bg" list="dl-col" value="${esc(s.bg)}">
+      <label>Start screen</label><span><input type="checkbox" data-scr="start"${B.doc.start === s.id ? ' checked' : ''}> shown first on every display</span>
+      <span class="hint">Select a widget to edit it. Drag widgets from the left onto the screen.</span></div>${vars}`;
+    return;
+  }
+  const T = H.TYPES[w.type];
+  P.innerHTML = `<h4>${esc(T.name)}</h4><div class="form">
+    <label for="f-id">Id</label><input id="f-id" data-k="id" class="mono" value="${esc(w.id)}">
+    <label>Position, size</label><div class="xy"><input data-g="x" type="number" value="${w.x}" aria-label="x"><input data-g="y" type="number" value="${w.y}" aria-label="y"><input data-g="w" type="number" value="${w.w}" aria-label="width"><input data-g="h" type="number" value="${w.h}" aria-label="height"></div>
+    ${T.props.map(p => fieldHtml(p, w)).join('')}
+  </div>
+  <div class="row"><button class="btn" data-act="dup">Duplicate</button><button class="btn" data-act="front">To front</button><button class="btn" data-act="back">To back</button><button class="btn danger" data-act="del">Delete</button></div>
+  <div id="w-measure"></div>${vars}`;
+  checkFields(); renderMeasureFor(w);
+}
+// mark expression and action fields that do not parse
+function checkFields() {
+  $$('#p-w [data-kind="expr"]').forEach(f => { const bad = f.value.trim() && H.parseExpr(f.value).error; f.classList.toggle('bad', !!bad); f.title = bad || ''; });
+  $$('#p-w [data-kind="actions"]').forEach(f => { const e = H.parseActions(f.value).errors; f.classList.toggle('bad', e.length > 0); f.title = e.join('\n'); });
+}
+const readItems = t => t.split('\n').map(l => l.trim()).filter(Boolean).map(l => { const [text, onClick, activeWhen] = l.split('|').map(x => x.trim()); const it = { text, onClick: onClick || '' }; if (activeWhen) it.activeWhen = activeWhen; return it; });
+const readTracks = t => t.split('\n').map(l => l.trim()).filter(Boolean).map(l => { const [x, y, label, kind] = l.split(',').map(s => s.trim()); return { x: +x || 0, y: +y || 0, label: label || '', kind: kind || 'unknown' }; });
+$('#p-w').addEventListener('input', e => {
+  const f = e.target, w = selW(), s = scr();
+  if (f.dataset.doc) { snap(); B.doc[f.dataset.doc] = f.value; return changed('canvas'); }
+  if (f.dataset.scr) {
+    snap(); const k = f.dataset.scr;
+    if (k === 'w' || k === 'h') { const v = Math.round(+f.value); if (v >= 64 && v <= 4096) s[k] = v; else return; }
+    else if (k === 'id') {
+      const v = f.value.trim(); if (!/^[\w-]+$/.test(v) || B.doc.screens.some(x => x !== s && x.id === v)) { f.classList.add('bad'); return; }
+      f.classList.remove('bad'); renameScreen(s.id, v);
+    } else if (k === 'start') { if (f.checked) B.doc.start = s.id; }
+    else s[k] = f.value;
+    return changed('canvas');
+  }
+  if (!w) return;
+  snap();
+  if (f.dataset.g) { const v = Math.round(+f.value); if (Number.isFinite(v)) w[f.dataset.g] = f.dataset.g === 'w' || f.dataset.g === 'h' ? Math.max(4, v) : v; }
+  else if (f.dataset.k === 'id') { const v = f.value.trim(); if (!v || s.widgets.some(x => x !== w && x.id === v)) { f.classList.add('bad'); return; } f.classList.remove('bad'); w.id = v; B.sel = v; }
+  else if (f.dataset.kind === 'num') w[f.dataset.k] = f.value === '' ? null : +f.value;
+  else if (f.dataset.kind === 'bool') w[f.dataset.k] = f.checked;
+  else if (f.dataset.kind === 'items') w.items = readItems(f.value);
+  else if (f.dataset.kind === 'tracks') w.tracks = readTracks(f.value);
+  else if (f.dataset.kind === 'lines') w[f.dataset.k] = f.value.split('\n').map(l => l.trim()).filter(Boolean);
+  else w[f.dataset.k] = f.value;
+  checkFields(); changed('canvas'); renderMeasureFor(w);
+});
+$('#p-w').addEventListener('change', e => { if (e.target.tagName === 'SELECT' || e.target.type === 'checkbox') { /* input already applied */ } snap(true); });
+$('#p-w').addEventListener('click', e => {
+  const a = e.target.closest('[data-act]'); if (!a) return;
+  const act = a.dataset.act;
+  if (act === 'del') deleteSel(); else if (act === 'dup') duplicateSel(); else if (act === 'front') order(1); else if (act === 'back') order(-1);
+  else if (act === 'pick-img') { IMG_TARGET = B.sel; $('#imgfile').click(); }
+  else if (act === 'fill-img') { const w = selW(), s = scr(); if (!w) return; snap(true); Object.assign(w, { x: 0, y: 0, w: s.w, h: s.h }); s.widgets.splice(s.widgets.indexOf(w), 1); s.widgets.unshift(w); changed(true); }
+});
+function renameScreen(from, to) {
+  const s = B.doc.screens.find(x => x.id === from); s.id = to; if (B.doc.start === from) B.doc.start = to; if (B.screen === from) B.screen = to;
+  const fix = src => String(src || '').replace(new RegExp(`(^|[;\\n]\\s*)goto\\s+${from.replace(/[-]/g, '\\-')}(?=\\s*($|[;\\n]))`, 'g'), `$1goto ${to}`);
+  for (const sc of B.doc.screens) for (const w of sc.widgets) { if ('onClick' in w) w.onClick = fix(w.onClick); if (w.items) w.items.forEach(it => { it.onClick = fix(it.onClick); }); }
+  B.doc.displays.forEach(x => { if (x.screen === from) x.screen = to; });
+}
+
+/* ---------------- variables ---------------- */
+function renderVars() {
+  const run = B.mode === 'run';
+  $('#c-v').textContent = B.doc.vars.length;
+  $('#p-v').innerHTML = `<p class="muted" style="margin-top:0">Variables hold the HMI's state. Every display shares them; presses here, in Run, or on a display in 3D change them.</p>
+  <table class="vt"><thead><tr><th>Name</th><th>Type</th><th>Start</th><th>Now</th><th></th></tr></thead><tbody>
+  ${B.doc.vars.map((v, i) => `<tr data-i="${i}"><td><input class="mono" data-v="name" value="${esc(v.name)}" aria-label="Name"></td>
+    <td><select data-v="type" aria-label="Type">${['number', 'bool', 'text'].map(t => `<option value="${t}"${t === v.type ? ' selected' : ''}>${t === 'bool' ? 'on/off' : t}</option>`).join('')}</select></td>
+    <td>${v.type === 'bool' ? `<input type="checkbox" data-v="init"${v.init === true || v.init === 'true' ? ' checked' : ''} aria-label="Starts on">` : `<input data-v="init" value="${esc(v.init)}" aria-label="Start value">`}</td>
+    <td>${v.type === 'bool' ? `<input type="checkbox" data-now="1"${B.state.vars[v.name] ? ' checked' : ''} aria-label="Now on">` : `<input data-now="1" value="${esc(B.state.vars[v.name])}" aria-label="Value now">`}</td>
+    <td><button class="x" data-del="${i}" title="Delete" aria-label="Delete ${esc(v.name)}">×</button></td></tr>`).join('')}
+  </tbody></table>
+  <div class="row"><button class="btn" id="v-add">Add variable</button><button class="btn" id="v-reset" title="Set every variable back to its start value and every display to the start screen">Reset values</button></div>
+  ${run ? '' : '<p class="muted">Tip: the <b>Now</b> column changes values live, so you can see each state of the screen without running it.</p>'}`;
+}
+$('#p-v').addEventListener('change', e => {
+  const f = e.target, tr = f.closest('tr[data-i]'); if (!tr) return; const v = B.doc.vars[+tr.dataset.i];
+  if (f.dataset.now) { B.state.vars[v.name] = v.type === 'bool' ? f.checked : v.type === 'number' ? +f.value || 0 : f.value; draw(); sendVars(); return; }
+  snap(true); const k = f.dataset.v;
+  if (k === 'name') {
+    const n = f.value.trim(); if (!/^[A-Za-z_$][\w$]*$/.test(n) || B.doc.vars.some(x => x !== v && x.name === n)) { toast('Use a unique name of letters, digits and _'); renderVars(); return; }
+    if (v.name in B.state.vars) { B.state.vars[n] = B.state.vars[v.name]; delete B.state.vars[v.name]; } v.name = n;
+  } else if (k === 'type') { v.type = f.value; v.init = v.type === 'bool' ? false : v.type === 'number' ? 0 : ''; delete B.state.vars[v.name]; }
+  else if (k === 'init') v.init = v.type === 'bool' ? f.checked : v.type === 'number' ? +f.value || 0 : f.value;
+  syncState(); changed(true); tab('v');
+});
+$('#p-v').addEventListener('click', e => {
+  if (e.target.id === 'v-add') { snap(true); let i = 1; while (B.doc.vars.some(v => v.name === 'var' + i)) i++; B.doc.vars.push({ name: 'var' + i, type: 'number', init: 0 }); syncState(); changed(true); tab('v'); }
+  if (e.target.id === 'v-reset') { B.state = null; syncState(); B.state.at[KEY] = B.screen = B.doc.start; changed(true); tab('v'); sendVars(); }
+  const d = e.target.closest('[data-del]'); if (d) { snap(true); B.doc.vars.splice(+d.dataset.del, 1); syncState(); changed(true); tab('v'); }
+});
+
+/* ---------------- displays: where screens appear in 3D, and what they measure there ---------------- */
+const fmt1 = v => (v == null ? '–' : (Math.round(v * 10) / 10).toFixed(1));
+function renderDisplays() {
+  $('#c-d').textContent = B.doc.displays.length;
+  const envOpts = sel => ENVS.map(e => `<option value="${e.id}"${e.id === sel ? ' selected' : ''}>${esc(e.name)}</option>`).join('');
+  $('#p-d').innerHTML = `<p class="muted" style="margin-top:0">Choose the displays in Workspace Visualisation that show each screen. ${LIVE.displays ? `Sizes and viewing distances come live from the open workspace (${esc(LIVE.envName)}).` : 'Sizes come from the environment templates; open the workspace for its live sizes and viewing distances.'}</p>
+  ${B.doc.displays.map((x, i) => {
+    const E = HFE_ENV.get(x.env), roles = E ? E.roles || [] : [], D = displaysFor(x.env, x.role), d = D.list.find(q => q.node === x.node);
+    return `<div class="dcard" data-i="${i}"><div class="form">
+      <label>Environment</label><select data-x="env">${envOpts(x.env)}</select>
+      ${roles.length > 1 ? `<label>Seat</label><select data-x="role">${roles.map(r => `<option value="${r.id}"${r.id === x.role ? ' selected' : ''}>${esc(r.name)}</option>`).join('')}</select>` : ''}
+      <label>Display</label><select data-x="node">${D.list.map(q => `<option value="${q.node}"${q.node === x.node ? ' selected' : ''}>${esc(q.label)}</option>`).join('')}${d ? '' : `<option selected>${esc(x.node)} (not in this environment)</option>`}</select>
+      <label>Shows</label><select data-x="screen">${B.doc.screens.map(s => `<option value="${s.id}"${s.id === x.screen ? ' selected' : ''}>${esc(s.name)}</option>`).join('')}</select>
+    </div><div class="meta">${d ? `${fmt1(d.wMm)} × ${fmt1(d.hMm)} mm${d.distMm ? ` · ${Math.round(d.distMm)} mm from the eyes` : ''}${D.live ? ' · live' : ''}` : 'Not found'}</div>
+    <div class="row"><button class="btn" data-act="show">Show in 3D</button><button class="btn" data-act="fitscr" title="Set the screen's pixel size to this display's shape">Match screen shape</button><button class="btn" data-act="measure">Measure</button><button class="btn danger" data-act="rm">Remove</button></div></div>`;
+  }).join('')}
+  <div class="row"><button class="btn primary" data-act="add">Add a display</button></div>
+  <div id="d-measure"></div>`;
+}
+$('#p-d').addEventListener('change', e => {
+  const f = e.target, c = f.closest('.dcard'); if (!c) return; const x = B.doc.displays[+c.dataset.i];
+  snap(true); x[f.dataset.x] = f.value;
+  if (f.dataset.x === 'env') { const E = HFE_ENV.get(x.env); x.role = E && E.roles && E.roles.length ? E.roles[0].id : ''; const l = displaysFor(x.env, x.role).list; if (!l.some(q => q.node === x.node)) x.node = l[0].node; }
+  syncState(); changed(true); tab('d');
+});
+let measuring = null;
+$('#p-d').addEventListener('click', e => {
+  const a = e.target.closest('[data-act]'); if (!a) return; const c = a.closest('.dcard'), x = c ? B.doc.displays[+c.dataset.i] : null;
+  if (a.dataset.act === 'add') {
+    snap(true); const env = LIVE.env || 'gcs-container', E = HFE_ENV.get(env), role = LIVE.role || (E.roles && E.roles[0] ? E.roles[0].id : '');
+    const used = new Set(B.doc.displays.filter(d => d.env === env && d.role === role).map(d => d.node)), free = displaysFor(env, role).list.find(d => !used.has(d.node)) || displaysFor(env, role).list[0];
+    B.doc.displays.push({ env, role, node: free.node, screen: B.screen }); syncState(); changed(true); tab('d');
+  }
+  if (a.dataset.act === 'rm') { snap(true); B.doc.displays.splice(+c.dataset.i, 1); syncState(); changed(true); tab('d'); }
+  if (a.dataset.act === 'show') showIn3D(x);
+  if (a.dataset.act === 'fitscr') {
+    const d = displayOf(x); if (!d) return; const s = H.screenOf(B.doc, x.screen); snap(true);
+    const w = 1024, h = Math.round(w * d.hMm / d.wMm); s.w = w; s.h = h; changed(true); tab('d'); toast(`${s.name} is now ${w} × ${h} px, the shape of this display`);
+  }
+  if (a.dataset.act === 'measure') { measuring = x; renderMeasure(); }
+});
+// the measurement table (hook for the HMI checks, HMI-06): text cap heights and touch targets on the chosen display
+function renderMeasure() {
+  const x = measuring, M = $('#d-measure'); if (!x || !M) return;
+  const d = displayOf(x); if (!d) { M.innerHTML = ''; return; }
+  const m = H.measure(B.doc, x.screen, d, B.state), s = H.screenOf(B.doc, x.screen);
+  M.innerHTML = `<h4>${esc(s.name)} on ${esc(d.label)}</h4>
+    <p class="muted">${fmt1(m.mmPerPx * 100)} mm per 100 px.${d.distMm ? ` Angles at ${Math.round(d.distMm)} mm.` : ' Open the workspace for angles at the real viewing distance.'} Measured, not yet checked: the checks against standards are planned.</p>
+    <table><thead><tr><th>Text</th><th class="num">px</th><th class="num">Cap mm</th><th class="num">arcmin</th></tr></thead><tbody>
+    ${m.text.map(t => `<tr><td>${esc(t.widget)} <span class="muted">${t.type}</span></td><td class="num">${t.px}</td><td class="num">${fmt1(t.capMm)}</td><td class="num">${t.arcmin == null ? '–' : fmt1(t.arcmin)}</td></tr>`).join('')}</tbody></table>
+    <table style="margin-top:8px"><thead><tr><th>Touch target</th><th class="num">Width mm</th><th class="num">Height mm</th></tr></thead><tbody>
+    ${m.targets.map(t => `<tr><td>${esc(t.widget)} <span class="muted">${t.type}${t.count > 1 ? ` (${t.count} items, each)` : ''}</span></td><td class="num">${fmt1(t.wMm)}</td><td class="num">${fmt1(t.hMm)}</td></tr>`).join('')}</tbody></table>`;
+}
+// for the selected widget: its size on the first display that shows this screen
+function renderMeasureFor(w) {
+  const el = $('#w-measure'); if (!el) return;
+  const x = B.doc.displays.find(q => q.screen === B.screen), d = x && displayOf(x);
+  if (!d) { el.innerHTML = '<p class="muted" style="margin-top:12px">Put this screen on a display (Displays tab) to see its physical size.</p>'; return; }
+  const m = H.measure(B.doc, B.screen, d, B.state), t = m.text.find(q => q.widget === w.id), g = m.targets.find(q => q.widget === w.id);
+  el.innerHTML = `<h4>On ${esc(d.label)}</h4><p class="muted" style="margin:0">${fmt1(w.w * m.mmPerPx)} × ${fmt1(w.h * m.mmPerPx)} mm${t ? `; text cap height ${fmt1(t.capMm)} mm${t.arcmin != null ? `, ${fmt1(t.arcmin)} arcmin at ${Math.round(d.distMm)} mm` : ''}` : ''}${g && g.count > 1 ? `; each item ${fmt1(g.wMm)} × ${fmt1(g.hMm)} mm` : ''}.</p>`;
+}
+
+/* ---------------- problems ---------------- */
+let PROBS = [];
+function renderProblems() {
+  PROBS = H.validate(B.doc); const ne = PROBS.filter(p => p.sev === 'error').length, c = $('#c-p');
+  c.textContent = PROBS.length; c.className = 'cnt' + (ne ? ' e' : PROBS.length ? ' w' : '');
+  $('#p-p').innerHTML = PROBS.length ? PROBS.map((p, i) => `<div data-p="${i}"><span class="sev ${p.sev}">${p.sev === 'error' ? '✕' : '!'}</span><span>${esc(p.msg)}${p.screen ? ` <span class="muted">(${esc(H.screenOf(B.doc, p.screen).name)})</span>` : ''}</span></div>`).join('') : '<p class="muted">No problems.</p>';
+}
+$('#p-p').addEventListener('click', e => { const r = e.target.closest('[data-p]'); if (!r) return; const p = PROBS[+r.dataset.p]; if (p.screen) { B.screen = p.screen; B.sel = p.widget || null; changed(true); tab('w'); } });
+
+/* ---------------- Workspace Visualisation link ----------------
+   Same-origin pages talk over a BroadcastChannel ('hfe-lab', shared with the SysML v2 Editor):
+     here → workspace  { type: 'hmi', doc, vars }        the prototype (after every change) and its variables
+                       { type: 'hmi-vars', vars, from }   variables after a press here
+                       { type: 'hmi-ping' }               ask an open workspace for its displays
+     workspace → here  { type: 'hmi-displays', env, envName, role, displays: [{ node, label, wMm, hMm, distMm }] }
+                       { type: 'hmi-vars', vars, from: 'workspace' }   after a press on a display in 3D
+   The prototype is also kept in localStorage ('hfe-lab.hmi'), so a workspace opened later (Show in 3D) picks it up. */
+const WS_URL = (document.querySelector('meta[name="hfe-workspace"]') || {}).content || 'https://hfe-lab.dev/workspace/';
+let chan = null; try { chan = new BroadcastChannel('hfe-lab'); } catch { /* not available */ }
+function publish() {
+  const msg = { type: 'hmi', doc: B.doc, vars: B.state.vars };
+  if (chan) chan.postMessage(msg);
+  if (!store.set('hfe-lab.hmi', JSON.stringify({ doc: B.doc, vars: B.state.vars }))) { /* too big or blocked: the live link still works */ }
+  store.set('hfe-hmi.draft', JSON.stringify({ doc: B.doc, fname: B.fname }));
+}
+function sendVars() { if (chan) chan.postMessage({ type: 'hmi-vars', vars: B.state.vars, from: 'builder' }); store.set('hfe-lab.hmi', JSON.stringify({ doc: B.doc, vars: B.state.vars })); }
+if (chan) chan.onmessage = e => {
+  const d = e.data || {};
+  if (d.type === 'hmi-displays' && Array.isArray(d.displays)) {
+    Object.assign(LIVE, { env: d.env, role: d.role, envName: d.envName || d.env, displays: d.displays, at: Date.now() });
+    $('#ws-pill').className = 'pill live'; $('#ws-text').textContent = `Live: ${d.envName || d.env}${d.roleName ? ' · ' + d.roleName : ''} · ${d.displays.length} displays`;
+    renderDisplays(); if (measuring) renderMeasure(); const w = selW(); if (w) renderMeasureFor(w);
+  }
+  if (d.type === 'hmi-vars' && d.from !== 'builder' && d.vars) { Object.assign(B.state.vars, d.vars); draw(); renderVars(); }
+  if (d.type === 'hmi-ping-builder') publish();
+};
+function showIn3D(x) {
+  x = x || B.doc.displays.find(q => q.screen === B.screen) || B.doc.displays[0];
+  if (!x) { tab('d'); return toast('Choose a display for this screen first: Add a display.'); }
+  publish();
+  const q = new URLSearchParams({ env: x.env, hmi: '1', focus: x.node, from: H.screenOf(B.doc, x.screen).name }); if (x.role) q.set('role', x.role);
+  const url = WS_URL + (WS_URL.includes('?') ? '&' : '?') + q;
+  if (LIVE.displays && chan) {
+    chan.postMessage({ type: 'hmi-show', env: x.env, role: x.role, node: x.node, label: H.screenOf(B.doc, x.screen).name });
+    let w = null; try { w = window.open('', 'hfe-workspace'); } catch { /* blocked */ }
+    try { if (w && w.location.href === 'about:blank') w.location = url; } catch { /* the workspace is already there */ }
+    if (w) w.focus(); toast('Showing it in Workspace Visualisation'); return;
+  }
+  const w = window.open(url, 'hfe-workspace');
+  if (!w) toast('The browser blocked the new tab. Allow pop-ups for this page, or open ' + url);
+}
+$('#ws-show').onclick = () => showIn3D();
+
+/* ---------------- files ---------------- */
+function download(name, data, type) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(data instanceof Blob ? data : new Blob([data], { type: type || 'text/plain' })); a.download = name;
+  document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+}
+const slug = s => (String(s || 'hmi').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'hmi');
+function save() {
+  const name = B.fname && B.fname !== 'untitled.hmi.json' ? B.fname : slug(B.doc.name) + '.hmi.json';
+  const out = { ...B.doc, savedBy: { tool: 'HFE Lab HMI Builder', build: BUILD, at: new Date().toISOString() } };
+  download(name, JSON.stringify(out, null, 2), 'application/json'); B.fname = name; $('#sb-file').textContent = name; toast('Saved ' + name);
+}
+$('#f-save').onclick = save;
+$('#f-open').onclick = () => $('#file').click();
+$('#file').onchange = async e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; try { setDoc(await f.text(), f.name); toast('Opened ' + f.name); } catch (err) { toast(err.message || 'That file is not an HMI prototype.'); } };
+$('#f-new').onclick = () => { setDoc(H.newDoc(), 'untitled.hmi.json'); toast('New HMI. Undo is cleared; the example is one click away.'); };
+$('#f-example').onclick = () => setDoc(H.example(), 'gcs-datalink.hmi.json');
+$('#x-png').onclick = () => {
+  const s = scr(), c = document.createElement('canvas'); c.width = s.w; c.height = s.h;
+  H.render(c.getContext('2d'), B.doc, B.state, KEY, { screen: s.id });
+  c.toBlob(b => download(`${slug(B.doc.name)}-${s.id}.png`, b));
+};
+// a picture of a screen (a mock-up): as the background of this screen, or into the selected image widget
+let IMG_TARGET = null;
+$('#f-import').onclick = () => { IMG_TARGET = null; $('#imgfile').click(); };
+$('#imgfile').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  if (f.size > 6e6) return toast('That picture is over 6 MB. Export it smaller (the HMI file carries the picture inside it).');
+  const url = await new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = no; r.readAsDataURL(f); });
+  const im = new Image(); im.src = url; try { await im.decode(); } catch { return toast('That picture could not be read.'); }
+  snap(true); const s = scr();
+  const t = IMG_TARGET && s.widgets.find(w => w.id === IMG_TARGET);
+  if (t) { t.src = url; t.alt = t.alt || f.name; }
+  else {
+    // an empty screen takes the picture's shape (up to 2048 px across), so the mock-up's own pixel positions carry over
+    if (!s.widgets.length) { const k = Math.min(1, 2048 / im.naturalWidth); s.w = Math.round(im.naturalWidth * k); s.h = Math.round(im.naturalHeight * k); }
+    const used = new Set(s.widgets.map(w => w.id)), w = H.create('image', 0, 0, used);
+    Object.assign(w, { w: s.w, h: s.h, src: url, alt: f.name, fit: 'contain' }); s.widgets.unshift(w); B.sel = w.id;
+  }
+  IMGS.delete(url); changed(true); tab('w');
+  toast(t ? 'Picture replaced' : 'Mock-up added behind everything. Add Hotspot widgets over its buttons to make them work.');
+};
+
+/* ---------------- presets ---------------- */
+function renderPresets() {
+  $('#pre-list').innerHTML = Object.entries(H.PRESETS).map(([k, P]) => `<div class="pre"><canvas data-thumb="${k}" width="400" height="300"></canvas><div>
+    <h3>${esc(P.name)}</h3><p><span class="tag">${esc(P.group)}</span><span class="tag">${P.screens} screen${P.screens > 1 ? 's' : ''}</span></p><p>${esc(P.summary)}</p>
+    <p class="muted" style="font-size:11.5px">Suggested display: ${esc((P.suggest || []).map(x => { const E = HFE_ENV.get(x.env); return (E ? E.name : x.env) + ', screen ' + (+x.node.slice(-1) + 1); }).join('; '))}</p>
+    <div class="row" style="margin-top:4px"><button class="btn primary" data-pre="${k}" data-how="add">Add to this HMI</button><button class="btn" data-pre="${k}" data-how="new">Start a new HMI with it</button></div></div></div>`).join('');
+  // thumbnails: each preset's first screen drawn by the same code
+  $$('#pre-list canvas[data-thumb]').forEach(c => {
+    const d = H.newDoc(); H.addPreset(d, c.dataset.thumb); const s = d.screens[0], st = H.initState(d), k = Math.min(c.width / s.w, c.height / s.h), x = c.getContext('2d');
+    x.fillStyle = '#000'; x.fillRect(0, 0, c.width, c.height);
+    H.render(x, d, st, 'builder', { screen: s.id, scale: k, offX: (c.width - s.w * k) / 2, offY: (c.height - s.h * k) / 2, time: 1.3 });
+  });
+}
+$('#f-presets').onclick = () => { renderPresets(); $('#presets').hidden = false; };
+$('#pre-close').onclick = () => { $('#presets').hidden = true; };
+$('#presets').addEventListener('click', e => {
+  if (e.target.id === 'presets') { $('#presets').hidden = true; return; }
+  const b = e.target.closest('[data-pre]'); if (!b) return;
+  const assign = $('#pre-assign').checked, P = H.PRESETS[b.dataset.pre];
+  if (b.dataset.how === 'new') { const d = H.newDoc(P.name); H.addPreset(d, b.dataset.pre, { assign }); setDoc(d, slug(P.name) + '.hmi.json'); }
+  else { snap(true); const r = H.addPreset(B.doc, b.dataset.pre, { assign }); B.screen = r.first; B.sel = null; syncState(); B.fit = true; changed(true); }
+  $('#presets').hidden = true; tab('w');
+  toast(`${P.name} added${assign ? ' and put on its suggested displays (Displays tab)' : ''}. Press Run to try it.`);
+});
+
+/* ---------------- keys ---------------- */
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { $('#about').hidden = true; $('#presets').hidden = true; if (B.sel) { B.sel = null; renderInspector(); draw(); } return; }
+  const inField = /INPUT|TEXTAREA|SELECT/.test(document.activeElement && document.activeElement.tagName);
+  const mod = e.ctrlKey || e.metaKey;
+  if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); save(); return; }
+  if (mod && e.key.toLowerCase() === 'o') { e.preventDefault(); $('#file').click(); return; }
+  if (inField) return;
+  if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); (e.shiftKey ? $('#redo') : $('#undo')).click(); return; }
+  if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); $('#redo').click(); return; }
+  if (B.mode !== 'edit' || !B.sel) return;
+  if (mod && e.key.toLowerCase() === 'd') { e.preventDefault(); duplicateSel(); return; }
+  if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSel(); return; }
+  const mv = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+  if (mv) { e.preventDefault(); const w = selW(), k = e.shiftKey ? GRID : 1; snap(); w.x += mv[0] * k; w.y += mv[1] * k; draw(); syncGeom(); clearTimeout(pubT); pubT = setTimeout(() => changed(), 300); }
+});
+
+/* ---------------- theme, help, boot ---------------- */
+function setTheme(t) { document.documentElement.dataset.theme = t; store.set('hfe-hmi.theme', t); }
+{ const t = store.get('hfe-hmi.theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); document.documentElement.dataset.theme = t; }
+$('#theme').onclick = () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
+$('#help').onclick = () => { $('#about').hidden = false; $('#about-close').focus(); };
+$('#about-close').onclick = () => { $('#about').hidden = true; };
+$('#about').addEventListener('click', e => { if (e.target.id === 'about') $('#about').hidden = true; });
+if (/(^|\.)hfe-lab\.dev$|\.github\.io$/.test(location.hostname)) { const m = $('#logo'), a = document.createElement('a'); a.href = '/'; a.className = 'logo'; a.innerHTML = m.innerHTML; a.title = 'HFE Lab home'; m.replaceWith(a); }
+{
+  const q = new URLSearchParams(location.search); let draft = null;
+  if (!q.has('example')) { try { draft = JSON.parse(store.get('hfe-hmi.draft') || 'null'); } catch { /* bad draft */ } }
+  try { if (draft && draft.doc) setDoc(draft.doc, draft.fname); else setDoc(H.example(), 'gcs-datalink.hmi.json'); } catch { setDoc(H.example(), 'gcs-datalink.hmi.json'); }
+}
+if (chan) chan.postMessage({ type: 'hmi-ping' });
+window.__hmiApp = { B, H, setDoc, setMode, addWidget, changed, LIVE, publish, showIn3D };
+</script>
+</body></html>
