@@ -104,6 +104,12 @@ svg.i{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-widt
 #results tr.sev.warn td{color:var(--warn)}
 #results tr.sev.ok td{color:var(--ok)}
 .chk-grp{display:block;font-size:11px;color:var(--faint)}
+.chk-src{display:block;font-size:10.5px;color:var(--faint);white-space:normal}
+.chk-src.tbc{color:var(--warn)}
+.std-pick{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin:0 0 10px}
+.std-pick label{font-weight:600}
+.std-pick select{max-width:100%}
+.std-sum{flex-basis:100%;margin:0;color:var(--muted);font-size:12px;max-width:80ch}
 .sb-sum{display:inline-flex;gap:4px;border:0;background:transparent;padding:0;cursor:pointer;flex:none}
 .sb-sum .pill{line-height:16px}
 .sb-sep{width:1px;height:12px;background:var(--rule-strong);flex:none}
@@ -695,8 +701,12 @@ table.kv td{padding:3px 0;overflow-wrap:anywhere}
         </div>
         <div class="tabpanel" id="tp-lim" role="tabpanel" hidden>
           <details class="pnl" open><summary>Limits</summary><div class="pnl-body">
-            <p class="help">The defaults are typical guidance values, not figures quoted from a particular standard. Set them to the clauses you're working to (for example ISO 9241-5, DEF STAN 00-250 or MIL-STD-1472). Leave a box empty for no limit on that side. Screen checks apply to every screen.</p>
-            <div class="btnrow"><button class="btn" id="reset-lim">Reset defaults</button></div>
+            <div class="std-pick"><label for="std">Work to</label><select id="std" class="std-sel" aria-describedby="std-sum"></select><p class="std-sum" id="std-sum"></p></div>
+            <div class="btnrow"><button class="btn std-open">Open a standard file…</button><button class="btn" id="std-blank">Save a blank standard file</button></div>
+            <p class="help">For MOD HF technical guidance, or limits a project or customer sets, put the values and clauses in a standard file and open it here. The file is read on this computer: the tool does not upload it or keep it, so open it again each session. <span id="std-err" class="err"></span></p>
+            <input class="file" type="file" id="std-in" accept=".json,application/json" hidden>
+            <p class="help">Each limit shows where it comes from. A limit marked to be confirmed has not been checked against the standard: set it from your copy. Leave a box empty for no limit on that side. Screen checks apply to every screen.</p>
+            <div class="btnrow"><button class="btn" id="reset-lim">Reset to this standard</button></div>
             <div class="table-wrap"><table class="limtable" id="limits"><thead><tr><th>Check</th><th class="gh">Green min</th><th class="gh">max</th><th class="ah">Amber min</th><th class="ah">max</th></tr></thead><tbody></tbody></table></div>
             <p class="help">Desk object reach is rated by zone. Frequently used objects: green inside the normal zone, amber inside the maximum zone, red beyond it. Occasionally used objects: green inside the maximum zone, amber up to 100 mm beyond, red further.</p>
           </div></details>
@@ -759,6 +769,7 @@ table.kv td{padding:3px 0;overflow-wrap:anywhere}
   <div class="modal-card envlib-card" role="dialog" aria-modal="true" aria-labelledby="envlib-h">
     <div class="modal-head"><h2 id="envlib-h"><span class="envlib-intro">Workspace Visualisation: choose an environment</span><span class="envlib-norm">Environment library</span></h2><span class="tb-spacer"></span><button class="icon-btn" id="envlib-close" aria-label="Close">×</button></div>
     <div class="envlib-body">
+      <div class="std-pick" id="std-start-row"><label for="std-start">Work to</label><select id="std-start" class="std-sel" aria-describedby="std-start-sum"></select><button class="btn std-open">Open a standard file…</button><p class="std-sum" id="std-start-sum"></p></div>
       <p>Choose where to put the manikin. Each environment is a template: geometry, seated roles, workstation defaults and the checks that apply. Loading one replaces the current workstation layout; the manikin and limits stay as they are.</p>
       <div id="envlib-list"></div>
     </div>
@@ -1651,6 +1662,9 @@ const HFE_EVIDENCE = (() => {
     const p = { format: FORMAT, schema: SCHEMA, title: st.title || '', marking: st.marking || '', saved: st.saved || null, tool: st.tool || null,
       env: st.env || null, manikin: st.manikin || null, ws: st.ws || null, lim: st.lim || null, kit: st.kit || 'none', look: st.look || null,
       population: st.population || null };
+    // the standards profile (core/standards.js) is only recorded when it is not the tool's default, so projects saved
+    // before profiles existed keep the same inputs hash
+    if (st.standard) p.standard = st.standard;
     p.inputsHash = inputsHash(p);
     if (st.results) p.results = st.results.map(r => ({ key: r.key, name: r.name, status: r.status, text: r.text }));
     return p;
@@ -1693,7 +1707,8 @@ const HFE_EVIDENCE = (() => {
   }
 
   /* The stamp every output carries, as [label, value] rows. `info` fields: tool, build, title, inputsHash, dataset,
-     datasetHash, subject, kit, solver, validation, marking, when (Date or ISO string). */
+     datasetHash, subject, kit, solver, standard (the standards profile and how much of it is confirmed; its short name in
+     standardShort, for the one-line stamp), validation, marking, when (Date or ISO string). */
   function stamp(info) {
     const when = info.when instanceof Date ? info.when.toISOString() : (info.when || new Date().toISOString());
     const rows = [
@@ -1703,6 +1718,7 @@ const HFE_EVIDENCE = (() => {
       ['Subject', info.subject || 'Not recorded'],
       ['Clothing and kit', info.kit || 'None'],
       ['Posture solver', info.solver || 'Not recorded'],
+      ...(info.standard ? [['Checked against', info.standard]] : []),
       ['Validation status', info.validation || 'Not validated'],
       ['Protective marking', info.marking || 'Not set'],
       ['Generated', when]];
@@ -1712,12 +1728,146 @@ const HFE_EVIDENCE = (() => {
   const short = h => h ? String(h).slice(0, 12) : '—';
   function stampLine(info) {
     const when = info.when instanceof Date ? info.when.toISOString() : (info.when || new Date().toISOString());
-    return `${info.tool || 'HFE Lab'} build ${info.build || 'unknown'} · inputs ${short(info.inputsHash)} · ${info.dataset || 'dataset not recorded'}${info.datasetHash ? ' ' + short(info.datasetHash) : ''} · ${info.validation || 'Not validated'} · ${when.slice(0, 16).replace('T', ' ')} UTC`;
+    return `${info.tool || 'HFE Lab'} build ${info.build || 'unknown'} · inputs ${short(info.inputsHash)} · ${info.dataset || 'dataset not recorded'}${info.datasetHash ? ' ' + short(info.datasetHash) : ''} · ${info.standardShort ? 'checked against ' + info.standardShort + ' · ' : ''}${info.validation || 'Not validated'} · ${when.slice(0, 16).replace('T', ' ')} UTC`;
   }
 
   return { FORMAT, SCHEMA, sha256, canonical, inputs, inputsHash, project, migrate, compare, stamp, stampLine };
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = HFE_EVIDENCE;
+
+/* ---------------- standards profiles: which standard the checks are worked to (CHK-03, CHK-06) ----------------
+   Shared by applications: no DOM, no three.js, unit-tested in Node by tests/standards.test.js. Inlined into the tool's
+   module by tools/build.py (`__STANDARDS__`).
+
+   A profile names the documents a workstation is checked against and, for each check, where its green and amber limits
+   come from. The user picks a profile before modelling (on the start screen) or later in the Limits tab, and every output
+   states which profile it was checked against, so the same workstation can be compared against each.
+
+   A profile only sets a limit that can be traced to a clause. Every limit carries its provenance:
+     from 'std'   the limit is set by this profile, with the clause it rests on and how far that was checked:
+                  verified 'quote'   the value was read in a public copy of that edition;
+                  verified 'heading' the clause number and title were checked, but not the value (text behind a paywall);
+                  verified false     the clause or value could not be checked: shown as "to be confirmed".
+                  verified 'local'   the limit comes from a standard file the user loaded (parse()); shown as entered,
+                                     not checked by the tool.
+     from 'tool'  the profile has no value for this check yet, so the tool's guidance value is used. In a standards
+                  profile this is shown as "to be confirmed" too.
+   Nothing is filled in from memory: a value that cannot be traced stays a tool value until someone with the document
+   adds the clause here. */
+const HFE_STANDARDS = (() => {
+  const DEFAULT = 'tool';
+
+  // the documents profiles cite (public titles; clause text is only quoted where a public copy was read)
+  const DOCS = {
+    iso9241: { short: 'BS EN ISO 9241-5', cite: 'BS EN ISO 9241-5:1999 (ISO 9241-5:1998), Ergonomic requirements for office work with visual display terminals (VDTs), Part 5: Workstation layout and postural requirements', verified: 'heading' },
+    iso11064: { short: 'ISO 11064-4', cite: 'ISO 11064-4:2004, Ergonomic design of control centres, Part 4: Layout and dimensions of workstations', verified: 'quote',
+      note: 'Quoted from the 2004 edition. The 2013 edition replaced it and renumbers some clauses.' },
+    mil1472: { short: 'MIL-STD-1472H', cite: 'MIL-STD-1472H (15 September 2020), Department of Defense Design Criteria Standard: Human Engineering', verified: 'heading' }
+  };
+
+  /* Profiles. `limits` maps a check id to { g, a, clause, verified, note }. A check a profile leaves out uses the tool's
+     guidance value. */
+  const PROFILES = {
+    tool: {
+      id: 'tool', name: 'Tool guidance values', short: 'Tool guidance',
+      summary: 'Typical guidance values built into the tool, not quoted from one standard. Use these for a first look, then choose the standard your project is bound to.',
+      docs: [], limits: {}
+    },
+    iso: {
+      id: 'iso', name: 'BS EN ISO 9241-5 and ISO 11064-4', short: 'ISO 9241-5 / 11064-4',
+      summary: 'Civil office and control-centre workstations: BS EN ISO 9241-5 for display screen work, ISO 11064-4 for control-centre workstation layout.',
+      docs: ['iso9241', 'iso11064'],
+      limits: {
+        arrayEdge: { g: [0, 35], a: [0, 60], clause: 'ISO 11064-4:2004, 3.11 Note 4', verified: 'quote',
+          note: '“the extent of the visual field is approximately ± 35° around the line-of-sight”. Green to 35°; the amber limit is the tool’s.' }
+      }
+    },
+    mil: {
+      id: 'mil', name: 'MIL-STD-1472H', short: 'MIL-STD-1472H',
+      summary: 'US Department of Defense human engineering design criteria, often called up on UK defence programmes alongside Def Stan 00-251.',
+      docs: ['mil1472'],
+      limits: {
+        gazeH: { g: [-15, 15], a: [-35, 35], clause: 'MIL-STD-1472H, Fig. 2 (lines of sight)', verified: 'heading',
+          note: 'Optimum eye rotation ±15°, maximum ±35°, as the tool’s vision plots use. Check the values against the figure in your copy.' }
+      }
+    }
+  };
+  const get = id => PROFILES[id] || PROFILES[DEFAULT];
+
+  /* ---- local standards: a profile read from a file on the user's computer ----
+     For documents whose values cannot be published (MOD HF technical guidance, a customer's own requirements). The
+     file is read in the browser and never uploaded; the in-house build can also carry files from the git-ignored
+     local/standards/ folder (tools/build.py). Nothing from a local file is ever in the repository or the public site.
+     File: { format: 'hfe-lab-standard', version: 1, name, short?, summary?, document?, limits: { checkId: { g, a, clause, note? } } }
+     A limit with an empty clause is left out, so a blank file (template()) can be filled in a bit at a time. */
+  const FILE_FORMAT = 'hfe-lab-standard';
+  const slug = t => String(t).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'standard';
+  const range = r => Array.isArray(r) && r.length === 2 && r.every(v => v === null || (typeof v === 'number' && isFinite(v)));
+  function parse(j, checks) {
+    if (!j || typeof j !== 'object' || j.format !== FILE_FORMAT) throw new Error('This is not a standard file from this tool.');
+    if (!(j.version >= 1)) throw new Error('The standard file has no version number.');
+    if (j.version > 1) throw new Error(`The standard file is version ${j.version}; this tool reads version 1.`);
+    if (!j.name || typeof j.name !== 'string' || !j.name.trim()) throw new Error('The standard file has no name.');
+    const known = checks ? new Set(checks.map(c => c.id)) : null, limits = {}, skipped = [];
+    for (const [id, L] of Object.entries(j.limits || {})) {
+      if (!L || !String(L.clause || '').trim()) continue;   // not filled in yet
+      if (known && !known.has(id)) { skipped.push(id); continue; }
+      if (!range(L.g) || !range(L.a)) throw new Error(`The limits for ${id} must be two numbers (or null) each for green and amber.`);
+      limits[id] = { g: [...L.g], a: [...L.a], clause: String(L.clause).trim(), verified: 'local', note: L.note ? String(L.note) : '' };
+    }
+    const name = j.name.trim();
+    return { id: 'local:' + slug(name), local: true, name, short: String(j.short || name).trim(), document: j.document ? String(j.document) : '',
+      summary: String(j.summary || 'Loaded from a standard file on this computer. Its values are as entered in the file; the tool has not checked them.'),
+      docs: [], limits, skipped };
+  }
+  function add(P) { PROFILES[P.id] = P; return P; }
+  /* A blank standard file to fill in: every check with the tool's values and an empty clause. */
+  const template = (checks, name = '') => ({ format: FILE_FORMAT, version: 1, name, short: '', document: '',
+    summary: '', limits: Object.fromEntries(checks.map(c => [c.id, { name: c.name, unit: c.unit, g: [...c.g], a: [...c.a], clause: '' }])) });
+
+  /* The limits a profile gives, for checks shaped like the tool's CHECKS ({ id, g, a }): { id: { g, a } }. */
+  function limits(id, checks) {
+    const P = get(id), out = {};
+    for (const c of checks) { const L = P.limits[c.id]; out[c.id] = { g: [...(L ? L.g : c.g)], a: [...(L ? L.a : c.a)] }; }
+    return out;
+  }
+
+  /* Where one check's limit comes from under a profile: { from, clause, verified, tbc, text, label, note }. `text` is the
+     full wording (CSV, reports), `label` the short form for narrow panels, `note` the detail for a tooltip. */
+  function source(id, checkId) {
+    const P = get(id), L = P.limits[checkId];
+    if (L) {
+      if (L.verified === 'local') return { from: 'std', clause: L.clause, verified: 'local', tbc: false, note: L.note || '', label: L.clause,
+        text: `${L.clause} (${P.short}, from a local file; values as entered there)` };
+      const tbc = L.verified !== 'quote';
+      return { from: 'std', clause: L.clause, verified: L.verified, tbc, note: L.note || '', label: L.clause + (tbc ? ' · to be confirmed' : ''),
+        text: L.clause + (L.verified === 'heading' ? ' (clause checked, value to be confirmed)' : L.verified === false ? ' (to be confirmed)' : '') };
+    }
+    if (P.id === DEFAULT) return { from: 'tool', clause: null, verified: 'tool', tbc: false, note: '', text: 'Tool guidance value', label: 'Tool value' };
+    return { from: 'tool', clause: null, verified: false, tbc: true, note: `No ${P.short} value has been added for this check yet, so the tool's guidance value is used.`,
+      text: `Tool guidance value; no ${P.short} value yet (to be confirmed)`, label: 'Tool value · to be confirmed' };
+  }
+
+  /* How a profile covers a set of checks, and which limits the user has changed from it. `lim` is the limits in use. */
+  function coverage(id, checks, lim) {
+    const P = get(id), base = limits(id, checks);
+    const fromStd = checks.filter(c => P.limits[c.id]), quoted = fromStd.filter(c => P.limits[c.id].verified === 'quote');
+    const edited = lim ? checks.filter(c => lim[c.id] && JSON.stringify(lim[c.id]) !== JSON.stringify(base[c.id])) : [];
+    return { total: checks.length, fromStd: fromStd.length, quoted: quoted.length, tbc: checks.filter(c => source(id, c.id).tbc).length, edited: edited.map(c => c.id) };
+  }
+
+  /* The stamp value: the profile, how many limits come from it, and any edits. */
+  function stampText(id, checks, lim) {
+    const P = get(id), cv = coverage(id, checks, lim);
+    const ed = cv.edited.length ? `; ${cv.edited.length} limit${cv.edited.length > 1 ? 's' : ''} edited by the user` : '';
+    if (P.id === DEFAULT) return `${P.name} (not a standard)${ed}`;
+    if (P.local) return `${P.name}${P.document ? ', ' + P.document : ''} (local standard file): ${cv.fromStd} of ${cv.total} limits from it, the rest tool guidance values to be confirmed${ed}`;
+    return `${P.name}: ${cv.fromStd} of ${cv.total} limits from the standard (${cv.quoted} checked against a public copy), the rest tool guidance values to be confirmed${ed}`;
+  }
+
+  return { DEFAULT, DOCS, PROFILES, FILE_FORMAT, get list() { return Object.values(PROFILES); }, get, limits, source, coverage, stampText, parse, add, template };
+})();
+if (typeof module !== 'undefined' && module.exports) module.exports = HFE_STANDARDS;
 
 /* ---------------- HMI prototypes: model, logic, drawing and measurement (HMI-01 to HMI-05) ----------------
    An HMI prototype is plain JSON (format 'hfe-lab/hmi'): screens made of widgets, variables, simple logic, and the
@@ -2750,9 +2900,14 @@ const CHECKS = [
 ];
 const CHECK = Object.fromEntries(CHECKS.map(c => [c.id, c]));
 const LIM_DEFAULT = Object.fromEntries(CHECKS.map(c => [c.id, { g: [...c.g], a: [...c.a] }]));
+// the standards profile the checks are worked to (core/standards.js): its limits, and where each one comes from
+const profileLim = (id = S.standard) => HFE_STANDARDS.limits(id, CHECKS);
+const limSource = id => HFE_STANDARDS.source(S.standard, id);
+// standard files built into the in-house build from local/standards/ (never in the public builds)
+for (const j of RAW.standards || []) { try { HFE_STANDARDS.add(HFE_STANDARDS.parse(j, CHECKS)); } catch (e) { console.warn('standard file left out:', e.message); } }
 const S = {
   pop: RAW.defaultPop || 'ansur-m', pct: 50, method: 'subject', custom: null,
-  ws: structuredClone(WS_DEFAULT), lim: structuredClone(LIM_DEFAULT),
+  ws: structuredClone(WS_DEFAULT), lim: structuredClone(LIM_DEFAULT), standard: HFE_STANDARDS.DEFAULT,
   view: 'right', proj: 'ortho', ann: true, showWs: true, zones: true, mk: 'solid', showModel: true, kit: 'none',
   look: null,   // set from LOOK_DEFAULT below
   env: { id: HFE_ENV.DEFAULT, role: 'user', params: {} },
@@ -6774,12 +6929,47 @@ function renderPlan() {
 }
 function svgPt(ev) { const svg = $('#plan'), pt = svg.createSVGPoint(); pt.x = ev.clientX; pt.y = ev.clientY; const p = pt.matrixTransform(svg.getScreenCTM().inverse()); return { z: p.x, x: -p.y }; }
 
+/* ---------------- UI: standards profile (CHK-03, CHK-06) ----------------
+   Chosen on the start screen or in the Limits tab. Choosing one replaces the limits with that profile's, so edits made
+   under another profile are dropped (the toast says so). */
+function syncStandard() {
+  const P = HFE_STANDARDS.get(S.standard);
+  const opts = HFE_STANDARDS.list.map(p => `<option value="${esc(p.id)}">${esc(p.name)}${p.local ? ' (local file)' : ''}</option>`).join('');
+  for (const sel of document.querySelectorAll('.std-sel')) { if (sel.innerHTML !== opts) sel.innerHTML = opts; sel.value = P.id; }
+  const cv = HFE_STANDARDS.coverage(P.id, CHECKS, S.lim);
+  const cover = P.id === HFE_STANDARDS.DEFAULT ? '' : ` ${cv.fromStd} of ${cv.total} limits come from ${P.local ? 'the file' : 'it'}; ${cv.tbc} ${cv.tbc === 1 ? 'is' : 'are'} to be confirmed.`;
+  for (const id of ['#std-sum', '#std-start-sum']) { const el = $(id); if (el) el.textContent = P.summary + cover; }
+}
+// a standard file from this computer (MOD HF technical guidance, a customer's limits): read here, never uploaded or kept
+async function openStandardFile(f) {
+  $('#std-err').textContent = '';
+  try {
+    const P = HFE_STANDARDS.add(HFE_STANDARDS.parse(JSON.parse(await f.text()), CHECKS));
+    setStandard(P.id);
+    const n = Object.keys(P.limits).length;
+    toast(`Checking against ${P.name}: ${n} limit${n === 1 ? '' : 's'} from the file${P.skipped.length ? `; ${P.skipped.length} not recognised and left out (${P.skipped.join(', ')})` : ''}.`);
+  } catch (err) { $('#std-err').textContent = 'Could not open that file: ' + err.message; toast('Could not open that file: ' + err.message); }
+}
+function setStandard(id, opt = {}) {
+  const P = HFE_STANDARDS.get(id);
+  const edited = HFE_STANDARDS.coverage(S.standard, CHECKS, S.lim).edited.length;
+  S.standard = P.id; S.lim = profileLim();
+  syncStandard(); renderLimits(); update();
+  if (opt.toast) toast(`Checking against ${P.name}.${edited ? ` Your ${edited} edited limit${edited > 1 ? 's were' : ' was'} replaced.` : ''}`);
+}
+
 /* ---------------- UI: limits ---------------- */
 function renderLimits() {
   $('#limits tbody').innerHTML = CHECKS.map(c => {
     const L = S.lim[c.id]; const inp = (w, i) => `<input type="number" step="any" id="l-${c.id}-${w}${i}" data-l="${c.id}" data-w="${w}" data-i="${i}" value="${L[w][i] == null ? '' : L[w][i]}" aria-label="${c.name} ${w === 'g' ? 'green' : 'amber'} ${i ? 'max' : 'min'}">`;
-    return `<tr><td>${c.name} <span class="u">${c.unit}</span></td><td>${inp('g', 0)}</td><td>${inp('g', 1)}</td><td>${inp('a', 0)}</td><td>${inp('a', 1)}</td></tr>`;
+    const src = limSrcText(c.id), note = limSource(c.id).note;
+    return `<tr><td>${c.name} <span class="u">${c.unit}</span><span class="chk-src${src.tbc ? ' tbc' : ''}" data-src="${c.id}" title="${esc(src.text + (note ? '. ' + note : ''))}">${esc(src.label)}</span></td><td>${inp('g', 0)}</td><td>${inp('g', 1)}</td><td>${inp('a', 0)}</td><td>${inp('a', 1)}</td></tr>`;
   }).join('');
+}
+// where a check's limit comes from, as the results show it: the profile's source, or the user's edit
+function limSrcText(id) {
+  if (JSON.stringify(S.lim[id]) !== JSON.stringify(profileLim()[id])) return { text: 'Edited by you', label: 'Edited by you', tbc: false, note: '' };
+  const s = limSource(id); return { text: s.text, label: s.label, tbc: s.tbc, note: s.note };
 }
 const limText = r => (r[0] == null && r[1] == null) ? 'any' : r[0] == null ? `≤ ${fmt(r[1])}` : r[1] == null ? `≥ ${fmt(r[0])}` : `${fmt(r[0])} to ${fmt(r[1])}`;
 
@@ -6794,7 +6984,8 @@ function renderResults(rows) {
     html += `<tr class="sev ${st}"><td colspan="6">${STATUS[st].glyph} ${word} (${sec.length})</td></tr>`;
     for (const r of sec) {
     const L = r.base ? S.lim[r.base] : null, S_ = STATUS[r.status];
-    html += `<tr data-st="${st}"><td>${esc(r.name)}<span class="chk-grp">${esc(r.group)}</span></td><td class="v">${r.text}</td><td><span class="st ${r.status}"><i class="g ${r.status}">${S_.glyph}</i>${S_.word}</span></td><td class="lim">${L ? limText(L.g) : r.gtxt || ''}</td><td class="lim">${L ? limText(L.a) : r.atxt || ''}</td><td class="note">${esc(r.note || '')}</td></tr>`;
+    const src = r.base ? limSrcText(r.base) : null;
+    html += `<tr data-st="${st}"><td>${esc(r.name)}<span class="chk-grp">${esc(r.group)}</span></td><td class="v">${r.text}</td><td><span class="st ${r.status}"><i class="g ${r.status}">${S_.glyph}</i>${S_.word}</span></td><td class="lim">${L ? limText(L.g) : r.gtxt || ''}${src ? `<span class="chk-src${src.tbc ? ' tbc' : ''}" title="${esc(src.text + (src.note ? '. ' + src.note : ''))}">${esc(src.label)}</span>` : ''}</td><td class="lim">${L ? limText(L.a) : r.atxt || ''}</td><td class="note">${esc(r.note || '')}</td></tr>`;
     }
   }
   $('#results tbody').innerHTML = html;
@@ -6809,8 +7000,8 @@ function csvText() {
   const fx = kitFx(), lo = HFE_KIT.loadouts[S.kit] || HFE_KIT.loadouts.none;
   const lines = [...stampCsv(q), ...[['Manikin', S.custom ? 'Custom' : `${P.label}, ${ord(S.pct)} percentile stature, ${$('#method').selectedOptions[0].text}`], ['Stature (mm)', M.stature],
     ['Clothing and kit', fx.items.length ? `${lo.name}: ${fx.items.map(i => HFE_KIT.items[i].name).join('; ')}` : 'None'], ['Kit mass (kg)', fx.massKg]].map(r => r.map(q).join(','))];
-  lines.push(''); lines.push(['Group', 'Check', 'Value', 'Result', 'Green range', 'Amber range', 'Note'].map(q).join(','));
-  for (const r of lastRows) { const L = r.base ? S.lim[r.base] : null; lines.push([r.group, r.name, r.text, STATUS[r.status].word, L ? limText(L.g) : r.gtxt || '', L ? limText(L.a) : r.atxt || '', r.note].map(q).join(',')); }
+  lines.push(''); lines.push(['Group', 'Check', 'Value', 'Result', 'Green range', 'Amber range', 'Limit source', 'Note'].map(q).join(','));
+  for (const r of lastRows) { const L = r.base ? S.lim[r.base] : null; lines.push([r.group, r.name, r.text, STATUS[r.status].word, L ? limText(L.g) : r.gtxt || '', L ? limText(L.a) : r.atxt || '', r.base ? limSrcText(r.base).text : 'Tool rule (reach zones)', r.note].map(q).join(',')); }
   lines.push(''); lines.push(['Workstation parameter', 'Value'].map(q).join(','));
   for (const s of WS_SPEC) if (!s.sec) lines.push([s.label + (s.u ? ` (${s.u})` : ''), S.ws[s.id]].map(q).join(','));
   const SC = S.ws.screens;
@@ -6921,8 +7112,14 @@ function bind() {
     update();
   });
   $('#ws-controls').addEventListener('change', e => { if (e.target.tagName === 'SELECT') { const id = e.target.dataset.w, old = S.ws[id]; S.ws[id] = e.target.value; wsChanged(id, old); update(); } });
-  $('#limits').addEventListener('change', e => { const t = e.target; if (!t.dataset.l) return; const v = t.value.trim() === '' ? null : parseFloat(t.value); S.lim[t.dataset.l][t.dataset.w][+t.dataset.i] = (v == null || isFinite(v)) ? v : null; update(); });
-  $('#reset-lim').addEventListener('click', () => { S.lim = structuredClone(LIM_DEFAULT); renderLimits(); update(); });
+  $('#limits').addEventListener('change', e => { const t = e.target; if (!t.dataset.l) return; const v = t.value.trim() === '' ? null : parseFloat(t.value); S.lim[t.dataset.l][t.dataset.w][+t.dataset.i] = (v == null || isFinite(v)) ? v : null;
+    const sp = $(`#limits [data-src="${t.dataset.l}"]`), src = limSrcText(t.dataset.l); if (sp) { sp.textContent = src.label; sp.title = src.text; sp.classList.toggle('tbc', src.tbc); }
+    syncStandard(); update(); });
+  $('#reset-lim').addEventListener('click', () => { S.lim = profileLim(); renderLimits(); update(); });
+  for (const sel of document.querySelectorAll('.std-sel')) sel.addEventListener('change', e => setStandard(e.target.value, { toast: true }));
+  for (const b of document.querySelectorAll('.std-open')) b.addEventListener('click', () => $('#std-in').click());
+  $('#std-in').addEventListener('change', async e => { const f = e.target.files[0]; if (f) await openStandardFile(f); e.target.value = ''; });
+  $('#std-blank').addEventListener('click', () => saveFile('standard-template.json', JSON.stringify(HFE_STANDARDS.template(CHECKS), null, 2)));
   $$('.tabs [role="tab"]').forEach(t => t.addEventListener('click', () => { $$('.tabs [role="tab"]').forEach(x => { const on = x === t; x.setAttribute('aria-selected', on); $('#' + x.getAttribute('aria-controls')).hidden = !on; }); }));
   $('#v-right').onclick = () => setView('right'); $('#v-front').onclick = () => setView('front'); $('#v-top').onclick = () => setView('top'); $('#v-iso').onclick = () => setView('iso');
   $('#th-light').onclick = () => setTheme('light'); $('#th-dark').onclick = () => setTheme('dark');
@@ -7029,8 +7226,8 @@ let toastT; function toast(m) { $('#toast').textContent = m; clearTimeout(toastT
 /* ---------------- evidence: project files and output stamps (PRJ-01, PRJ-03, VAL-02, VAL-03, VAL-07) ----------------
    core/evidence.js does the hashing, migration and comparison; this gathers the tool's state for it. Every output
    (checks CSV, population CSVs, placement map CSV, image, drawing) carries the same stamp. */
-const TOOL = { name: 'HFE Lab Workspace Visualisation', build: '115149943041' };
-const VALIDATION = 'Not validated (posture from geometric rules, not a validated posture-prediction model; limits are guidance values unless edited)';
+const TOOL = { name: 'HFE Lab Workspace Visualisation', build: 'a9b41db0ca07' };
+const VALIDATION = 'Not validated (posture from geometric rules, not a validated posture-prediction model; limits as stated under Checked against)';
 const solverName = W => W.solver === 'body' ? 'Whole body with joint limits (beta)' : 'Classic seated';
 function subjectText() {
   const P = POPS[S.pop], M = currentManikin().vals;
@@ -7042,13 +7239,15 @@ function kitText() { const fx = kitFx(), lo = HFE_KIT.loadouts[S.kit] || HFE_KIT
 function projectNow(results = lastRows) {
   return HFE_EVIDENCE.project({ title: S.project.title, marking: S.project.marking, saved: new Date().toISOString(), tool: { ...TOOL },
     env: S.env, manikin: { pop: S.pop, pct: S.pct, method: S.method, custom: S.custom || currentManikin().vals, customEdited: !!S.custom },
-    ws: S.ws, lim: S.lim, kit: S.kit, look: S.look, population: { pol: POPA.pol }, results });
+    ws: S.ws, lim: S.lim, kit: S.kit, look: S.look, population: { pol: POPA.pol }, results,
+    standard: S.standard === HFE_STANDARDS.DEFAULT ? null : S.standard });   // left out for the default, so older projects keep their inputs hash
 }
 function stampInfo() {
   const P = POPS[S.pop];
   return { tool: TOOL.name, build: TOOL.build, title: S.project.title, inputsHash: projectNow(null).inputsHash,
     dataset: P.label + (P.rec && P.rec.file ? `, ${P.rec.file}` : ''), datasetHash: P.rec && P.rec.sha256, subject: subjectText(), kit: kitText(),
-    solver: solverName(S.ws), validation: VALIDATION, marking: S.project.marking, when: new Date() };
+    solver: solverName(S.ws), validation: VALIDATION, marking: S.project.marking, when: new Date(),
+    standard: HFE_STANDARDS.stampText(S.standard, CHECKS, S.lim), standardShort: HFE_STANDARDS.get(S.standard).short };
 }
 const stampRows = () => HFE_EVIDENCE.stamp(stampInfo());
 const stampLineNow = () => HFE_EVIDENCE.stampLine(stampInfo());
@@ -7371,7 +7570,7 @@ async function makeDrawing(opts = {}) {
     // the evidence stamp (VAL-02): build, project inputs hash, dataset and its hash, validation status, time
     const stampL = typeof stampLineNow === 'function' ? wrapText(stampLineNow(), 86) : [];
     y = Math.max(y + 1, sumBottom - 8.5 - 2.7 * stampL.length);
-    for (const l of wrapText('Link-segment manikin; posture solved from the workstation geometry, not by a validated posture-prediction model. Limits are typical guidance values unless edited. Dimensions in mm; angles in degrees.', 86)) { out += svgText(PX + 4, y, l, 1.9, { fill: '#5b6672' }); y += 2.7; }
+    for (const l of wrapText('Link-segment manikin; posture solved from the workstation geometry, not by a validated posture-prediction model. Limits from the standards profile in the stamp, unless edited. Dimensions in mm; angles in degrees.', 86)) { out += svgText(PX + 4, y, l, 1.9, { fill: '#5b6672' }); y += 2.7; }
     for (const l of stampL) { out += svgText(PX + 4, y, l, 1.9, { fill: '#5b6672' }); y += 2.7; }
     // protective marking, set per project by the user (VAL-07), centred above and below the frame
     const mark = S.project && S.project.marking ? String(S.project.marking).slice(0, 48) : '';
@@ -9365,7 +9564,7 @@ async function popaRun(pol = POPA.pol, onProgress) {
   }
   const settings = { pol, ws: structuredClone(S.ws), lim: structuredClone(S.lim) };
   const res = { when: new Date(), settings, primary: layoutScreens(S.ws, S.ws.deskH).primary, rules: popaRules(pol, S.ws), groups, mix,
-    limChanged: CHECKS.filter(c => JSON.stringify(S.lim[c.id]) !== JSON.stringify(LIM_DEFAULT[c.id])).map(c => c.name),
+    limChanged: CHECKS.filter(c => JSON.stringify(S.lim[c.id]) !== JSON.stringify(profileLim()[c.id])).map(c => c.name), standard: HFE_STANDARDS.get(S.standard).name,
     digest: await sha256(JSON.stringify({ settings, pops: groups.map(g => [g.pop, g.n, g.sha256]) })) };
   return res;
 }
@@ -9453,7 +9652,7 @@ function popaCsv(R) {
   row(['Settings digest (sha256 of workstation, limits and run settings)', R.digest || 'unavailable in this browser']);
   R.rules.forEach((r, i) => row([i ? '' : 'Set-up rules', r]));
   row(['Accommodated means no red result in', POPA_GROUPS.filter(g => R.settings.pol.groups[g]).join('; ')]);
-  row(['Limits', R.limChanged.length ? 'Changed from the defaults: ' + R.limChanged.join('; ') : 'Defaults']);
+  row(['Limits', `${R.standard || HFE_STANDARDS.get(HFE_STANDARDS.DEFAULT).name}${R.limChanged.length ? '; changed from it: ' + R.limChanged.join('; ') : ', unchanged'}`]);
   L.push(''); row(['Population', 'Measure', 'People', 'Accommodated %', '95 % CI low', '95 % CI high', 'All green %']);
   for (const g of G) { const ci = popWilson(g.overall.pass, g.n); row([g.label, 'Overall', g.n, fmt(100 * g.overall.pass / g.n, 2), fmt(ci[0], 2), fmt(ci[1], 2), fmt(100 * g.overall.green / g.n, 2)]);
     g.screens.forEach((s, i) => { const c = popWilson(s.pass, s.n); row([g.label, `Screen ${i + 1}`, s.n, fmt(100 * s.pass / s.n, 2), fmt(c[0], 2), fmt(c[1], 2), fmt(100 * s.green / s.n, 2)]); }); }
@@ -9545,7 +9744,9 @@ function applyProject(p) {
   loadEnv(je.id, { role: je.role, params: je.params, keepWs: true, silent: true });
   if (m.pop && POPS[m.pop]) S.pop = m.pop; if (m.pct) S.pct = m.pct; if (m.method) S.method = m.method;
   S.custom = (m.customEdited || !POPS[m.pop]) ? m.custom : null;
-  S.ws = mergeWs(p.ws); if (p.lim) S.lim = { ...structuredClone(LIM_DEFAULT), ...p.lim };
+  S.standard = HFE_STANDARDS.PROFILES[p.standard] ? p.standard : HFE_STANDARDS.DEFAULT; syncStandard();
+  if (p.standard && !HFE_STANDARDS.PROFILES[p.standard]) setTimeout(() => toast(`This project was checked against a standard file that is not open (${p.standard.replace(/^local:/, '')}). Its limits are as saved; open the file to see their clauses.`), 50);
+  S.ws = mergeWs(p.ws); S.lim = p.lim ? { ...profileLim(), ...p.lim } : profileLim();
   if (p.kit && BODY.kit.loadouts[p.kit]) { S.kit = p.kit; $('#kit').value = S.kit; }
   S.look = { ...LOOK_DEFAULT, ...(p.look || {}) }; renderLook();
   if (p.population && p.population.pol) { const d = POPA.pol; POPA.pol = { ...d, ...p.population.pol, groups: { ...d.groups, ...(p.population.pol.groups || {}) } }; }
@@ -10586,7 +10787,7 @@ const HMI3D = (() => {
 /* ---------------- boot ---------------- */
 if (/(^|\.)hfe-lab\.dev$|\.github\.io$/.test(location.hostname)) { const m = $('.logo'), a = document.createElement('a'); a.href = '/'; a.className = 'logo'; a.innerHTML = m.innerHTML; a.title = 'HFE Lab home'; a.style.textDecoration = 'none'; m.replaceWith(a); }
 BODY.onTexture = () => requestRender(); renderLook(); bindLook();
-makeMats(); makeCube(); popOptions(); renderWsControls(); renderLimits(); bind(); bindDrw(); bindPopa(); bindPrj(); bindPmap(); bindShell(); restoreModels(); XC.restore();
+makeMats(); makeCube(); popOptions(); renderWsControls(); syncStandard(); renderLimits(); bind(); bindDrw(); bindPopa(); bindPrj(); bindPmap(); bindShell(); restoreModels(); XC.restore();
 if (innerWidth < 700) $('#br-min').click();
 bindEnv(); const envBoot = initEnv();
 resize(); setProj('ortho'); update();
