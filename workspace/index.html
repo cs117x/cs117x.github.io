@@ -420,6 +420,7 @@ table.kv td{padding:3px 0;overflow-wrap:anywhere}
   .app-title,.who{display:none}
 }
 @media (prefers-reduced-motion: reduce){*{transition:none!important}}
+.tn.linked{box-shadow:inset 3px 0 0 var(--sel);background:var(--accent-soft)}
 </style>
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -719,7 +720,7 @@ table.kv td{padding:3px 0;overflow-wrap:anywhere}
   <div class="ana-body">
           <div class="ana-head">
             <div class="summary" id="summary"></div>
-            <div class="btnrow"><button class="btn small" id="copy-csv">Copy table</button><button class="btn small" id="exp-csv">Save CSV</button><button class="btn small" id="exp-json">Save project</button></div>
+            <div class="btnrow"><button class="btn small" id="copy-csv">Copy table</button><button class="btn small" id="exp-csv">Save CSV</button><button class="btn small" id="exp-json">Save project</button><button class="btn small" id="exp-res" title="Check results as JSON, for the SysML v2 Editor's evidence">Save results</button></div>
           </div>
           <details class="pnl"><summary>Key</summary><div class="pnl-body">
             <div class="legend">
@@ -1572,6 +1573,7 @@ const HFE_ENV = (() => {
   }
   return { list: T, get, resolve, paramValue, loadable, mirrorWs, DEFAULT };
 })();
+if (typeof module !== 'undefined' && module.exports) module.exports = HFE_ENV;
 
 /* ---------------- evidence: project files, hashes and output stamps (PRJ-01, PRJ-03, VAL-02, VAL-03, VAL-07) ----------------
    Shared by applications: no DOM, no three.js, unit-tested in Node by tests/evidence.test.js. Inlined into the tool's
@@ -5852,6 +5854,7 @@ function update() {
   window.__last = { M, G, R, rows };
   buildBody(M, G); buildWorkstation(M, G, W); buildEnv(G, W); buildZones(G, W); buildAnnotations(M, G, R, W, rows);
   XC.after(rows);   // exact clearance (core/clearance.js): adds its rows, lines and map when it is on
+  SYSLINK.changed();   // tell an open SysML v2 Editor (SYS-04)
   applyVisibility(); renderTree(); syncProxies();
   renderResults(rows); renderManikinPanel(M); syncWsControls(); $('#kit-help').textContent = kitHelp();
   if (!$('#cfg').hidden) renderPlan();
@@ -6037,6 +6040,7 @@ function bind() {
   };
   $('#exp-csv').onclick = () => saveFile(`workstation-checks-${stamp()}.csv`, csvText());
   $('#exp-json').onclick = saveProject;
+  $('#exp-res').onclick = () => saveFile(`workstation-results-${stamp()}.json`, JSON.stringify({ format: 'hfe-lab/results', results: SYSLINK.results() }, null, 2));
   $('#exp-png').onclick = exportPNG;
   $('#csv').addEventListener('change', onCsv);
   $('#json-in').addEventListener('change', onJson);
@@ -6047,7 +6051,7 @@ let toastT; function toast(m) { $('#toast').textContent = m; clearTimeout(toastT
 /* ---------------- evidence: project files and output stamps (PRJ-01, PRJ-03, VAL-02, VAL-03, VAL-07) ----------------
    core/evidence.js does the hashing, migration and comparison; this gathers the tool's state for it. Every output
    (checks CSV, population CSVs, placement map CSV, image, drawing) carries the same stamp. */
-const TOOL = { name: 'HFE Lab Workspace Visualisation', build: '0b788aae9e18' };
+const TOOL = { name: 'HFE Lab Workspace Visualisation', build: '0c331e536f19' };
 const VALIDATION = 'Not validated (posture from geometric rules, not a validated posture-prediction model; limits are guidance values unless edited)';
 const solverName = W => W.solver === 'body' ? 'Whole body with joint limits (beta)' : 'Classic seated';
 function subjectText() {
@@ -9381,6 +9385,7 @@ function bindShell() {
   const tree = $('#br-tree');
   tree.addEventListener('click', e => {
     const row = e.target.closest('.tn'); if (!row) return; const id = row.dataset.id;
+    if (!e.target.closest('.tn-eye') && !e.target.closest('.tn-tw')) SYSLINK.selected(id);
     if (e.target.closest('.tn-eye')) { toggleNode(id); return; }
     if (e.target.closest('.tn-tw') || e.detail === 2) { if (VIS.collapsed.has(id)) VIS.collapsed.delete(id); else VIS.collapsed.add(id); saveVis(); renderTree(); }
   });
@@ -9410,6 +9415,56 @@ function bindShell() {
   });
 }
 
+/* ---------------- link to the SysML v2 Editor (SYS-04) ----------------
+   Pages of the same site talk over a BroadcastChannel ('hfe-lab'). After each update this page publishes its check
+   results and scene objects (debounced); the editor uses them as evidence for requirements and to check node ids. The
+   editor asks this page to show an object ({ type: 'focus', env, role, node }); ?focus=<node>&from=<label> does the same
+   when the editor opens this page. The last results are kept in localStorage for an editor opened later. Nothing here
+   changes a result. */
+const SYSLINK = (() => {
+  let chan = null, t = 0, pending = null; try { chan = new BroadcastChannel('hfe-lab'); } catch { /* not available */ }
+  function results() {
+    const E = envNow(), role = envRole(E), info = stampInfo();
+    return { tool: TOOL.name, build: TOOL.build, env: E.id, envName: E.name, role: role.id, subject: info.subject, at: new Date().toISOString(),
+      stamp: HFE_EVIDENCE.stampLine(info), inputsHash: info.inputsHash,
+      rows: (lastRows || []).map(r => ({ key: r.key, base: r.base, group: r.group, name: r.name, status: r.status, text: r.text })),
+      nodes: treeNodes().map(n => ({ id: n.id, label: n.label })) };
+  }
+  function publish() {
+    t = 0; let R; try { R = results(); } catch { return; }
+    if (chan) chan.postMessage({ type: 'results', data: R });
+    try { localStorage.setItem('hfe-lab.results', JSON.stringify(R)); } catch { /* storage blocked */ }
+  }
+  function changed() {
+    if (!t) t = setTimeout(publish, 400);
+    if (pending) { const p = pending; pending = null; setTimeout(() => focus(p.node, p.label), 0); }
+  }
+  function focus(node, label) {
+    if (!node) return;
+    for (let i = node.lastIndexOf('.'); i > 0; i = node.lastIndexOf('.', i - 1)) VIS.collapsed.delete(node.slice(0, i));
+    $('#browser').hidden = false; renderTree();
+    const row = document.querySelector(`.tn[data-id="${CSS.escape(node)}"]`);
+    $$('.tn.linked').forEach(r => r.classList.remove('linked'));
+    if (row) { row.classList.add('linked'); row.scrollIntoView({ block: 'nearest' }); }
+    highlight(node);
+    toast(row ? `Linked from the SysML model: ${label || node} (${row.querySelector('.tn-name').textContent})` : `The SysML model links to ${node}, which is not in this scene.`);
+  }
+  if (chan) chan.onmessage = e => {
+    const d = e.data || {};
+    if (d.type === 'ping') publish();
+    if (d.type === 'focus') {
+      const other = d.env && (d.env !== S.env.id || (d.role && d.role !== S.env.role)) && HFE_ENV.loadable(HFE_ENV.get(d.env));
+      if (other) { if (!$('#envlib').hidden && typeof closeEnvLib === 'function') closeEnvLib(); pending = { node: d.node, label: d.label }; loadEnv(d.env, { role: d.role }); }
+      else focus(d.node, d.label);
+    }
+  };
+  function boot() {
+    let q; try { q = new URLSearchParams(location.search); } catch { return; }
+    if (q.get('focus')) setTimeout(() => focus(q.get('focus'), q.get('from')), 300);
+  }
+  return { results, publish, changed, focus, boot, selected: node => { if (chan) chan.postMessage({ type: 'selected', node, env: S.env.id, role: S.env.role }); } };
+})();
+
 /* ---------------- boot ---------------- */
 if (/(^|\.)hfe-lab\.dev$|\.github\.io$/.test(location.hostname)) { const m = $('.logo'), a = document.createElement('a'); a.href = '/'; a.className = 'logo'; a.innerHTML = m.innerHTML; a.title = 'HFE Lab home'; a.style.textDecoration = 'none'; m.replaceWith(a); }
 BODY.onTexture = () => requestRender(); renderLook(); bindLook();
@@ -9418,5 +9473,6 @@ if (innerWidth < 700) $('#br-min').click();
 bindEnv(); const envBoot = initEnv();
 resize(); setProj('ortho'); update();
 if (envBoot.ask) openEnvLib(true); else startFullScreenPrompt();
+SYSLINK.boot();
 </script>
 </body></html>

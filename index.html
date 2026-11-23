@@ -20,7 +20,7 @@
 <meta property="og:image:alt" content="HFE Lab, with a wireframe manikin seated on a stool">
 <meta name="twitter:card" content="summary_large_image">
 <style>
-/* Layout: two-column holding page. Text and one tool card left, slowly turning wireframe manikin right. */
+/* Layout: two-column holding page. Text and the tool cards left, slowly turning wireframe manikin right. */
 :root{
   --bg:#ffffff; --ink:#1c2530; --muted:#5b6672; --faint:#8a949e; --rule:#e1e5ea; --accent:#1f5a8a; --card:#f6f8fa; --wire:#5a7691; --floor:#dfe4e9;
   --f:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Roboto,Arial,sans-serif;
@@ -70,6 +70,12 @@ figcaption{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 16p
         <span class="t">Workspace Visualisation</span>
         <span class="d">Choose an environment, put a manikin built from a real person's measurements into it, solve its posture and check the fit against editable limits: sightlines, joint angles, clearances and reach. Environments include a desk workstation, an RPAS ground control station, a busy control centre, an airborne mission crew cabin, a submarine control room, a fast-jet cockpit and a ship's operations room.</span>
         <span class="go">Open Workspace Visualisation →</span>
+      </a>
+      <a class="card" href="/sysml/">
+        <span class="k"><span>Systems modelling</span><span class="badge dev">Preview</span></span>
+        <span class="t">SysML v2 Editor</span>
+        <span class="d">Write a SysML v2 model as text and see its diagrams drawn as you type: definitions, interconnections, requirements and states. Requirements link to objects in Workspace Visualisation, and its check results become their verification evidence.</span>
+        <span class="go">Open the SysML v2 Editor →</span>
       </a>
       <a class="card dev" href="/ui-components/">
         <span class="k"><span>Library</span><span class="badge dev">In development</span></span>

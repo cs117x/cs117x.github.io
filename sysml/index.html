@@ -1,0 +1,2112 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex, nofollow, noarchive"><link rel="icon" href="/favicon.ico" sizes="32x32"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><meta name="theme-color" content="#1f5a8a"><title>SysML v2 Editor</title></head><body>
+<meta name="hfe-workspace" content="/workspace/">
+<style>
+/* Layout: text editor left, live diagram right, inspector (element, traceability, problems) below; top bar with file
+   actions, the Workspace Visualisation link status and the theme. Same design tokens as Workspace Visualisation. */
+:root{
+  --bg:#e9ecef; --chrome:#dfe3e7; --area:#ffffff; --header:#eef0f3; --panel:#ffffff; --panel-2:#f4f6f8;
+  --field:#ffffff; --field-hover:#f0f3f6; --ink:#1c2530; --muted:#5b6672; --faint:#8a949e; --rule:#dde1e6; --rule-strong:#c4ccd5;
+  --accent:#1f5a8a; --accent-ink:#ffffff; --accent-soft:#e1ebf5; --sel:#d97a00; --sel-soft:rgba(217,122,0,.14);
+  --ok:#2b7a43; --warn:#9f6000; --bad:#bb382c; --info:#6b7682; --pending:#6b7682;
+  --ok-bg:#e7f3ea; --warn-bg:#fbf0de; --bad-bg:#fae6e4; --info-bg:#eef1f4;
+  --c-kw:#7a3e9d; --c-id:#1c2530; --c-str:#2b7a43; --c-num:#9f4a00; --c-cm:#7c8894; --c-sym:#5b6672; --c-meta:#1f5a8a;
+  --dg-bg:#fbfcfd; --dg-line:#33414f; --dg-box:#ffffff; --dg-def:#f3f6f9; --dg-pkg:#eef1f4; --dg-text:#1c2530; --dg-muted:#5b6672; --dg-sep:#c9d0d8;
+  --overlay:rgba(20,28,36,.36); --shadow:0 6px 22px rgba(0,0,0,.12);
+  --f-sans:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Roboto,Arial,sans-serif;
+  --f-mono:ui-monospace,"Cascadia Mono","SFMono-Regular",Menlo,Consolas,"Liberation Mono",monospace;
+  --ed-w:42%; --insp-h:27vh;
+  color-scheme:light;
+}
+:root[data-theme="dark"]{
+  --bg:#161616; --chrome:#1f1f1f; --area:#232323; --header:#303030; --panel:#2b2b2b; --panel-2:#323232;
+  --field:#1d1d1d; --field-hover:#3d3d3d; --ink:#e6e6e6; --muted:#b4b4b4; --faint:#828282; --rule:#1c1c1c; --rule-strong:#4a4a4a;
+  --accent:#4c9bff; --accent-ink:#000000; --accent-soft:rgba(76,155,255,.16); --sel:#ff9d1c; --sel-soft:rgba(255,157,28,.18);
+  --ok:#3fd07e; --warn:#ffb22e; --bad:#ff5c50; --info:#8e8e8e; --pending:#9a9a9a;
+  --ok-bg:rgba(63,208,126,.13); --warn-bg:rgba(255,178,46,.13); --bad-bg:rgba(255,92,80,.15); --info-bg:#333333;
+  --c-kw:#d19af0; --c-id:#e6e6e6; --c-str:#7fd49a; --c-num:#ffb86b; --c-cm:#8a949e; --c-sym:#a8a8a8; --c-meta:#6fb0ff;
+  --dg-bg:#262626; --dg-line:#c9ced4; --dg-box:#2e2e2e; --dg-def:#353a40; --dg-pkg:#30343a; --dg-text:#e6e6e6; --dg-muted:#b0b0b0; --dg-sep:#4a4f55;
+  --overlay:rgba(0,0,0,.66); --shadow:0 6px 24px rgba(0,0,0,.5);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;background:var(--bg);color:var(--ink);height:100%}
+body{font-family:var(--f-sans);font-size:12.5px;line-height:1.4;overflow:hidden}
+button,select,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+svg.i{width:15px;height:15px;flex:none;stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.shell{display:grid;grid-template-rows:34px minmax(0,1fr) 6px var(--insp-h) 24px;height:100vh;height:100dvh}
+/* top bar */
+.topbar{display:flex;align-items:center;gap:4px;padding:0 8px;background:var(--chrome);border-bottom:1px solid var(--rule-strong);min-width:0;overflow-x:auto;scrollbar-width:none}
+.topbar::-webkit-scrollbar{display:none}
+.topbar>*{flex:none}
+.logo{display:inline-flex;align-items:center;gap:7px;font-weight:700;color:var(--accent);padding:0 6px 0 2px;white-space:nowrap;text-decoration:none}
+.logo i{width:12px;height:12px;border-radius:3px;background:var(--accent);display:inline-block}
+.app{font-weight:600;padding-right:8px;margin-right:4px;border-right:1px solid var(--rule-strong);white-space:nowrap}
+.tb{display:inline-flex;align-items:center;gap:5px;border:1px solid transparent;background:transparent;padding:3px 8px;border-radius:4px;cursor:pointer;white-space:nowrap}
+.tb:hover{background:var(--field-hover);border-color:var(--rule-strong)}
+.tb-sep{width:1px;height:18px;background:var(--rule-strong);margin:0 4px}
+.spacer{flex:1}
+.pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--rule-strong);border-radius:12px;padding:2px 10px;background:var(--panel);white-space:nowrap;cursor:pointer;max-width:360px;overflow:hidden;text-overflow:ellipsis}
+.pill i{width:8px;height:8px;border-radius:50%;background:var(--faint);flex:none}
+.pill.live i{background:var(--ok)}
+.pill.stored i{background:var(--warn)}
+/* main split */
+.main{display:grid;grid-template-columns:var(--ed-w) 6px minmax(0,1fr);min-height:0}
+.split-v,.split-h{background:var(--chrome);border:0;padding:0}
+.split-v{cursor:col-resize;border-left:1px solid var(--rule);border-right:1px solid var(--rule)}
+.split-h{cursor:row-resize;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule)}
+.split-v:hover,.split-h:hover,.split-v:focus-visible,.split-h:focus-visible{background:var(--accent-soft)}
+.pane{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--area)}
+.pane-head{display:flex;align-items:center;gap:6px;min-height:30px;padding:0 8px;background:var(--header);border-bottom:1px solid var(--rule);flex:none;overflow-x:auto;scrollbar-width:none}
+.pane-head::-webkit-scrollbar{display:none}
+.pane-head .t{font-weight:600;white-space:nowrap}
+.pane-head .sub{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* editor */
+.ed{position:relative;flex:1;min-height:0;display:flex;font:13px/19px var(--f-mono);background:var(--area)}
+.gut{flex:none;width:46px;overflow:hidden;background:var(--panel-2);border-right:1px solid var(--rule);color:var(--faint);text-align:right;user-select:none;position:relative}
+.gut-in{position:absolute;left:0;right:0;top:0;padding:8px 8px 40px 0;will-change:transform}
+.gut-in div{height:19px;position:relative}
+.gut-in div.e::before,.gut-in div.w::before{content:"";position:absolute;left:5px;top:6px;width:7px;height:7px;border-radius:50%}
+.gut-in div.e::before{background:var(--bad)}
+.gut-in div.w::before{background:var(--warn)}
+.gut-in div.cur{color:var(--ink)}
+.code{position:relative;flex:1;min-width:0;overflow:hidden}
+.code pre,.code textarea{position:absolute;inset:0;margin:0;padding:8px 12px 40px;border:0;font:inherit;white-space:pre;tab-size:4;overflow:hidden;letter-spacing:0}
+.code pre{pointer-events:none;will-change:transform;right:auto;bottom:auto;min-width:100%;min-height:100%}
+#src{color:transparent;background:transparent;caret-color:var(--ink);resize:none;outline:0;overflow:auto;z-index:2}
+#src::selection{background:rgba(76,155,255,.28);color:transparent}
+#hl .k{color:var(--c-kw);font-weight:600}#hl .s{color:var(--c-str)}#hl .n{color:var(--c-num)}#hl .c{color:var(--c-cm);font-style:italic}
+#hl .y{color:var(--c-sym)}#hl .m{color:var(--c-meta);font-weight:600}#hl .d{color:var(--ink);font-weight:600}#hl{color:var(--c-id)}
+#sq{color:transparent}
+#sq .e{text-decoration:underline wavy var(--bad);text-decoration-skip-ink:none;text-underline-offset:3px}
+#sq .w{text-decoration:underline wavy var(--warn);text-decoration-skip-ink:none;text-underline-offset:3px}
+#sq .h{background:var(--sel-soft);border-radius:2px}
+/* completion */
+.cmp{position:absolute;z-index:20;min-width:260px;max-width:460px;max-height:240px;overflow:auto;background:var(--panel);border:1px solid var(--rule-strong);border-radius:5px;box-shadow:var(--shadow);font:12px/1.3 var(--f-sans);padding:3px}
+.cmp div{display:flex;gap:10px;justify-content:space-between;padding:4px 8px;border-radius:3px;cursor:pointer;white-space:nowrap}
+.cmp div b{font:600 12px var(--f-mono)}
+.cmp div span{color:var(--muted);overflow:hidden;text-overflow:ellipsis}
+.cmp div[aria-selected="true"]{background:var(--accent);color:var(--accent-ink)}
+.cmp div[aria-selected="true"] span{color:inherit}
+/* diagram */
+.seg{display:inline-flex;border:1px solid var(--rule-strong);border-radius:4px;overflow:hidden;flex:none}
+.seg button{border:0;background:var(--panel);padding:3px 9px;cursor:pointer;white-space:nowrap}
+.seg button+button{border-left:1px solid var(--rule-strong)}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+select.root{max-width:260px;background:var(--field);border:1px solid var(--rule-strong);border-radius:4px;padding:2px 4px}
+.ibtn{border:1px solid var(--rule-strong);background:var(--panel);border-radius:4px;padding:2px 7px;cursor:pointer;min-width:26px}
+.ibtn:hover{background:var(--field-hover)}
+.dgwrap{position:relative;flex:1;min-height:0;overflow:hidden;background:var(--dg-bg);cursor:grab;touch-action:none}
+.dgwrap.drag{cursor:grabbing}
+.dgwrap>svg{position:absolute;left:0;top:0;transform-origin:0 0}
+.dg-msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);padding:24px;text-align:center;pointer-events:none}
+.legend{position:absolute;right:8px;bottom:8px;background:var(--panel);border:1px solid var(--rule-strong);border-radius:4px;padding:4px 8px;color:var(--muted);font-size:11px;display:flex;gap:10px;flex-wrap:wrap;max-width:calc(100% - 16px)}
+.legend b{font-weight:600;color:var(--ink)}
+.dg [data-el]{cursor:pointer}
+/* inspector */
+.insp{display:flex;flex-direction:column;min-height:0;background:var(--panel)}
+.tabs{display:flex;gap:2px;padding:0 6px;background:var(--header);border-bottom:1px solid var(--rule);flex:none}
+.tabs button{border:0;background:transparent;padding:6px 10px;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
+.tabs button[aria-selected="true"]{border-bottom-color:var(--accent);font-weight:600}
+.tabs .cnt{display:inline-block;min-width:18px;padding:0 5px;margin-left:4px;border-radius:9px;background:var(--info-bg);font-size:11px;text-align:center}
+.tabs .cnt.e{background:var(--bad-bg);color:var(--bad)}
+.tabs .cnt.w{background:var(--warn-bg);color:var(--warn)}
+.tp{flex:1;min-height:0;overflow:auto;padding:10px 12px}
+.kv{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:4px 14px;margin:0}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;overflow-wrap:anywhere}
+.doc{white-space:pre-wrap;max-width:80ch;margin:6px 0 10px}
+h3{font-size:12.5px;margin:12px 0 6px}
+h3:first-child{margin-top:0}
+a.go,button.go{color:var(--accent);background:none;border:0;padding:0;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.btn{border:1px solid var(--rule-strong);background:var(--panel);border-radius:4px;padding:3px 9px;cursor:pointer;white-space:nowrap}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn:hover{filter:brightness(.97)}
+table{border-collapse:collapse;width:100%}
+th,td{text-align:left;vertical-align:top;padding:4px 8px;border-bottom:1px solid var(--rule)}
+th{color:var(--muted);font-weight:600;position:sticky;top:-10px;background:var(--panel)}
+.st{display:inline-flex;align-items:center;gap:5px;border-radius:3px;padding:0 6px;font-weight:600;white-space:nowrap}
+.st.ok{background:var(--ok-bg);color:var(--ok)}.st.warn{background:var(--warn-bg);color:var(--warn)}.st.bad{background:var(--bad-bg);color:var(--bad)}
+.st.pending,.st.none{background:var(--info-bg);color:var(--info)}
+.probs div{display:flex;gap:10px;padding:3px 4px;border-radius:3px;cursor:pointer}
+.probs div:hover{background:var(--field-hover)}
+.probs .lc{color:var(--muted);font-variant-numeric:tabular-nums;min-width:64px}
+.probs .sev{font-weight:700;width:14px}
+.probs .sev.error{color:var(--bad)}.probs .sev.warning{color:var(--warn)}
+.muted{color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--rule-strong);border-radius:12px;padding:1px 9px;background:var(--panel-2)}
+/* status bar */
+.status{display:flex;align-items:center;gap:14px;padding:0 10px;background:var(--chrome);border-top:1px solid var(--rule-strong);color:var(--muted);white-space:nowrap;overflow:hidden;font-size:11.5px}
+.status .sp{flex:1}
+.toast{position:fixed;left:50%;bottom:34px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:6px 12px;border-radius:4px;z-index:90;max-width:80vw}
+.toast:empty{display:none}
+/* dialog */
+.modal{position:fixed;inset:0;background:var(--overlay);display:flex;align-items:center;justify-content:center;z-index:80;padding:16px}
+.dlg{background:var(--panel);border:1px solid var(--rule-strong);border-radius:6px;box-shadow:var(--shadow);max-width:720px;width:100%;max-height:86vh;overflow:auto;padding:18px 20px}
+.dlg h2{font-size:16px;margin:0 0 8px}
+.dlg p,.dlg li{color:var(--muted);line-height:1.5}
+.dlg code,.dlg pre{font-family:var(--f-mono);font-size:12px;background:var(--panel-2);border-radius:3px;padding:1px 4px}
+.dlg pre{padding:8px 10px;overflow:auto;color:var(--ink)}
+.dlg kbd{font:11px var(--f-mono);border:1px solid var(--rule-strong);border-radius:3px;padding:0 4px}
+@media (max-width:820px){
+  body{overflow:auto}
+  .shell{height:auto;grid-template-rows:34px auto 0 auto 24px}
+  .main{grid-template-columns:1fr;grid-template-rows:46vh 0 60vh}
+  .split-v,.split-h{display:none}
+  .insp{min-height:50vh}
+  .main>.pane:first-child{border-bottom:1px solid var(--rule-strong)}
+}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-new" viewBox="0 0 16 16"><path d="M4 1.5h5l3 3v10H4z"/><path d="M9 1.5v3h3"/></symbol>
+  <symbol id="i-open" viewBox="0 0 16 16"><path d="M1.5 4V13h11l2-6h-11l-2 6"/><path d="M1.5 4V2.5h4l1.5 1.5h5V7"/></symbol>
+  <symbol id="i-save" viewBox="0 0 16 16"><path d="M8 2v8M4.5 6.5 8 10l3.5-3.5M2.5 12.5v1h11v-1"/></symbol>
+  <symbol id="i-cube" viewBox="0 0 16 16"><path d="M8 1.5 14 5v6l-6 3.5L2 11V5z"/><path d="M2 5l6 3.5L14 5M8 8.5v6"/></symbol>
+  <symbol id="i-theme" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><path d="M8 2a6 6 0 0 0 0 12z" fill="currentColor"/></symbol>
+  <symbol id="i-help" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5"/><path d="M6.2 6.2a1.9 1.9 0 1 1 2.6 1.8c-.5.2-.8.6-.8 1.1v.4M8 11.6v.2"/></symbol>
+</svg>
+
+<div class="shell" id="shell">
+  <header class="topbar">
+    <span class="logo" id="logo"><i></i>HFE Lab</span>
+    <span class="app">SysML v2 Editor</span>
+    <button class="tb" id="f-new" title="New model"><svg class="i"><use href="#i-new"/></svg>New</button>
+    <button class="tb" id="f-open" title="Open a .sysml file (Ctrl+O)"><svg class="i"><use href="#i-open"/></svg>Open</button>
+    <button class="tb" id="f-save" title="Save as .sysml (Ctrl+S)"><svg class="i"><use href="#i-save"/></svg>Save</button>
+    <button class="tb" id="f-example" title="Load the ground control station example">Example</button>
+    <span class="tb-sep"></span>
+    <button class="tb" id="x-svg" title="Save the diagram as SVG">Diagram SVG</button>
+    <button class="tb" id="x-png" title="Save the diagram as PNG">PNG</button>
+    <button class="tb" id="x-json" title="Save the model as JSON in the SysML v2 API shape">Model JSON</button>
+    <button class="tb" id="x-csv" title="Save the traceability table as CSV">Trace CSV</button>
+    <input type="file" id="file" accept=".sysml,.txt,text/plain" hidden>
+    <input type="file" id="resfile" accept=".json,application/json" hidden>
+    <span class="spacer"></span>
+    <button class="pill" id="ws-pill" title="Results from Workspace Visualisation"><i></i><span id="ws-text">No Workspace results</span></button>
+    <button class="tb" id="ws-open" title="Open Workspace Visualisation"><svg class="i"><use href="#i-cube"/></svg>Workspace</button>
+    <button class="tb" id="theme" title="Light or dark theme" aria-label="Light or dark theme"><svg class="i"><use href="#i-theme"/></svg></button>
+    <button class="tb" id="help" title="Help and supported syntax" aria-label="Help"><svg class="i"><use href="#i-help"/></svg></button>
+  </header>
+
+  <div class="main" id="main">
+    <section class="pane" aria-label="SysML v2 text">
+      <div class="pane-head"><span class="t">Text</span><span class="sub" id="fname">untitled.sysml</span><span class="spacer" style="flex:1"></span><span class="sub">Ctrl+Space to complete</span></div>
+      <div class="ed" id="ed">
+        <div class="gut"><div class="gut-in" id="gut"></div></div>
+        <div class="code" id="code">
+          <pre id="hl" aria-hidden="true"></pre>
+          <pre id="sq" aria-hidden="true"></pre>
+          <textarea id="src" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" wrap="off" aria-label="SysML v2 textual notation"></textarea>
+          <div class="cmp" id="cmp" role="listbox" hidden></div>
+        </div>
+      </div>
+    </section>
+    <button class="split-v" id="split-v" aria-label="Resize the text and diagram panes" title="Drag to resize"></button>
+    <section class="pane" aria-label="Diagram">
+      <div class="pane-head">
+        <div class="seg" role="group" aria-label="View">
+          <button data-view="general" aria-pressed="true" title="Definitions, packages, specialisation and composition">General</button>
+          <button data-view="interconnection" aria-pressed="false" title="A part with its nested parts, ports and connections">Interconnection</button>
+          <button data-view="requirements" aria-pressed="false" title="Requirements, what satisfies them and what verifies them, with evidence">Requirements</button>
+          <button data-view="behaviour" aria-pressed="false" title="States and transitions, or actions and successions">States</button>
+        </div>
+        <select class="root" id="root" aria-label="What the view shows"></select>
+        <span style="flex:1"></span>
+        <button class="ibtn" id="z-out" title="Zoom out" aria-label="Zoom out">−</button>
+        <button class="ibtn" id="z-in" title="Zoom in" aria-label="Zoom in">+</button>
+        <button class="ibtn" id="z-fit" title="Fit the diagram">Fit</button>
+      </div>
+      <div class="dgwrap" id="dg"><div class="dg-msg" id="dg-msg">Loading the layout engine…</div>
+        <div class="legend" id="legend" hidden></div></div>
+    </section>
+  </div>
+  <button class="split-h" id="split-h" aria-label="Resize the inspector" title="Drag to resize"></button>
+  <section class="insp" aria-label="Inspector">
+    <div class="tabs" role="tablist">
+      <button role="tab" id="t-el" aria-selected="true" aria-controls="p-el">Element</button>
+      <button role="tab" id="t-tr" aria-selected="false" aria-controls="p-tr">Traceability <span class="cnt" id="c-tr">0</span></button>
+      <button role="tab" id="t-pr" aria-selected="false" aria-controls="p-pr">Problems <span class="cnt" id="c-pr">0</span></button>
+    </div>
+    <div class="tp" id="p-el" role="tabpanel"></div>
+    <div class="tp" id="p-tr" role="tabpanel" hidden></div>
+    <div class="tp probs" id="p-pr" role="tabpanel" hidden></div>
+  </section>
+  <footer class="status"><span id="sb-pos">Ln 1, Col 1</span><span id="sb-n"></span><span id="sb-d"></span><span class="sp"></span><span id="sb-build">Build 9e9dfd686583</span></footer>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<div class="modal" id="about" hidden>
+  <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="about-t">
+    <h2 id="about-t">SysML v2 Editor</h2>
+    <p>Write a model in the SysML v2 textual notation on the left; the diagrams on the right are drawn from it as you type. Click a box to find its text; move the cursor in the text to find its box. Everything runs in this page: nothing is sent anywhere.</p>
+    <h3>Linking the model to Workspace Visualisation</h3>
+    <p>Two metadata definitions in the built-in <code>HFE</code> library tie the model to the 3D workspace:</p>
+<pre>part tactical : Display {
+    @HFE::WorkspaceLink { env = "gcs-container"; role = "pilot"; node = "ws.scr.0"; }
+}
+verification viewingCheck {
+    @HFE::Evidence { check = "viewDist#0"; env = "gcs-container"; role = "pilot"; }
+    objective { verify tacticalViewing; }
+}</pre>
+    <p><b>Show in 3D</b> on a linked element opens Workspace Visualisation in that environment and seat, with the object highlighted. While Workspace Visualisation is open in another tab of this site, its check results arrive here live and become each requirement's evidence (within limits, marginal or outside limits). You can also load results saved from it with <b>Save results</b>. Results only count for the environment and seat they were made in.</p>
+    <h3>Supported notation</h3>
+    <p>Packages and imports; definitions and usages of part, item, attribute, port, interface, connection, flow, requirement, constraint, action, state, verification, use case, enum and metadata; typing, specialisation, subsetting and redefinition; multiplicity; conjugated ports; connect, bind, flow and allocate; requirement subject, require constraints, satisfy and verify; entry, then, accept and transition in states. Values are kept as text. Anything else is skipped with a warning, and the rest of the model still works.</p>
+    <h3>Keys</h3>
+    <p><kbd>Ctrl</kbd>+<kbd>Space</kbd> complete · <kbd>Tab</kbd> indent · <kbd>Shift</kbd>+<kbd>Tab</kbd> outdent · <kbd>Ctrl</kbd>+<kbd>S</kbd> save · <kbd>Ctrl</kbd>+<kbd>O</kbd> open · <kbd>F12</kbd> go to the definition of the name at the cursor</p>
+    <p style="font-size:12px">Prototype. Follows the public OMG SysML v2 specification; not a conformance-tested implementation. Diagram layout by ELK (Eclipse Layout Kernel, EPL-2.0).</p>
+    <div style="text-align:right"><button class="btn primary" id="about-close">Close</button></div>
+  </div>
+</div>
+
+<script>
+/* ---------------- SysML v2 textual notation: parser, model, checks and views (SYS-01 to SYS-06) ----------------
+   A practical subset of the OMG SysML v2 textual notation (SysML 2.0, formal/25-xx; public specification and the open
+   Pilot Implementation's examples), parsed in the browser with no dependencies so the SysML editor runs offline and is
+   unit-tested in Node (tests/sysml.test.js).
+
+   Supported (anything else is reported as a warning, skipped, and does not stop the rest of the model):
+     packages (library and standard library packages too), import (X, X::*, X::**), alias, doc and comments
+     definitions and usages of part, item, attribute, port, interface, connection, flow, allocation, requirement,
+     constraint, concern, action, state, calc, case, use case, analysis, verification, view, viewpoint, occurrence,
+     enum, metadata; short names <'1.1'>; multiplicity [n..m]; typing (:, defined by), specialisation (:>, specializes),
+     subsetting (subsets, ::>), redefinition (:>>, redefines), conjugated ports (~P), directions (in, out, inout),
+     values (=, :=, default) kept as text
+     connect a to b, interface/connection usages with connect, flow [of T] from a to b, bind, allocate
+     requirement subject, actor, stakeholder, require/assume constraint {…}, satisfy R by X, verify R (objective)
+     states and actions: entry, first, then, accept … then, transition … first … accept … if … do … then
+     metadata usages: @T { a = v; } and metadata m : T { … }, and #T prefixes
+
+   HFE-Lab trace links are ordinary SysML v2 metadata, defined in the built-in library package HFE (LIBRARY below):
+     @HFE::WorkspaceLink { env = "gcs-container"; role = "pilot"; node = "ws.scr.0"; }   ties an element to a 3D object
+     @HFE::Evidence { check = "viewDist"; env = "gcs-container"; role = "pilot"; }      ties a requirement or a
+         verification to a Workspace Visualisation check, whose live result becomes verification evidence
+
+   API (global HFE_SYSML; module.exports in Node):
+     parse(text, opt)           -> model { roots, all, diags, byId, lib }   opt.context = { envs, checks, nodes } for link checks
+     elementAt(model, offset)   -> innermost element whose source range holds offset
+     resolve(model, scope, qn)  -> element or null
+     features(el)               -> own and inherited features (usage inherits from its definition and supertypes)
+     views.general(model, root), views.interconnection(model, part), views.requirements(model, root), views.behaviour(model, el)
+                                -> view graphs { nodes, edges } for the editor to size, lay out (ELK) and draw
+     trace(model, results)      -> requirement rows: satisfied by, workspace links, evidence and status
+     complete(model, text, offset, context) -> completion items
+     toJSON(model)              -> elements as JSON in the shape of the SysML v2 API (@id, @type, name, owner, …)
+   Units are kept as written in values (for example 500 [mm]); the tool does not convert them. */
+const HFE_SYSML = (() => {
+  const KW = new Set(('about abstract accept action actor after alias all allocate allocation analysis and as assert assign assume at ' +
+    'attribute bind binding by calc case comment concern connect connection constant constraint crosses decide def default defined ' +
+    'dependency derived do doc else end entry enum event exhibit exit expose false filter first flow for fork frame from hastype if ' +
+    'implies import in include individual inout interface istype item join language library locale loop merge message meta metadata ' +
+    'new nonunique not null objective occurrence of or ordered out package parallel part perform port private protected public ' +
+    'readonly redefines ref references render rendering rep require requirement return satisfy send snapshot specializes stakeholder ' +
+    'standard state subject subsets succession terminate then timeslice to transition true until use variant variation verification ' +
+    'verify via view viewpoint when while xor').split(' '));
+  // element kinds that take the generic "kind [def] name …" form, and their SysML v2 API type names
+  const KINDS = ['part', 'item', 'attribute', 'port', 'interface', 'connection', 'flow', 'allocation', 'requirement', 'constraint', 'concern',
+    'action', 'state', 'calc', 'case', 'analysis', 'verification', 'view', 'viewpoint', 'occurrence', 'enum', 'metadata', 'rendering', 'message', 'event'];
+  const API = { part: 'Part', item: 'Item', attribute: 'Attribute', port: 'Port', interface: 'Interface', connection: 'Connection', flow: 'Flow',
+    allocation: 'Allocation', requirement: 'Requirement', constraint: 'Constraint', concern: 'Concern', action: 'Action', state: 'State', calc: 'Calculation',
+    case: 'Case', usecase: 'UseCase', analysis: 'AnalysisCase', verification: 'VerificationCase', view: 'View', viewpoint: 'Viewpoint',
+    occurrence: 'Occurrence', enum: 'Enumeration', metadata: 'Metadata', rendering: 'Rendering', message: 'Message', event: 'Event' };
+  // what a usage of each kind may be typed by (definitions of these kinds; library value types count as attribute defs)
+  const TYPED_BY = { part: ['part', 'item', 'occurrence'], item: ['item', 'part', 'occurrence'], attribute: ['attribute', 'enum'], port: ['port'],
+    interface: ['interface', 'connection'], connection: ['connection', 'interface'], requirement: ['requirement', 'concern'], constraint: ['constraint'],
+    action: ['action', 'calc'], state: ['state'], verification: ['verification', 'case'], usecase: ['usecase', 'case'], analysis: ['analysis', 'case'],
+    subject: ['part', 'item', 'occurrence', 'requirement', 'attribute', 'port'], actor: ['part', 'item'], stakeholder: ['part', 'item'], enum: ['enum'], metadata: ['metadata'] };
+
+  /* ---------- lexer ---------- */
+  function lex(src) {
+    const toks = [], diags = []; let i = 0; const n = src.length;
+    const add = (t, v, s, extra) => toks.push({ t, v, s, e: i, ...extra });
+    const SYM3 = [':>>', '::>', '===', '!=='], SYM2 = [':>', '::', ':=', '->', '..', '==', '!=', '<=', '>=', '**'];
+    while (i < n) {
+      const c = src[i], s = i;
+      if (c === ' ' || c === '\t' || c === '\n' || c === '\r') { i++; continue; }
+      if (c === '/' && src[i + 1] === '/') {
+        if (src[i + 2] === '*') { const j = src.indexOf('*/', i + 3); i = j < 0 ? n : j + 2; continue; }   // //* note */
+        while (i < n && src[i] !== '\n') i++; continue;
+      }
+      if (c === '/' && src[i + 1] === '*') {
+        const j = src.indexOf('*/', i + 2);
+        if (j < 0) { i = n; diags.push({ s, e: n, sev: 'error', msg: 'Comment is not closed with */' }); add('block', src.slice(s + 2), s); continue; }
+        i = j + 2; add('block', src.slice(s + 2, j), s); continue;
+      }
+      if (/[A-Za-z_]/.test(c)) {
+        while (i < n && /[A-Za-z0-9_]/.test(src[i])) i++;
+        const w = src.slice(s, i); add(KW.has(w) ? 'kw' : 'id', w, s); continue;
+      }
+      if (c === "'" || c === '"') {
+        i++; let v = '', ok = false;
+        while (i < n) { const d = src[i]; if (d === '\\' && i + 1 < n) { v += src[i + 1]; i += 2; continue; } if (d === c) { i++; ok = true; break; } if (d === '\n' && c === "'") break; v += d; i++; }
+        if (!ok) diags.push({ s, e: i, sev: 'error', msg: c === '"' ? 'String is not closed' : 'Name is not closed with \'' });
+        add(c === '"' ? 'str' : 'id', v, s, c === "'" ? { quoted: true } : undefined); continue;
+      }
+      if (/[0-9]/.test(c) || (c === '.' && /[0-9]/.test(src[i + 1] || ''))) {
+        const m = /^(\d*\.?\d+(?:[eE][+-]?\d+)?)/.exec(src.slice(i, i + 40)); i += m[1].length; add('num', m[1], s); continue;
+      }
+      const three = src.substr(i, 3), two = src.substr(i, 2);
+      if (SYM3.includes(three)) { i += 3; add('sym', three, s); continue; }
+      if (SYM2.includes(two)) { i += 2; add('sym', two, s); continue; }
+      if ('{}()[];:,.=<>@#~*+-/%^&|?!$'.includes(c)) { i++; add('sym', c, s); continue; }
+      i++; diags.push({ s, e: i, sev: 'error', msg: `Unexpected character ${JSON.stringify(c)}` });
+    }
+    toks.push({ t: 'eof', v: '', s: n, e: n });
+    return { toks, diags };
+  }
+
+  // the text of a /* … */ block as written, without the leading asterisks of each line
+  const blockText = b => b.split('\n').map(l => l.replace(/^\s*\*(?!\/)\s?/, '')).join('\n').trim();
+
+  /* ---------- parser ---------- */
+  let SEQ = 0;
+  function mk(kind, owner, s, extra) {
+    const el = { id: 'e' + (++SEQ), kind, def: false, name: null, short: null, owner, children: [], types: [], specializes: [], subsets: [], redefines: [],
+      mult: null, value: null, doc: null, meta: [], dir: null, abstract: false, ref: false, s, e: s, ...extra };
+    if (owner) owner.children.push(el);
+    return el;
+  }
+
+  function parseText(src, lib) {
+    const { toks, diags } = lex(src);
+    let p = 0;
+    const peek = (k = 0) => toks[Math.min(p + k, toks.length - 1)];
+    const next = () => toks[p < toks.length - 1 ? p++ : p];
+    const is = (v, k = 0) => { const t = peek(k); return (t.t === 'kw' || t.t === 'sym') && t.v === v; };
+    const isName = (k = 0) => peek(k).t === 'id';
+    const accept = v => (is(v) ? next() : null);
+    const err = (t, msg, sev = 'error') => diags.push({ s: t.s, e: Math.max(t.e, t.s + 1), sev, msg });
+    const expect = (v, what) => { if (is(v)) return next(); err(peek(), `Expected ${what || `'${v}'`}${peek().t === 'eof' ? ' before the end of the text' : `, found '${peek().v}'`}`); return null; };
+    const root = mk('root', null, 0, { name: '' });
+
+    // skip a statement we do not model: to the next ; at depth 0, or past a balanced { … } at depth 0
+    function skip() {
+      let d = 0;
+      while (peek().t !== 'eof') {
+        const t = next();
+        if (t.t === 'sym') {
+          if (t.v === '{' || t.v === '(' || t.v === '[') d++;
+          else if (t.v === '}' || t.v === ')' || t.v === ']') { d--; if (d === 0 && t.v === '}') return; if (d < 0) { p--; return; } }
+          else if (t.v === ';' && d === 0) return;
+        }
+      }
+    }
+    // a qualified name or feature chain: a::b::c or a.b.c ('::*' and '::**' are left for import)
+    function qname() {
+      const t = peek(); if (!isName() && !(t.t === 'kw' && (t.v === 'true' || t.v === 'false'))) return null;
+      const parts = [next().v]; let text = parts[0], chain = false;
+      for (;;) {
+        if (is('::') && isName(1)) { next(); const v = next().v; parts.push(v); text += '::' + v; }
+        else if (is('.') && isName(1)) { next(); const v = next().v; parts.push(v); text += '.' + v; chain = true; }
+        else break;
+      }
+      return { text, parts, chain, s: t.s, e: toks[p - 1].e };
+    }
+    function qnList(conj) {
+      const out = [];
+      do {
+        const tilde = conj && accept('~');
+        const q = qname(); if (!q) { err(peek(), 'Expected a name'); break; }
+        if (tilde) q.conj = true; out.push(q);
+      } while (accept(','));
+      return out;
+    }
+    // an expression kept as text, up to ; or { at depth 0
+    function rawExpr() {
+      const s = peek().s; let d = 0, e = s;
+      while (peek().t !== 'eof') {
+        const t = peek();
+        if (t.t === 'sym') {
+          if (d === 0 && (t.v === ';' || t.v === '{' || t.v === '}')) break;
+          if (t.v === '(' || t.v === '[') d++; else if (t.v === ')' || t.v === ']') d--;
+        }
+        e = next().e;
+      }
+      const text = src.slice(s, e).trim(), tk = toks.slice(0, p).filter(t => t.s >= s && t.e <= e);
+      return { text, s, e, str: tk.length === 1 && tk[0].t === 'str' ? tk[0].v : null, num: tk.length >= 1 && tk[0].t === 'num' ? +tk[0].v : null };
+    }
+    function body(el) {
+      if (accept(';')) { el.e = toks[p - 1].e; return; }
+      if (!is('{')) { expect(';', "';' or '{'"); el.e = peek().s; return; }
+      next();
+      while (!is('}') && peek().t !== 'eof') member(el);
+      const close = expect('}', "'}'");
+      el.e = close ? close.e : peek().s;
+    }
+    function metaBody(m) {
+      if (accept(';')) return;
+      if (!accept('{')) { expect(';', "';' or '{'"); return; }
+      while (!is('}') && peek().t !== 'eof') {
+        const t0 = peek(); accept(':>>'); accept('redefines'); accept('attribute'); accept('ref');
+        if (isName() && (is('=', 1) || is(':=', 1))) { const nm = next().v; next(); const v = rawExpr(); m.fields[nm] = v.str != null ? v.str : v.num != null && /^[\d.eE+-]+$/.test(v.text) ? v.num : v.text; m.at[nm] = { s: v.s, e: v.e }; accept(';'); }
+        else if (t0.t === 'block') next();
+        else { err(peek(), `Unexpected '${peek().v}' in a metadata body`); skip(); }
+      }
+      expect('}', "'}'");
+    }
+    function metadataUsage(owner, s) {
+      // @T { … }  |  metadata [name] : T [about a, b] { … }
+      let name = null, type;
+      if (toks[p - 1].v === 'metadata') { if (isName() && (is(':', 1) || is('defined', 1))) { name = next().v; } if (accept(':') || (accept('defined') && expect('by'))) type = qname(); else type = qname(); }
+      else type = qname();
+      if (!type) { err(peek(), 'Expected a metadata definition name'); skip(); return; }
+      const m = { type, name, fields: {}, at: {}, s, about: [] };
+      if (accept('about')) m.about = qnList();
+      metaBody(m); m.e = toks[p - 1].e;
+      const target = owner; target.meta.push(m);
+    }
+    function relation(kind, owner, s, extra) { const el = mk(kind, owner, s, extra); el.e = toks[p - 1].e; return el; }
+    let prevBehaviour = null;   // the previous state or action in a body, for "then x;" and "accept … then x;"
+    function member(owner) {
+      const t = peek(), s = t.s;
+      if (t.t === 'block') { next(); const c = mk('comment', owner, s, { text: blockText(t.v) }); c.e = t.e; return; }
+      if (accept(';')) return;
+      // prefixes
+      let vis = null, abs = false, refp = false, dir = null, variation = false, end = false; const pre = [];
+      for (;;) {
+        if (is('public') || is('private') || is('protected')) vis = next().v;
+        else if (is('abstract')) { next(); abs = true; }
+        else if (is('variation')) { next(); variation = true; }
+        else if (is('ref')) { next(); refp = true; }
+        else if (is('readonly') || is('derived') || is('constant') || is('individual') || is('variant') || is('ordered') || is('nonunique')) next();
+        else if (is('end')) { next(); end = true; }
+        else if (is('in') || is('out') || is('inout')) dir = next().v;
+        else if (is('#')) { const hs = next().s; const q = qname(); if (q) pre.push({ type: q, name: null, fields: {}, at: {}, s: hs, e: q.e, about: [] }); }
+        else break;
+      }
+      const finish = el => { if (el) { el.vis = vis; el.abstract = el.abstract || abs; el.dir = el.dir || dir; if (refp) el.ref = true; if (end) el.end = true; if (variation) el.variation = true; el.meta.unshift(...pre); } return el; };
+      const k = peek();
+      if (k.t === 'kw' && k.v === 'metadata' && !is('def', 1)) { next(); return metadataUsage(owner, s); }
+      if (k.t === 'kw') switch (k.v) {
+        case 'standard': case 'library': case 'package': {
+          next(); if (k.v === 'standard') expect('library'); if (k.v !== 'package') expect('package');
+          const el = mk('package', owner, s, { library: k.v !== 'package' || !!lib }); nameOf(el); body(el); return finish(el);
+        }
+        case 'import': {
+          next(); accept('all'); const q = qname();
+          if (!q) { err(peek(), 'Expected the name of a package or element to import'); skip(); return; }
+          let all = false, rec = false;
+          if (is('::') && is('*', 1)) { next(); next(); all = true; } else if (is('::') && is('**', 1)) { next(); next(); all = rec = true; }
+          if (is('::') && is('*', 1) === false && is('**', 1)) { next(); next(); all = rec = true; }
+          if (accept('[')) { skip(); }   // filter conditions are not modelled
+          expect(';'); return relation('import', owner, s, { target: q, all, rec, vis });
+        }
+        case 'alias': {
+          next(); const el = mk('alias', owner, s); nameOf(el); expect('for'); el.target = qname(); expect(';'); el.e = toks[p - 1].e; return el;
+        }
+        case 'doc': {
+          next(); if (isName()) next();
+          const b = peek(); if (b.t !== 'block') { err(b, 'Expected /* … */ after doc'); skip(); return; }
+          next(); const text = blockText(b.v); owner.doc = owner.doc ? owner.doc + '\n' + text : text; owner.docAt = { s, e: b.e }; return;
+        }
+        case 'comment': {
+          next(); const el = mk('comment', owner, s); if (isName()) el.name = next().v; if (accept('about')) el.about = qnList();
+          const b = peek(); if (b.t === 'block') { next(); el.text = blockText(b.v); } else expect(';'); el.e = toks[p - 1].e; return el;
+        }
+        case 'dependency': next(); skip(); return;
+        case 'satisfy': case 'verify': {
+          next(); accept('requirement');
+          const neg = false; let req = null;
+          if (isName() && (is(':', 1))) { next(); next(); }   // satisfy r : R by x (usage name is not kept)
+          req = qname(); if (!req) { err(peek(), `Expected the requirement to ${k.v}`); skip(); return; }
+          let by = null; if (k.v === 'satisfy' && accept('by')) by = qname();
+          if (is('{')) { const tmp = { children: [], meta: [] }; next(); while (!is('}') && peek().t !== 'eof') member(tmp); expect('}'); } else expect(';');
+          return finish(relation(k.v, owner, s, { req, by, neg }));
+        }
+        case 'not': if (is('satisfy', 1)) { next(); return member(owner); } break;
+        case 'connect': {
+          next(); const ends = connEnds(); expect(';'); return finish(relation('connect', owner, s, { ends, name: null }));
+        }
+        case 'bind': {
+          next(); const a = qname(); expect('='); const b = qname(); expect(';'); return finish(relation('bind', owner, s, { ends: [a, b].filter(Boolean) }));
+        }
+        case 'allocate': {
+          next(); const a = qname(); expect('to'); const b = qname(); expect(';'); return finish(relation('allocate', owner, s, { ends: [a, b].filter(Boolean) }));
+        }
+        case 'subject': case 'actor': case 'stakeholder': {
+          next(); return finish(usage(k.v, owner, s));
+        }
+        case 'require': case 'assume': {
+          next(); accept('constraint');
+          if (is('{')) { const el = mk('constraint', owner, s, { role: k.v }); el.value = braceText(); el.e = toks[p - 1].e; return finish(el); }
+          return finish(usage('constraint', owner, s, { role: k.v }));
+        }
+        case 'objective': {
+          next(); const el = mk('objective', owner, s); if (isName()) el.name = next().v; if (accept(':')) el.types = qnList(); body(el); return finish(el);
+        }
+        case 'return': { next(); if (KINDS.includes(peek().v)) next(); return finish(usage('attribute', owner, s, { role: 'return' })); }
+        case 'entry': case 'exit': case 'do': {
+          next();
+          if (accept(';')) { if (k.v === 'entry') prevBehaviour = { entry: true, owner }; return; }
+          if (is('action') || isName()) { accept('action'); const el = usage('action', owner, s, { role: k.v }); if (k.v === 'entry') prevBehaviour = { entry: true, owner }; return finish(el); }
+          skip(); return;
+        }
+        case 'first': {
+          next(); const a = qname(); let b = null; if (accept('then')) b = qname(); expect(';');
+          if (a && b) return relation('succession', owner, s, { from: a, to: b });
+          if (a) prevBehaviour = { ref: a, owner }; return;
+        }
+        case 'then': {
+          next(); const from = prevBehaviour && prevBehaviour.owner === owner ? prevBehaviour : null;
+          let target = null, el = null;
+          if (KINDS.includes(peek().v) || is('fork') || is('join') || is('merge') || is('decide')) {
+            el = member(owner);
+            if (el && el.name) target = { text: el.name, parts: [el.name], s: el.s, e: el.e };
+          } else { target = qname(); expect(';'); }
+          if (target) relation(from && from.entry ? 'initial' : 'succession', owner, s, { from: from && !from.entry ? from.ref : null, to: target, owner });
+          return el;
+        }
+        case 'accept': {
+          // accept T [if g] [do a] then s;  (a transition out of the previous state)
+          next(); const trig = rawUntil(['then', 'if', 'do']); let guard = null, effect = null;
+          if (accept('if')) guard = rawUntil(['then', 'do']); if (accept('do')) { accept('action'); effect = rawUntil(['then']); }
+          expect('then'); const to = qname(); expect(';');
+          return relation('transition', owner, s, { from: prevBehaviour && prevBehaviour.owner === owner && !prevBehaviour.entry ? prevBehaviour.ref : null, to, trigger: trig, guard, effect });
+        }
+        case 'transition': {
+          next(); let name = null; if (isName() && !is('first')) name = next().v;
+          let from = null, trig = null, guard = null, effect = null, to = null;
+          if (accept('first')) from = qname();
+          if (accept('accept')) trig = rawUntil(['then', 'if', 'do']);
+          if (accept('if')) guard = rawUntil(['then', 'do']);
+          if (accept('do')) { accept('action'); effect = rawUntil(['then']); }
+          if (expect('then')) to = qname();
+          if (is('{')) body({ children: [], meta: [], s: 0 }); else expect(';');
+          return relation('transition', owner, s, { name, from, to, trigger: trig, guard, effect });
+        }
+        case 'fork': case 'join': case 'merge': case 'decide': {
+          next(); const el = mk('control', owner, s, { control: k.v }); if (isName()) el.name = next().v; expect(';'); el.e = toks[p - 1].e;
+          prevBehaviour = { ref: { text: el.name, parts: [el.name] }, owner }; return el;
+        }
+        case 'perform': case 'exhibit': case 'include': case 'assert': case 'event': {
+          next(); const kind = k.v === 'exhibit' ? 'state' : k.v === 'include' ? 'usecase' : k.v === 'assert' ? 'constraint' : k.v === 'event' ? 'occurrence' : 'action';
+          if (is('use') && is('case', 1)) { next(); next(); } else if (KINDS.includes(peek().v)) next();
+          if (isName() && (is('.', 1) || is('::', 1) || is(';', 1))) { const q = qname(); expect(';'); return finish(relation('perform', owner, s, { target: q, as: kind })); }
+          return finish(usage(kind, owner, s, { ref: true }));
+        }
+        case 'use': if (is('case', 1)) { next(); next(); return finish(defOrUsage('usecase', owner, s)); } break;
+        case 'redefines': break;
+        default:
+          if (KINDS.includes(k.v)) {
+            next();
+            // "verification case" style long forms are not SysML v2; "analysis case" etc are accepted as their short kind
+            if (k.v === 'enum' && !is('def') && owner.kind === 'enum') return finish(enumLiteral(owner, s));
+            return finish(defOrUsage(k.v, owner, s));
+          }
+      }
+      if (k.t === 'sym' && k.v === '@') { next(); return metadataUsage(owner, s); }
+      if (k.t === 'sym' && (k.v === ':>>' || k.v === ':>' || k.v === ':')) return finish(usage(owner.kind === 'enum' ? 'enum' : 'attribute', owner, s, { implicit: true }));
+      if (is('redefines')) return finish(usage('attribute', owner, s, { implicit: true }));
+      if (isName()) {
+        if (owner.kind === 'enum' && owner.def) return finish(enumLiteral(owner, s));
+        if (dir || refp || end) return finish(usage(end ? 'end' : 'attribute', owner, s, { implicit: true }));
+        err(k, `'${k.v}' needs a kind keyword in front of it, such as part, attribute or ref`, 'warning');
+        return finish(usage('attribute', owner, s, { implicit: true }));
+      }
+      if (k.t === 'kw') err(k, `'${k.v}' is not in the SysML v2 subset this editor understands yet; the statement is skipped`, 'warning');
+      else err(k, `Unexpected '${k.v || 'end of text'}'`);
+      if (k.t === 'sym' && k.v === '}') { next(); return; }
+      skip();
+    }
+    function rawUntil(stops) {
+      const s = peek().s; let e = s, d = 0;
+      while (peek().t !== 'eof' && !(d === 0 && (stops.some(w => is(w)) || is(';')))) { const t = next(); if (t.v === '(' || t.v === '[') d++; if (t.v === ')' || t.v === ']') d--; e = t.e; }
+      return src.slice(s, e).trim() || null;
+    }
+    function braceText() { const s = peek().s; let d = 0; do { const t = next(); if (t.v === '{') d++; else if (t.v === '}') d--; } while (d > 0 && peek().t !== 'eof'); return src.slice(s + 1, toks[p - 1].s).trim(); }
+    function connEnds() {
+      if (accept('(')) { const ends = qnList(); expect(')'); return ends; }
+      const a = qname(); if (!a) { err(peek(), 'Expected the first end of the connection'); return []; }
+      expect('to'); const b = qname(); if (!b) err(peek(), 'Expected the second end of the connection');
+      return [a, b].filter(Boolean);
+    }
+    function nameOf(el) {
+      if (is('<') && isName(1) && is('>', 2)) { next(); el.short = next().v; next(); }
+      if (isName()) { const t = next(); el.name = t.v; el.nameAt = { s: t.s, e: t.e }; }
+    }
+    function enumLiteral(owner, s) { const el = mk('enumLiteral', owner, s); nameOf(el); if (accept('=')) el.value = rawExpr(); body(el); return el; }
+    function defOrUsage(kind, owner, s) {
+      if (is('def')) { next(); const el = mk(kind, owner, s, { def: true }); nameOf(el); specs(el); if (accept('=') || accept(':=')) el.value = rawExpr(); body(el); prevBehaviour = null; return el; }
+      return usage(kind, owner, s);
+    }
+    function specs(el) {
+      for (;;) {
+        if (is('[')) { const a = next().s; let d = 1; while (d > 0 && peek().t !== 'eof') { const t = next(); if (t.v === '[') d++; if (t.v === ']') d--; } el.mult = src.slice(a + 1, toks[p - 1].s).trim(); }
+        else if (accept(':') || (is('defined') && next() && expect('by'))) el.types.push(...qnList(true));
+        else if (accept(':>') || accept('specializes') || accept('subsets')) (el.def ? el.specializes : el.subsets).push(...qnList());
+        else if (accept('::>') || accept('references')) el.subsets.push(...qnList());
+        else if (accept(':>>') || accept('redefines')) el.redefines.push(...qnList());
+        else if (accept('ordered') || accept('nonunique')) { /* modifiers */ }
+        else break;
+      }
+    }
+    function usage(kind, owner, s, extra) {
+      const el = mk(kind, owner, s, extra);
+      if (!is(':') && !is(':>') && !is(':>>') && !is('[')) nameOf(el);
+      specs(el);
+      if (!el.name && el.redefines.length) { const r = el.redefines[0]; el.name = r.parts[r.parts.length - 1]; el.nameAt = { s: r.s, e: r.e }; }
+      if ((kind === 'connection' || kind === 'interface' || kind === 'flow' || kind === 'allocation' || kind === 'message') && !el.def) {
+        if (accept('connect')) el.ends = connEnds();
+        else if (accept('of')) { el.of = qname(); }
+        if (accept('from')) { const a = qname(); expect('to'); const b = qname(); el.ends = [a, b].filter(Boolean); }
+        else if (accept('allocate')) { const a = qname(); expect('to'); const b = qname(); el.ends = [a, b].filter(Boolean); }
+      }
+      if (accept('=') || accept(':=') || (accept('default') && (accept('=') || accept(':=') || true))) el.value = rawExpr();
+      if (kind === 'state' || kind === 'action') prevBehaviour = null;
+      body(el);
+      if ((kind === 'state' || kind === 'action') && el.name) prevBehaviour = { ref: { text: el.name, parts: [el.name], s: el.s, e: el.e }, owner };
+      return el;
+    }
+
+    while (peek().t !== 'eof') {
+      const before = p; member(root);
+      if (p === before) next();   // never stall
+    }
+    root.e = src.length;
+    return { root, diags };
+  }
+
+  /* ---------- the built-in library: a few standard value types and the HFE trace-link metadata ---------- */
+  const LIBRARY = `standard library package ScalarValues {
+  attribute def Boolean; attribute def String; attribute def Number; attribute def Real :> Number; attribute def Integer :> Real;
+  attribute def Natural :> Integer; attribute def Positive :> Natural; attribute def Rational :> Real; attribute def Complex :> Number;
+}
+standard library package ISQ {
+  attribute def LengthValue; attribute def MassValue; attribute def DurationValue; attribute def TimeValue; attribute def SpeedValue;
+  attribute def AccelerationValue; attribute def ForceValue; attribute def PowerValue; attribute def EnergyValue; attribute def AngularMeasureValue;
+  attribute def PlaneAngleValue; attribute def AreaValue; attribute def VolumeValue; attribute def ThermodynamicTemperatureValue;
+  attribute def ElectricCurrentValue; attribute def ElectricPotentialDifferenceValue; attribute def FrequencyValue; attribute def IlluminanceValue;
+  attribute def LuminanceValue; attribute def SoundPressureLevelValue; attribute def PressureValue; attribute def TorqueValue;
+  attribute length : LengthValue; attribute mass : MassValue; attribute duration : DurationValue;
+}
+standard library package SI { attribute def MeasurementUnit; }
+standard library package Quantities { attribute def ScalarQuantityValue; attribute def VectorQuantityValue; }
+standard library package Base { part def Anything; }
+standard library package Parts { part def Part; part parts : Part[0..*]; }
+standard library package Items { item def Item; }
+standard library package Ports { port def Port; }
+standard library package Requirements { requirement def RequirementCheck; }
+standard library package VerificationCases {
+  enum def VerdictKind { enum pass; enum fail; enum inconclusive; enum error; }
+}
+library package HFE {
+  doc /* HFE-Lab trace links. WorkspaceLink ties a model element to an object in Workspace Visualisation;
+     Evidence ties a requirement or verification case to a Workspace Visualisation check, whose result is shown
+     as verification evidence. */
+  metadata def WorkspaceLink {
+    attribute env : ScalarValues::String;   doc /* environment id, for example gcs-container */
+    attribute role : ScalarValues::String;  doc /* seat or role id, for example pilot */
+    attribute node : ScalarValues::String;  doc /* scene node id, for example ws.scr.0 */
+  }
+  metadata def Evidence {
+    attribute check : ScalarValues::String; doc /* check id, for example viewDist, or viewDist#0 for one screen */
+    attribute env : ScalarValues::String;
+    attribute role : ScalarValues::String;
+  }
+}`;
+  let LIBROOT = null;
+  function library() {
+    if (!LIBROOT) { const r = parseText(LIBRARY, true); LIBROOT = r.root; LIBROOT.diags = r.diags; walk(LIBROOT, (el, o) => { el.lib = true; if (o) el.owner = o; }); qualify(LIBROOT); }
+    return LIBROOT;
+  }
+
+  function walk(el, fn, owner = null) { fn(el, owner); for (const c of el.children) walk(c, fn, el); }
+  function qualify(root) {
+    walk(root, (el, o) => {
+      el.owner = o;
+      el.qn = !o || o.kind === 'root' ? (el.name || '') : o.qn ? (el.name ? o.qn + '::' + el.name : o.qn) : (el.name || '');
+    });
+  }
+
+  /* ---------- name resolution ---------- */
+  const named = (el, n) => el.name === n || el.short === n;
+  function members(ns, name, seen, inherit) {
+    if (!ns || seen.has(ns)) return null; seen.add(ns);
+    for (const c of ns.children) if (named(c, name) && c.kind !== 'import') return c.kind === 'alias' ? (c.resolved || null) : c;
+    for (const c of ns.children) if (c.kind === 'import') {
+      const t = c.resolved; if (!t) continue;
+      if (!c.all) { if (named(t, name)) return t; continue; }
+      const m = members(t, name, c.rec ? seen : new Set([ns]), false); if (m) return m;
+    }
+    if (inherit) for (const t of supers(ns)) { const m = members(t, name, seen, true); if (m) return m; }
+    return null;
+  }
+  // the elements a definition or usage inherits features from
+  function supers(el) { return [...(el.typeRefs || []), ...(el.specRefs || []), ...(el.subRefs || []), ...(el.redefRefs || [])].filter(Boolean); }
+  function lookup(model, scope, first) {
+    for (let s = scope; s; s = s.owner) { const m = members(s, first, new Set(), s.kind !== 'package' && s.kind !== 'root'); if (m) return m; }
+    // library packages are visible everywhere, and their members are too (a convenience; SysML v2 asks for an import)
+    for (const r of [model.root, model.lib]) { const m = r.children.find(c => named(c, first)); if (m) return m; }
+    for (const pk of model.lib.children) { const m = pk.children.find(c => named(c, first)); if (m) return m; }
+    return null;
+  }
+  function resolve(model, scope, q) {
+    if (!q) return null; if (typeof q === 'string') q = { parts: q.split(/::|\./), text: q };
+    let m = lookup(model, scope, q.parts[0]);
+    for (let i = 1; m && i < q.parts.length; i++) m = members(m, q.parts[i], new Set(), true);
+    return m;
+  }
+  // own and inherited features (children that are usages), with redefinitions replacing what they redefine
+  function features(el, seen = new Set()) {
+    if (!el || seen.has(el)) return []; seen.add(el);
+    const own = el.children.filter(c => USAGE(c));
+    const out = [...own], names = new Set(own.map(c => c.name).filter(Boolean));
+    for (const t of supers(el)) for (const f of features(t, seen)) if (!f.name || !names.has(f.name)) { out.push(f); if (f.name) names.add(f.name); }
+    return out;
+  }
+  const USAGE = c => !c.def && (KINDS.includes(c.kind) || ['subject', 'actor', 'stakeholder', 'usecase', 'end'].includes(c.kind));
+
+  /* ---------- checks ---------- */
+  function check(model, ctx) {
+    const D = model.diags, warnAt = (r, msg, sev = 'error') => D.push({ s: r.s, e: r.e, sev, msg });
+    // imports and aliases first, since other names may come through them
+    walk(model.root, el => { if (el.kind === 'import' || el.kind === 'alias') { el.resolved = resolve(model, el.owner && el.owner.owner ? el.owner : el.owner, el.target); } });
+    walk(model.root, el => {
+      if ((el.kind === 'import' || el.kind === 'alias') && el.target && !el.resolved) warnAt(el.target, `Cannot find '${el.target.text}'`);
+    });
+    walk(model.root, el => {
+      if (el.kind === 'root') return;
+      const scope = el.owner;
+      el.typeRefs = el.types.map(q => { const r = resolve(model, scope, q); if (!r) warnAt(q, `Cannot find the type '${q.text}'`); return r; });
+      el.specRefs = el.specializes.map(q => { const r = resolve(model, scope, q); if (!r) warnAt(q, `Cannot find '${q.text}' to specialise`); return r; });
+      el.subRefs = el.subsets.map(q => { const r = resolve(model, scope, q); if (!r) warnAt(q, `Cannot find '${q.text}' to subset`); return r; });
+      el.redefRefs = el.redefines.map(q => {
+        // a redefined feature is looked up in what the owner inherits
+        let r = null; for (const t of supers(scope || {})) { r = members(t, q.parts[q.parts.length - 1], new Set(), true); if (r) break; }
+        if (!r && q.parts.length > 1) r = resolve(model, scope, q);
+        if (!r) warnAt(q, `Nothing called '${q.text}' is inherited here to redefine`, 'warning'); return r;
+      });
+      // what a usage may be typed by
+      if (!el.def && TYPED_BY[el.kind]) el.typeRefs.forEach((t, i) => {
+        if (t && t.def && !TYPED_BY[el.kind].includes(t.kind) && !t.lib) warnAt(el.types[i], `A ${KIND_WORD(el)} is usually typed by a ${TYPED_BY[el.kind].map(k => k + ' def').join(' or ')}, not a ${t.kind} def`, 'warning');
+        if (t && !t.def && !t.lib && t.kind !== 'enumLiteral') warnAt(el.types[i], `'${el.types[i].text}' is a usage; type by a definition`, 'warning');
+      });
+      if (el.def) el.specRefs.forEach((t, i) => { if (t && !t.def) warnAt(el.specializes[i], `A definition specialises other definitions; '${el.specializes[i].text}' is a usage`, 'warning'); });
+      // relationship ends
+      const scopeOf = el.kind === 'transition' || el.kind === 'succession' || el.kind === 'initial' ? el.owner : el.owner;
+      if (el.ends) el.endRefs = el.ends.map(q => { const r = resolve(model, scopeOf, q); if (!r) warnAt(q, `Cannot find '${q.text}'`); return r; });
+      if (el.kind === 'satisfy' || el.kind === 'verify') {
+        el.reqRef = resolve(model, el.owner, el.req);
+        if (!el.reqRef) warnAt(el.req, `Cannot find the requirement '${el.req.text}'`);
+        else if (el.reqRef.kind !== 'requirement' && el.reqRef.kind !== 'concern') warnAt(el.req, `'${el.req.text}' is a ${KIND_WORD(el.reqRef)}, not a requirement`, 'warning');
+        if (el.kind === 'satisfy') { el.byRef = el.by ? resolve(model, el.owner, el.by) : el.owner; if (el.by && !el.byRef) warnAt(el.by, `Cannot find '${el.by.text}'`); }
+        if (el.kind === 'verify') { let v = el.owner; while (v && v.kind !== 'verification') v = v.owner; el.byRef = v; if (!v) warnAt(el, 'verify belongs in the objective of a verification', 'warning'); }
+      }
+      if (el.kind === 'transition' || el.kind === 'succession' || el.kind === 'initial') {
+        el.fromRef = el.from ? resolve(model, el.owner, el.from) : null; el.toRef = el.to ? resolve(model, el.owner, el.to) : null;
+        if (el.from && !el.fromRef) warnAt(el.from, `Cannot find the state or action '${el.from.text}'`);
+        if (el.to && !el.toRef) warnAt(el.to, `Cannot find the state or action '${el.to.text}'`);
+      }
+      if (el.kind === 'perform') { el.targetRef = resolve(model, el.owner, el.target); if (!el.targetRef) warnAt(el.target, `Cannot find '${el.target.text}'`); }
+      // duplicate names among siblings
+      if (el.children.length > 1) {
+        const seen = new Map();
+        for (const c of el.children) if (c.name && c.kind !== 'import' && !c.redefines.length) {
+          if (seen.has(c.name)) warnAt(c.nameAt || c, `'${c.name}' is already defined in ${el.name ? `'${el.name}'` : 'this namespace'}`, 'warning'); else seen.set(c.name, c);
+        }
+      }
+      // metadata: type, and the HFE trace links
+      for (const m of el.meta) {
+        m.typeRef = resolve(model, el.owner || model.root, m.type) || resolve(model, el, m.type);
+        if (!m.typeRef) { warnAt(m.type, `Cannot find the metadata definition '${m.type.text}'`); continue; }
+        if (m.typeRef.kind !== 'metadata' || !m.typeRef.def) warnAt(m.type, `'${m.type.text}' is not a metadata def`, 'warning');
+        if (m.typeRef.qn === 'HFE::WorkspaceLink' || m.typeRef.qn === 'HFE::Evidence') hfeChecks(el, m, ctx, warnAt);
+      }
+      if (el.kind === 'subject' && el.owner && el.owner.kind !== 'requirement' && el.owner.kind !== 'verification' && el.owner.kind !== 'case' && el.owner.kind !== 'usecase' && el.owner.kind !== 'analysis' && el.owner.kind !== 'concern')
+        warnAt(el, 'subject belongs in a requirement or a case', 'warning');
+    });
+  }
+  function hfeChecks(el, m, ctx, warnAt) {
+    const f = m.fields, at = k => m.at[k] || m.type, link = m.typeRef.qn === 'HFE::WorkspaceLink';
+    m.hfe = link ? 'link' : 'evidence';
+    for (const k of Object.keys(f)) if (!(link ? ['env', 'role', 'node'] : ['check', 'env', 'role']).includes(k)) warnAt(at(k), `${m.type.text} has no attribute '${k}'`, 'warning');
+    if (link && !f.node && !f.env) warnAt(m.type, 'A WorkspaceLink needs a node, an env, or both', 'warning');
+    if (!link && !f.check) warnAt(m.type, 'Evidence needs a check, for example check = "viewDist";', 'warning');
+    const C = ctx || {};
+    if (f.env && C.envs) {
+      const E = C.envs[f.env];
+      if (!E) warnAt(at('env'), `No environment '${f.env}' in Workspace Visualisation. Known: ${Object.keys(C.envs).join(', ')}`, 'warning');
+      else if (f.role && E.roles && !E.roles.includes(f.role)) warnAt(at('role'), `'${f.env}' has no role '${f.role}'. Roles: ${E.roles.join(', ')}`, 'warning');
+    }
+    if (!link && f.check && C.checks && !C.checks.includes(String(f.check).split('#')[0])) warnAt(at('check'), `No Workspace Visualisation check '${f.check}'`, 'warning');
+    if (link && f.node && !/^(man|ws|env|zones|cad|ann)(\.|$)/.test(f.node)) warnAt(at('node'), `'${f.node}' is not a scene node id (they start man., ws., env., zones. or cad.)`, 'warning');
+    if (link && f.node && C.nodes && C.nodes.env === (f.env || C.nodes.env) && !C.nodes.ids.includes(f.node)) warnAt(at('node'), `The open Workspace Visualisation has no object '${f.node}'`, 'warning');
+  }
+  const KIND_WORD = el => (el.kind === 'usecase' ? 'use case' : el.kind === 'enumLiteral' ? 'enumeration value' : el.kind) + (el.def ? ' def' : '');
+
+  function parse(text, opt = {}) {
+    const lib = library(); SEQ = 1000;
+    const { root, diags } = parseText(text, false);
+    qualify(root);
+    const model = { root, lib, diags, text };
+    check(model, opt.context);
+    model.all = []; walk(root, el => { if (el.kind !== 'root') model.all.push(el); });
+    model.byId = Object.fromEntries(model.all.map(e => [e.id, e]));
+    model.diags.sort((a, b) => a.s - b.s || (a.sev === 'error' ? -1 : 1));
+    // drop exact duplicates
+    model.diags = model.diags.filter((d, i, a) => !i || d.s !== a[i - 1].s || d.msg !== a[i - 1].msg);
+    return model;
+  }
+  function elementAt(model, off) {
+    let best = null;
+    walk(model.root, el => { if (el.kind !== 'root' && el.s <= off && off <= el.e && (!best || el.e - el.s <= best.e - best.s)) best = el; });
+    return best;
+  }
+  const lineCol = (text, off) => { let line = 1, ls = 0; for (let i = 0; i < off && i < text.length; i++) if (text[i] === '\n') { line++; ls = i + 1; } return { line, col: off - ls + 1 }; };
+
+  /* ---------- views ---------- */
+  const keyword = el => '«' + (el.kind === 'usecase' ? 'use case' : el.kind === 'enumLiteral' ? 'enum' : el.kind) + (el.def ? ' def' : '') + '»';
+  const label = el => (el.short ? `<${el.short}> ` : '') + (el.name || '(unnamed)');
+  const typeText = el => [...el.types.map(t => (t.conj ? '~' : '') + t.text)].join(', ');
+  const featLine = f => `${f.dir ? f.dir + ' ' : ''}${f.name || ''}${f.types.length ? ' : ' + typeText(f) : ''}${f.mult ? ` [${f.mult}]` : ''}${f.value ? ' = ' + f.value.text : ''}`;
+  function compartments(el, opt = {}) {
+    const C = [], kids = el.children;
+    const attrs = kids.filter(c => c.kind === 'attribute' && !c.def), ports = kids.filter(c => c.kind === 'port' && !c.def), parts = kids.filter(c => c.kind === 'part' && !c.def);
+    const items = kids.filter(c => c.kind === 'item' && !c.def);
+    if (el.doc && opt.doc) C.push({ title: 'doc', items: [el.doc.length > 140 ? el.doc.slice(0, 137) + '…' : el.doc], doc: true });
+    if (attrs.length) C.push({ title: 'attributes', items: attrs.map(featLine), ids: attrs.map(a => a.id) });
+    if (ports.length && opt.ports !== false) C.push({ title: 'ports', items: ports.map(featLine), ids: ports.map(a => a.id) });
+    if (parts.length && opt.parts !== false) C.push({ title: 'parts', items: parts.map(featLine), ids: parts.map(a => a.id) });
+    if (items.length) C.push({ title: items.every(i => i.dir) ? 'directed features' : 'items', items: items.map(featLine), ids: items.map(a => a.id) });
+    if (el.kind === 'enum' && el.def) { const lits = kids.filter(c => c.kind === 'enumLiteral'); if (lits.length) C.push({ title: 'literals', items: lits.map(l => l.name) }); }
+    return C;
+  }
+  const links = el => el.meta.filter(m => m.hfe === 'link').map(m => ({ ...m.fields }));
+  const evid = el => el.meta.filter(m => m.hfe === 'evidence').map(m => ({ ...m.fields }));
+  function viewNode(el, extra) {
+    return { id: 'n' + el.id, el: el.id, kind: el.kind, def: el.def, keyword: keyword(el), name: label(el), type: el.types.length ? typeText(el) : '',
+      compartments: compartments(el), links: links(el).length, children: [], ports: [], ...extra };
+  }
+
+  // General view: packages as containers, definitions and top-level usages with compartments; specialisation, typing and
+  // composition edges between them
+  function general(model, root) {
+    root = root || model.root;
+    const nodes = [], edges = [], shown = new Map();
+    const SHOW = el => (el.def && el.kind !== 'metadata') || (!el.def && el.owner && (el.owner.kind === 'package' || el.owner.kind === 'root') && KINDS.includes(el.kind));
+    function add(el, into) {
+      if (el.kind === 'package') {
+        const n = { id: 'n' + el.id, el: el.id, kind: 'package', keyword: '«package»', name: label(el), children: [], ports: [], compartments: [] };
+        for (const c of el.children) add(c, n.children);
+        if (n.children.length) { into.push(n); shown.set(el, n); }
+        return;
+      }
+      if (!SHOW(el)) return;
+      const n = viewNode(el); into.push(n); shown.set(el, n);
+    }
+    if (root.kind === 'root') for (const c of root.children) add(c, nodes); else add(root, nodes);
+    let k = 0;
+    for (const [el, n] of shown) {
+      if (el.kind === 'package') continue;
+      for (const t of el.specRefs || []) if (shown.has(t)) edges.push({ id: 'g' + k++, source: n.id, target: shown.get(t).id, kind: 'specializes' });
+      for (const t of el.subRefs || []) if (shown.has(t)) edges.push({ id: 'g' + k++, source: n.id, target: shown.get(t).id, kind: 'subsets' });
+      for (const t of el.typeRefs || []) if (shown.has(t)) edges.push({ id: 'g' + k++, source: n.id, target: shown.get(t).id, kind: 'typing' });
+      // composition: part, item and port usages owned by this element, drawn to their definition when it is shown
+      for (const c of el.children) if (!c.def && ['part', 'item', 'action', 'state', 'requirement'].includes(c.kind) && !c.ref) {
+        const t = (c.typeRefs || []).find(x => shown.has(x));
+        if (t) edges.push({ id: 'g' + k++, source: n.id, target: shown.get(t).id, kind: c.kind === 'port' ? 'port' : 'composition', label: (c.name || '') + (c.mult ? ` [${c.mult}]` : '') });
+      }
+    }
+    return { kind: 'general', nodes, edges };
+  }
+
+  // Interconnection view: a part (usage or definition) with its nested parts as containers, ports on their borders, and
+  // connections, interfaces, flows and bindings between ports or parts. Usages show what they inherit from their type.
+  function interconnection(model, top, depth = 3) {
+    const nodes = [], edges = [], idOf = new Map(); let k = 0;
+    const portLike = f => f.kind === 'port' || (f.dir && (f.kind === 'item' || f.kind === 'attribute'));
+    function addPart(el, path, d, into) {
+      const n = { id: 'n' + path, el: el.id, kind: el.kind, def: el.def, keyword: keyword(el), name: label(el), type: el.types.length ? typeText(el) : '', children: [], ports: [],
+        compartments: [], links: links(el).length };
+      idOf.set(path, n); into.push(n);
+      const feats = features(el);
+      for (const f of feats) if (portLike(f) && f.name) { const pid = 'p' + path + '.' + f.name; n.ports.push({ id: pid, el: f.id, name: f.name, dir: f.dir, conj: !!(f.types[0] && f.types[0].conj), type: typeText(f) }); idOf.set(path + '.' + f.name, { port: pid, node: n }); }
+      const attrs = feats.filter(f => f.kind === 'attribute' && !f.dir);
+      if (attrs.length) n.compartments.push({ title: 'attributes', items: attrs.slice(0, 6).map(featLine).concat(attrs.length > 6 ? [`… ${attrs.length - 6} more`] : []) });
+      if (d < depth) for (const f of feats) if ((f.kind === 'part' || (f.kind === 'item' && !f.dir)) && f.name) addPart(f, path + '.' + f.name, d + 1, n.children);
+      // connections owned here or inherited, with ends resolved relative to this part
+      for (const c of [...el.children, ...supers(el).flatMap(t => t.children)]) {
+        const ends = c.ends || (c.kind === 'connect' || c.kind === 'bind' ? c.ends : null); if (!ends || ends.length < 2) continue;
+        const kind = c.kind === 'connect' ? 'connection' : c.kind;
+        const ids = ends.map(q => idOf.get(path + '.' + q.text) || null);
+        if (ids.every(Boolean)) {
+          const end = x => x.port ? { node: x.node.id, port: x.port } : { node: x.id };
+          const a = end(ids[0]), b = end(ids[1]);
+          edges.push({ id: 'c' + k++, source: a.node, sourcePort: a.port, target: b.node, targetPort: b.port, kind, el: c.id, label: c.name || (c.of ? c.of.text : c.types && c.types.length ? ': ' + typeText(c) : '') });
+        }
+      }
+    }
+    if (top) addPart(top, top.name || top.id, 0, nodes);
+    return { kind: 'interconnection', nodes, edges };
+  }
+
+  // Requirements view: requirements (with doc text, subject and constraints), what satisfies them, the verification
+  // cases that verify them, and the evidence each verification or requirement carries
+  function requirements(model, root, results) {
+    const nodes = [], edges = [], shown = new Map(); let k = 0;
+    const inScope = el => !root || root.kind === 'root' || (el.qn || '').startsWith(root.qn + '::') || el === root;
+    const reqs = model.all.filter(el => el.kind === 'requirement' && inScope(el) && !(el.owner && el.owner.kind === 'requirement' && !el.def && false));
+    const T = trace(model, results);
+    const status = new Map(T.map(r => [r.el, r]));
+    const add = (el, extra) => { if (shown.has(el)) return shown.get(el); const n = viewNode(el, extra); n.compartments = []; shown.set(el, n); nodes.push(n); return n; };
+    for (const r of reqs) {
+      const tr = status.get(r.id), n = add(r, { status: tr ? tr.status : null });
+      if (r.doc) n.compartments.push({ title: 'text', items: [r.doc], doc: true });
+      const subj = r.children.find(c => c.kind === 'subject'); if (subj) n.compartments.push({ title: 'subject', items: [featLine(subj)] });
+      const cons = r.children.filter(c => c.kind === 'constraint' && c.role); if (cons.length) n.compartments.push({ title: 'constraints', items: cons.map(c => `${c.role} { ${(c.value && c.value.text) || c.value || c.name || ''} }`) });
+      const at = r.children.filter(c => c.kind === 'attribute' && !c.def); if (at.length) n.compartments.push({ title: 'attributes', items: at.map(featLine) });
+      if (tr && tr.evidence.length) n.compartments.push({ title: 'evidence', items: tr.evidence.map(ev => `${ev.check}: ${ev.text || 'no result yet'}`), statuses: tr.evidence.map(ev => ev.status) });
+    }
+    for (const r of reqs) {
+      // nested requirements (derivation by containment) and typing by a requirement def
+      if (r.owner && shown.has(r.owner) && r.owner.kind === 'requirement') edges.push({ id: 'r' + k++, source: shown.get(r.owner).id, target: shown.get(r).id, kind: 'contains' });
+      for (const t of r.typeRefs || []) if (t && shown.has(t)) edges.push({ id: 'r' + k++, source: shown.get(r).id, target: shown.get(t).id, kind: 'typing' });
+      for (const t of r.specRefs || []) if (t && shown.has(t)) edges.push({ id: 'r' + k++, source: shown.get(r).id, target: shown.get(t).id, kind: 'specializes' });
+    }
+    for (const el of model.all) {
+      if ((el.kind === 'satisfy' || el.kind === 'verify') && el.reqRef && shown.has(el.reqRef) && el.byRef) {
+        const by = el.byRef; const n = shown.get(by) || add(by, by.owner && !by.owner.def && by.owner.kind === 'part' && by.owner.name ? { name: path(by) } : {});
+        if (el.kind === 'verify') { const tr = status.get(el.reqRef.id); const ev = evid(by); if (ev.length && !n.compartments.length) n.compartments.push({ title: 'evidence', items: ev.map(e => e.check) }); if (tr && n.status == null) n.status = null; }
+        edges.push({ id: 'r' + k++, source: n.id, target: shown.get(el.reqRef).id, kind: el.kind, el: el.id });
+      }
+    }
+    return { kind: 'requirements', nodes, edges };
+  }
+
+  // a usage's name with the usages that own it, for example pilotConsole.tactical
+  function path(el) { const p = []; for (let x = el; x && !x.def && x.name && x.kind !== 'package' && x.kind !== 'root'; x = x.owner) p.unshift(x.name); return p.join('.') || label(el); }
+
+  // Behaviour view: the states or actions in a state or action definition or usage, with transitions and successions
+  function behaviour(model, top) {
+    const nodes = [], edges = [], shown = new Map(); let k = 0;
+    if (!top) return { kind: 'behaviour', nodes, edges };
+    const kids = [...top.children, ...supers(top).flatMap(t => t.children)];
+    for (const c of kids) if ((c.kind === 'state' || c.kind === 'action' || c.kind === 'control') && !c.def && c.name) {
+      const n = viewNode(c); n.compartments = [];
+      const ent = c.children.filter(x => x.role === 'entry' || x.role === 'do' || x.role === 'exit'); if (ent.length) n.compartments.push({ title: 'behaviour', items: ent.map(x => `${x.role} ${x.name || ''}${x.types.length ? ' : ' + typeText(x) : ''}`) });
+      if (c.kind === 'control') { n.keyword = '«' + c.control + '»'; }
+      nodes.push(n); shown.set(c, n);
+    }
+    let init = null;
+    for (const c of kids) {
+      if (!['transition', 'succession', 'initial'].includes(c.kind)) continue;
+      const to = c.toRef && shown.get(c.toRef); let from = c.fromRef && shown.get(c.fromRef);
+      if (c.kind === 'initial' || (!c.from && c.kind === 'succession' && !from)) { if (!init) { init = { id: 'n_init_' + top.id, kind: 'initial', name: '', keyword: '', children: [], ports: [], compartments: [] }; nodes.unshift(init); } from = init; }
+      if (!from || !to) continue;
+      const lab = c.kind === 'transition' ? [c.trigger, c.guard ? `[${c.guard}]` : null, c.effect ? '/ ' + c.effect : null].filter(Boolean).join(' ') : '';
+      edges.push({ id: 't' + k++, source: from.id, target: to.id, kind: c.kind === 'initial' ? 'succession' : c.kind, label: lab, el: c.id });
+    }
+    return { kind: 'behaviour', nodes, edges };
+  }
+
+  /* ---------- traceability: requirements, what satisfies them, links to the 3D workspace, and evidence ---------- */
+  const RANK = { bad: 3, warn: 2, ok: 1 };
+  function rowsFor(results, check, env, role) {
+    if (!results || !results.rows) return { rows: [], why: 'No results from Workspace Visualisation yet' };
+    if (env && results.env && env !== results.env) return { rows: [], why: `The results are for ${results.env}, not ${env}` };
+    if (role && results.role && role !== results.role) return { rows: [], why: `The results are for the ${results.role} seat, not ${role}` };
+    const c = String(check);
+    return { rows: results.rows.filter(r => r.key === c || (!c.includes('#') && (r.base === c || r.key === c))), why: null };
+  }
+  function trace(model, results) {
+    const out = [];
+    for (const r of model.all.filter(e => e.kind === 'requirement')) {
+      const sat = model.all.filter(e => e.kind === 'satisfy' && e.reqRef === r && e.byRef).map(e => e.byRef);
+      const ver = model.all.filter(e => e.kind === 'verify' && e.reqRef === r && e.byRef).map(e => e.byRef);
+      const evSrc = [...evid(r).map(f => ({ ...f, from: r })), ...ver.flatMap(v => evid(v).map(f => ({ ...f, from: v })))];
+      const evidence = evSrc.map(f => {
+        const { rows, why } = rowsFor(results, f.check, f.env, f.role);
+        let worst = null; for (const x of rows) if (RANK[x.status] && (!worst || RANK[x.status] > RANK[worst.status])) worst = x;
+        return { check: String(f.check), env: f.env || null, role: f.role || null, from: f.from.id, status: worst ? worst.status : 'pending',
+          text: worst ? `${worst.text}${rows.length > 1 ? ` (worst of ${rows.length})` : ''}` : why || 'Not assessed for this case', name: worst ? worst.name : null };
+      });
+      const linkSrc = [r, ...sat].flatMap(el => links(el).map(l => ({ ...l, el: el.id, name: label(el) })));
+      let status = evidence.length ? 'ok' : 'none';
+      if (evidence.some(e => e.status === 'pending')) status = 'pending';
+      for (const e of evidence) if (RANK[e.status] && RANK[e.status] > (RANK[status] || 0) && e.status !== 'ok') status = e.status;
+      out.push({ el: r.id, name: label(r), qn: r.qn, doc: r.doc, def: r.def, satisfiedBy: sat.map(s => ({ el: s.id, name: label(s), qn: s.qn })),
+        verifiedBy: ver.map(v => ({ el: v.id, name: label(v) })), links: linkSrc, evidence, status });
+    }
+    return out;
+  }
+  // every WorkspaceLink in the model, with the element it sits on (and its inherited links: a usage takes its type's)
+  function workspaceLinks(model, el) {
+    const own = links(el).map(l => ({ ...l, el: el.id, name: label(el), inherited: false }));
+    if (own.length) return own;
+    for (const t of supers(el)) { const l = links(t); if (l.length) return l.map(x => ({ ...x, el: t.id, name: label(t), inherited: true })); }
+    return [];
+  }
+
+  /* ---------- completion ---------- */
+  const STARTERS = ['package', 'part def', 'part', 'attribute def', 'attribute', 'port def', 'port', 'item def', 'item', 'interface def', 'interface',
+    'connection def', 'connection', 'connect', 'flow', 'requirement def', 'requirement', 'satisfy', 'verify', 'verification def', 'verification',
+    'subject', 'require constraint', 'doc', 'import', 'action def', 'action', 'state def', 'state', 'transition', 'entry', 'then', 'accept',
+    'enum def', 'constraint def', 'use case def', 'actor', 'objective', 'metadata def', 'alias', 'ref', 'in', 'out', 'abstract', 'allocate', 'perform', 'exhibit'];
+  function complete(model, text, off, ctx = {}) {
+    let a = off; while (a > 0 && /[A-Za-z0-9_:.]/.test(text[a - 1])) a--;
+    const word = text.slice(a, off), before = text.slice(Math.max(0, a - 80), a);
+    const items = [], push = (label, kind, detail, insert) => items.push({ label, kind, detail: detail || '', insert: insert || label });
+    // inside a string after an HFE metadata attribute
+    const str = /(\b(env|role|node|check))\s*=\s*"([^"\n]*)$/.exec(text.slice(Math.max(0, off - 120), off));
+    if (str) {
+      const key = str[2], typed = str[3], C = ctx || {};
+      const envNear = (/\benv\s*=\s*"([^"]+)"/.exec(text.slice(Math.max(0, off - 300), Math.min(text.length, off + 200))) || [])[1];
+      if (key === 'env' && C.envs) for (const [id, e] of Object.entries(C.envs)) push(id, 'env', e.name);
+      if (key === 'role' && C.envs) for (const r of ((C.envs[envNear] || {}).roles || [])) push(r, 'role', (C.envs[envNear] || {}).name);
+      if (key === 'check' && C.checkInfo) for (const c of C.checkInfo) push(c.id, 'check', `${c.group}: ${c.name}`);
+      if (key === 'node') for (const nd of (C.nodesFor ? C.nodesFor(envNear) : [])) push(nd.id, 'node', nd.label);
+      return { from: off - typed.length, to: off, items: items.filter(i => i.label.toLowerCase().startsWith(typed.toLowerCase())) };
+    }
+    const afterType = /(:>>|:>|::>|:|defined\s+by|specializes|subsets|redefines|satisfy|verify|by|@|#|import|for|connect|to|from|first|then)\s*(requirement\s+)?$/.exec(before);
+    if (afterType) {
+      const at = afterType[1] === '@' || afterType[1] === '#';
+      const pool = [...model.all, ...(model.lib ? collect(model.lib) : [])];
+      for (const el of pool) {
+        if (!el.name || el.kind === 'import' || el.kind === 'comment') continue;
+        if (at && !(el.kind === 'metadata' && el.def)) continue;
+        if (/^(:|defined|specializes)/.test(afterType[1]) && !el.def) continue;
+        if (/^(satisfy|verify)$/.test(afterType[1]) && el.kind !== 'requirement') continue;
+        const q = el.lib ? el.qn : el.qn;
+        push(q && q.includes('::') && !word.includes('::') && !el.lib ? el.name : q, el.kind, keyword(el));
+      }
+      if (afterType[1] === '@') { push('HFE::WorkspaceLink', 'metadata', 'link to a 3D object', 'HFE::WorkspaceLink { env = ""; role = ""; node = ""; }'); push('HFE::Evidence', 'metadata', 'link to a check', 'HFE::Evidence { check = ""; }'); }
+    } else {
+      for (const s of STARTERS) push(s, 'keyword', 'SysML v2');
+      push('@HFE::WorkspaceLink', 'snippet', 'link this element to a 3D object', '@HFE::WorkspaceLink { env = ""; role = ""; node = ""; }');
+      push('@HFE::Evidence', 'snippet', 'use a workspace check as evidence', '@HFE::Evidence { check = ""; }');
+    }
+    const w = word.toLowerCase(), seen = new Set();
+    return { from: a, to: off, items: items.filter(i => i.label.toLowerCase().startsWith(w) || (w.length > 1 && i.label.toLowerCase().includes(w))).filter(i => !seen.has(i.label) && seen.add(i.label)).sort((x, y) => (x.label.toLowerCase().startsWith(w) ? 0 : 1) - (y.label.toLowerCase().startsWith(w) ? 0 : 1) || x.label.length - y.label.length).slice(0, 60) };
+  }
+  function collect(r) { const out = []; walk(r, el => { if (el.kind !== 'root') out.push(el); }); return out; }
+
+  /* ---------- JSON export in the shape of the SysML v2 API ---------- */
+  function fnv(s) { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(16).padStart(8, '0'); }
+  function apiType(el) {
+    if (el.kind === 'package') return el.library ? 'LibraryPackage' : 'Package';
+    if (el.kind === 'comment') return 'Comment';
+    if (el.kind === 'import') return el.all ? 'NamespaceImport' : 'MembershipImport';
+    if (el.kind === 'alias') return 'Membership';
+    if (el.kind === 'satisfy') return 'SatisfyRequirementUsage';
+    if (el.kind === 'verify') return 'RequirementVerificationMembership';
+    if (el.kind === 'connect') return 'ConnectionUsage';
+    if (el.kind === 'bind') return 'BindingConnectorAsUsage';
+    if (el.kind === 'allocate') return 'AllocationUsage';
+    if (el.kind === 'transition') return 'TransitionUsage';
+    if (el.kind === 'succession' || el.kind === 'initial') return 'SuccessionAsUsage';
+    if (el.kind === 'enumLiteral') return 'EnumerationUsage';
+    if (el.kind === 'subject') return 'ReferenceUsage';
+    if (el.kind === 'actor' || el.kind === 'stakeholder') return 'PartUsage';
+    if (el.kind === 'objective') return 'RequirementUsage';
+    if (el.kind === 'control') return ({ fork: 'ForkNode', join: 'JoinNode', merge: 'MergeNode', decide: 'DecisionNode' })[el.control];
+    const b = API[el.kind]; return b ? b + (el.def ? 'Definition' : 'Usage') : 'Element';
+  }
+  function toJSON(model) {
+    const ids = new Map(); let n = 0;
+    const idOf = el => { if (!ids.has(el)) { const h = fnv((el.qn || '') + '|' + el.kind + '|' + (n++)); ids.set(el, `${h.slice(0, 8)}-${h.slice(0, 4)}-4${h.slice(1, 4)}-8${h.slice(4, 7)}-${fnv(h + el.s).padEnd(12, '0').slice(0, 12)}`); } return ids.get(el); };
+    const ref = el => el ? { '@id': el.lib ? 'lib:' + el.qn : idOf(el) } : null;
+    return model.all.map(el => {
+      const o = { '@id': idOf(el), '@type': apiType(el), name: el.name || null, shortName: el.short || null, qualifiedName: el.qn || null, owner: el.owner && el.owner.kind !== 'root' ? ref(el.owner) : null };
+      if (el.doc) o.documentation = [{ '@type': 'Documentation', body: el.doc }];
+      if (el.text) o.body = el.text;
+      if (el.abstract) o.isAbstract = true;
+      if (el.dir) o.direction = el.dir;
+      if (el.mult) o.multiplicity = el.mult;
+      if (el.typeRefs && el.typeRefs.length) o.definition = el.typeRefs.map(ref);
+      if (el.specRefs && el.specRefs.length) o.ownedSpecialization = el.specRefs.map(ref);
+      if (el.subRefs && el.subRefs.length) o.ownedSubsetting = el.subRefs.map(ref);
+      if (el.redefRefs && el.redefRefs.length) o.ownedRedefinition = el.redefRefs.map(ref);
+      if (el.value) o.value = el.value.text;
+      if (el.reqRef) o.requirement = ref(el.reqRef);
+      if (el.kind === 'satisfy' && el.byRef) o.satisfyingFeature = ref(el.byRef);
+      if (el.endRefs) o.connectorEnd = el.endRefs.map(ref);
+      if (el.kind === 'transition' || el.kind === 'succession') { o.source = ref(el.fromRef); o.target = ref(el.toRef); if (el.trigger) o.trigger = el.trigger; if (el.guard) o.guard = el.guard; if (el.effect) o.effect = el.effect; }
+      if (el.meta.length) o.metadata = el.meta.map(m => ({ '@type': 'MetadataUsage', metadataDefinition: m.typeRef ? ref(m.typeRef) : m.type.text, ...m.fields }));
+      return o;
+    });
+  }
+
+  const views = { general, interconnection, requirements, behaviour };
+  return { parse, lex, elementAt, resolve, features, views, trace, workspaceLinks, complete, toJSON, lineCol, keyword, label, LIBRARY, KW };
+})();
+if (typeof module !== 'undefined' && module.exports) module.exports = HFE_SYSML;
+
+/* ---------------- SysML editor diagrams: view graph -> ELK graph -> SVG ----------------
+   Takes a view graph from HFE_SYSML.views (nodes with compartments, ports and children; edges between nodes or
+   ports), sizes every box from its text, lays it out with ELK (layered, hierarchy included) and draws SysML v2 style
+   SVG: definitions as square-cornered boxes, usages with rounded corners, «keywords» above names, compartments,
+   ports as small squares on the border, specialisation with a hollow triangle, composition with a filled diamond,
+   satisfy and verify as dashed arrows. No dependencies: the caller passes ELK and a text measuring function, so the
+   same code runs in the page and in Node tests. Global HFE_DIAGRAM. */
+const HFE_DIAGRAM = (() => {
+  const F = { kw: 10.5, name: 12.5, title: 10, item: 11, port: 10, edge: 10 }, LH = { kw: 14, name: 17, title: 14, item: 15 };
+  const PAD = 10, MINW = 130, MAXW = 340, PORT = 11, DOCW = 46;
+  const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  // wrap a doc string into lines of about n characters
+  function wrap(s, n, max = 6) {
+    const out = []; for (const para of String(s).split('\n')) {
+      let line = ''; for (const w of para.split(/\s+/)) { if (!w) continue; if ((line + ' ' + w).trim().length > n) { if (line) out.push(line); line = w; } else line = (line + ' ' + w).trim(); }
+      if (line) out.push(line);
+    }
+    if (out.length > max) { out.length = max; out[max - 1] += ' …'; }
+    return out;
+  }
+  // lines of a box: header (keyword, name), then each compartment's title and items
+  function boxLines(n) {
+    const L = [];
+    if (n.kind === 'initial') return L;
+    if (n.keyword) L.push({ t: n.keyword, f: F.kw, h: LH.kw, cls: 'kw' });
+    L.push({ t: n.name + (n.type ? ' : ' + n.type : ''), f: F.name, h: LH.name, cls: 'nm' });
+    for (const c of n.compartments || []) {
+      L.push({ sep: true, h: 6 });
+      L.push({ t: c.title, f: F.title, h: LH.title, cls: 'ct' });
+      c.items.forEach((it, i) => {
+        if (c.doc) for (const w of wrap(it, DOCW)) L.push({ t: w, f: F.item, h: LH.item, cls: 'doc' });
+        else L.push({ t: it, f: F.item, h: LH.item, cls: 'it', st: c.statuses ? c.statuses[i] : null });
+      });
+    }
+    return L;
+  }
+  function size(n, measure) {
+    if (n.kind === 'initial') return { w: 18, h: 18, lines: [] };
+    const lines = boxLines(n); let w = MINW;
+    for (const l of lines) if (l.t) { l.t = clip(l.t, l.f, measure); w = Math.max(w, measure(l.t, l.f, l.cls) + 2 * PAD + (l.st ? 14 : 0)); }
+    w = Math.min(MAXW, Math.ceil(w));
+    const h = Math.ceil(lines.reduce((a, l) => a + l.h, 0) + PAD + 4);
+    return { w, h, lines };
+  }
+  function clip(t, f, measure) { if (measure(t, f) <= MAXW - 2 * PAD) return t; let s = t; while (s.length > 4 && measure(s + '…', f) > MAXW - 2 * PAD) s = s.slice(0, -1); return s + '…'; }
+
+  const LAYOUT = {
+    general: { 'elk.direction': 'DOWN' },
+    interconnection: { 'elk.direction': 'RIGHT' },
+    requirements: { 'elk.direction': 'RIGHT' },
+    behaviour: { 'elk.direction': 'DOWN' }
+  };
+  // edges whose arrowhead points against the flow of the layout: drawn target to source, laid out source to target
+  const REVERSED = { general: ['specializes', 'subsets', 'typing'], requirements: ['typing', 'specializes', 'verify'] };
+
+  function toElk(view, measure) {
+    const meta = new Map(), rev = new Set(REVERSED[view.kind] || []);
+    function node(n) {
+      const s = size(n, measure); meta.set(n.id, { n, lines: s.lines, head: s.h });
+      const o = { id: n.id, layoutOptions: {} };
+      if (n.ports && n.ports.length) {
+        o.ports = n.ports.map(p => ({ id: p.id, width: PORT, height: PORT, labels: [{ text: p.name, width: measure(p.name, F.port) + 2, height: 12 }] }));
+        o.layoutOptions['elk.portConstraints'] = 'FREE'; o.layoutOptions['elk.portLabels.placement'] = 'OUTSIDE';
+        o.layoutOptions['elk.nodeSize.constraints'] = 'PORTS PORT_LABELS MINIMUM_SIZE'; o.layoutOptions['elk.nodeSize.minimum'] = `(${s.w},${s.h})`;
+      }
+      if (n.children && n.children.length) {
+        o.children = n.children.map(node);
+        o.layoutOptions['elk.padding'] = `[top=${s.h + 8},left=16,bottom=16,right=16]`;
+        o.layoutOptions['elk.nodeSize.constraints'] = 'PORTS PORT_LABELS MINIMUM_SIZE'; o.layoutOptions['elk.nodeSize.minimum'] = `(${s.w},${s.h + 30})`;
+      } else { o.width = s.w; o.height = s.h; }
+      return o;
+    }
+    const children = view.nodes.map(node);
+    const edges = view.edges.map(e => {
+      const r = rev.has(e.kind), src = e.sourcePort || e.source, tgt = e.targetPort || e.target;
+      const o = { id: e.id, sources: [r ? tgt : src], targets: [r ? src : tgt] };
+      const lab = edgeLabel(e); if (lab) o.labels = [{ text: lab, width: measure(lab, F.edge) + 4, height: 13 }];
+      meta.set(e.id, { e, rev: r, lab }); return o;
+    });
+    const graph = { id: 'root', layoutOptions: {
+      'elk.algorithm': 'layered', 'elk.hierarchyHandling': 'INCLUDE_CHILDREN', 'elk.edgeRouting': 'ORTHOGONAL',
+      'elk.layered.spacing.nodeNodeBetweenLayers': '46', 'elk.spacing.nodeNode': '28', 'elk.spacing.edgeNode': '16', 'elk.spacing.edgeEdge': '10',
+      'elk.layered.nodePlacement.strategy': 'BRANDES_KOEPF', 'elk.spacing.componentComponent': '40', 'elk.edgeLabels.inline': 'false',
+      'elk.layered.considerModelOrder.strategy': 'NODES_AND_EDGES', 'elk.padding': '[top=20,left=20,bottom=20,right=20]', ...(LAYOUT[view.kind] || {}) },
+      children, edges };
+    return { graph, meta };
+  }
+  function edgeLabel(e) {
+    const k = { satisfy: '«satisfy»', verify: '«verify»', subsets: '«subsets»', flow: e.label ? '«flow» ' + e.label : '«flow»', bind: '=', allocate: '«allocate»' }[e.kind];
+    return k || e.label || '';
+  }
+
+  function render(laid, meta, view, opt = {}) {
+    const abs = new Map(); // absolute positions of every node and port
+    const out = [], edgesSvg = [];
+    function walk(o, ox, oy, depth) {
+      const x = ox + (o.x || 0), y = oy + (o.y || 0); abs.set(o.id, { x, y, w: o.width, h: o.height });
+      if (o.id !== 'root') out.push(box(o, x, y, depth));
+      for (const p of o.ports || []) abs.set(p.id, { x: x + p.x, y: y + p.y, w: p.width, h: p.height });
+      for (const c of o.children || []) walk(c, x, y, depth + 1);
+    }
+    function box(o, x, y, depth) {
+      const M = meta.get(o.id), n = M.n, cls = ['nd', 'k-' + n.kind, n.def ? 'def' : 'use', n.status ? 'st-' + n.status : '', n.el && n.el === opt.selected ? 'sel' : ''].filter(Boolean).join(' ');
+      if (n.kind === 'initial') return `<g class="${cls}"><circle cx="${x + 9}" cy="${y + 9}" r="8" class="init"/></g>`;
+      const r = n.kind === 'package' ? 0 : n.def ? 1.5 : (n.kind === 'state' || n.kind === 'action' ? 12 : 8);
+      let s = `<g class="${cls}"${n.el ? ` data-el="${n.el}"` : ''} tabindex="0" role="button" aria-label="${esc(n.keyword + ' ' + n.name)}">`;
+      if (n.kind === 'package') {
+        const tw = Math.min(o.width - 10, Math.max(90, (M.lines[1] ? M.lines[1].t.length : 8) * 7.2 + 24));
+        s += `<path class="tab" d="M${x} ${y - 16}h${tw}v16h-${tw}z"/><rect class="bx" x="${x}" y="${y}" width="${o.width}" height="${o.height}"/>`;
+        s += `<text class="kw" x="${x + 8}" y="${y - 4}">${esc(n.name)}</text></g>`;
+        return s;
+      }
+      s += `<rect class="bx${depth > 1 ? ' nested' : ''}" x="${x}" y="${y}" width="${o.width}" height="${o.height}" rx="${r}"/>`;
+      let cy = y + 4;
+      for (const l of M.lines) {
+        if (l.sep) { s += `<line class="sep" x1="${x}" x2="${x + o.width}" y1="${cy + 3}" y2="${cy + 3}"/>`; cy += l.h; continue; }
+        const centre = l.cls === 'kw' || l.cls === 'nm';
+        const tx = centre ? x + o.width / 2 : x + PAD + (l.st ? 14 : 0);
+        if (l.st) s += `<circle class="dot st-${l.st}" cx="${x + PAD + 4}" cy="${cy + l.h / 2 + 1}" r="4"/>`;
+        s += `<text class="${l.cls}" x="${tx}" y="${cy + l.h - 4}"${centre ? ' text-anchor="middle"' : ''}>${esc(l.t)}</text>`;
+        cy += l.h;
+      }
+      if (n.links) s += `<g class="lnk" transform="translate(${x + o.width - 20} ${y + 4})"><title>Linked to Workspace Visualisation</title><rect width="15" height="13" rx="2"/><path d="M3.5 9.5l3-3 2 2 3-4"/></g>`;
+      if (n.status && n.status !== 'none') s += `<g class="badge st-${n.status}" transform="translate(${x + 4} ${y + 4})"><title>${esc(STATUS_WORD[n.status] || n.status)}</title><rect width="14" height="14" rx="7"/><text x="7" y="10.5" text-anchor="middle">${GLYPH[n.status] || ''}</text></g>`;
+      for (const p of (o.ports || [])) {
+        const P = n.ports.find(q => q.id === p.id) || {};
+        const px = x + p.x, py = y + p.y;
+        s += `<g class="port${P.conj ? ' conj' : ''}" data-el="${P.el || ''}"><title>${esc(`${P.dir ? P.dir + ' ' : ''}port ${P.name}${P.type ? ' : ' + P.type : ''}`)}</title><rect x="${px}" y="${py}" width="${p.width}" height="${p.height}"/>`;
+        if (P.dir === 'in' || P.dir === 'out') s += `<path class="pd" d="M${px + 3} ${py + 3}l5 2.5-5 2.5"/>`;
+        s += '</g>';
+        for (const lb of p.labels || []) s += `<text class="pl" x="${px + lb.x}" y="${py + lb.y + 10}">${esc(lb.text)}</text>`;
+      }
+      return s + '</g>';
+    }
+    walk(laid, 0, 0, 0);
+    const allEdges = []; (function collect(o) { for (const e of o.edges || []) allEdges.push(e); for (const c of o.children || []) collect(c); })(laid);
+    for (const e of allEdges) {
+      const M = meta.get(e.id); if (!M) continue;
+      const c = abs.get(e.container || 'root') || { x: 0, y: 0 };
+      for (const sec of e.sections || []) {
+        let pts = [sec.startPoint, ...(sec.bendPoints || []), sec.endPoint].map(q => ({ x: q.x + c.x, y: q.y + c.y }));
+        if (M.rev) pts = pts.reverse();
+        const d = 'M' + pts.map(q => `${q.x.toFixed(1)} ${q.y.toFixed(1)}`).join('L');
+        const k = M.e.kind;
+        edgesSvg.push(`<path class="ed e-${k}${M.e.el && M.e.el === opt.selected ? ' sel' : ''}" d="${d}"${M.e.el ? ` data-el="${M.e.el}"` : ''} marker-end="url(#m-${END[k] || 'open'})"${START[k] ? ` marker-start="url(#m-${START[k]})"` : ''}/>`);
+      }
+      for (const lb of e.labels || []) edgesSvg.push(`<text class="el" x="${(lb.x + c.x + 2).toFixed(1)}" y="${(lb.y + c.y + 10).toFixed(1)}">${esc(lb.text)}</text>`);
+    }
+    const W = Math.ceil(laid.width || 100), H = Math.ceil(laid.height || 100);
+    const defs = `<defs>
+<marker id="m-tri" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="12" markerHeight="12" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path class="mk-hollow" d="M1 1L11 6L1 11z"/></marker>
+<marker id="m-open" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="11" markerHeight="11" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path class="mk-line" d="M1 1L11 6L1 11"/></marker>
+<marker id="m-diamond" viewBox="0 0 16 10" refX="1" refY="5" markerWidth="16" markerHeight="10" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path class="mk-fill" d="M1 5L8 1L15 5L8 9z"/></marker>
+<marker id="m-none" viewBox="0 0 2 2" refX="1" refY="1" markerWidth="2" markerHeight="2"><path d=""/></marker>
+<marker id="m-typed" viewBox="0 0 14 12" refX="13" refY="6" markerWidth="14" markerHeight="12" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path class="mk-hollow" d="M5 1L13 6L5 11z"/><circle class="mk-fill" cx="2.5" cy="6" r="1.8"/></marker>
+</defs>`;
+    return { svg: `<svg xmlns="http://www.w3.org/2000/svg" class="dg v-${view.kind}" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">${defs}<g class="nodes">${out.join('')}</g><g class="edges">${edgesSvg.join('')}</g></svg>`, width: W, height: H };
+  }
+  const END = { specializes: 'tri', subsets: 'open', typing: 'typed', composition: 'open', port: 'open', satisfy: 'open', verify: 'open', contains: 'none', connection: 'none', interface: 'none', bind: 'none', flow: 'open', allocate: 'open', transition: 'open', succession: 'open' };
+  const START = { composition: 'diamond', port: 'diamond' };
+  const GLYPH = { ok: '✓', warn: '!', bad: '✕', pending: '?' };
+  const STATUS_WORD = { ok: 'Evidence: within limits', warn: 'Evidence: marginal', bad: 'Evidence: outside limits', pending: 'Evidence: no result yet' };
+
+  async function layout(ELK, view, measure, opt) {
+    const { graph, meta } = toElk(view, measure);
+    const elk = new ELK();
+    const laid = await elk.layout(graph);
+    return render(laid, meta, view, opt);
+  }
+  return { toElk, render, layout, size, wrap, GLYPH, STATUS_WORD };
+})();
+if (typeof module !== 'undefined' && module.exports) module.exports = HFE_DIAGRAM;
+
+/* ---------------- environment library (ENV-07, ENV-08) ----------------
+   Each environment is a template held as data: an enclosure (shell), seated roles, fixtures, defaults for the
+   workstation model, and the checks that apply now or are planned. The tool loads a template by id (?env=<id> in the
+   URL, the Environment tab, or the library shown before any model loads). New templates are added here, not in the
+   tool's code. See docs/ENVIRONMENTS_AND_KIT.md section 3.
+
+   Every dimension here is INDICATIVE: generic, illustrative geometry built from public, approximate figures, so that
+   layouts can be explored. None of it is the geometry of a real platform. Real platform geometry is project data and is
+   never added to this file (docs/ENVIRONMENTS_AND_KIT.md section 7).
+
+   Frames. All lengths in mm, angles in degrees.
+     Shell frame: origin on the floor at the centre of the enclosure; Y up; +X towards the front wall (the wall the
+       consoles face); Z along the enclosure's length.
+     Role frame: the tool's world frame for the role being assessed: origin at that seat's front edge on the floor, +X
+       forward, +Z to the operator's right. Roles marked mirror: true are left-right mirror images of the template's
+       console (its ws), for example the right-hand seat of a pair.
+
+   Fields
+     id, name, family (domain and sub-domain), domain (office | air | land | maritime | submarine)
+     status       available | preview | planned (planned templates are listed but cannot be loaded)
+     summary      one or two sentences for the library card
+     roles        [{ id, name, z, dx, mirror }]: z = the seat's centreline along the shell; each console's far edge sits
+                  frontGap from the front wall, then dx (negative = further back, for rows)
+     shell        optional enclosure:
+                    { kind: 'box', internal: { length, width, height }, ceiling, frontGap, door }
+                    { kind: 'tube', internal: { length, diameter, axis }, frontAt, frontGap, door }
+                  box: length along Z, width along X. tube: a fuselage or hull along Z, axis = height of its centreline
+                  above the floor, frontAt = height at which the curved wall is taken as the front.
+     fixtures     shared items in the shell frame; x may be given as front: distance back from the front wall
+     roleFixtures items repeated at every role, in that role's frame (mirrored with the role)
+                    { k: 'box', x, y, z, d (along X), h, w (along Z), mat, yaw }    centre position
+                    { k: 'disp', x, y, z, w, h, yaw, tilt } or { k: 'disp', size, aspect, ... }   a display, facing -X at yaw 0
+                    { k: 'cyl', x, z, y0, y1, r, mat }  { k: 'dome', x, y, z, rx, ry, rz, mat }   mat: console | rack | dark | metal | glass | wall
+     stations     'mirror': every other role gets a copy of the active console, screens and seat
+     params       user-adjustable geometry: [{ key, label, path, min, max, step }] (path into the template)
+     ws           partial workstation settings merged over the tool's defaults when the template loads
+     checks       { now: [check groups that apply], planned: [plain-language checks still to come] }
+     sources      public references behind the indicative geometry
+     reqs         requirement IDs the template serves */
+const HFE_ENV = (() => {
+  const ALL_NOW = ['Vision', 'Head and neck', 'Upper limb', 'Trunk and seat', 'Lower limb', 'Furniture', 'Joint range of motion', 'Posture scores', 'Clearance'];
+  // a display given by diagonal (inches) and aspect ratio
+  const disp = (size, aspect, o) => { const [a, b] = aspect.split(':').map(Number), k = size * 25.4 / Math.hypot(a, b); return { k: 'disp', w: a * k, h: b * k, ...o }; };
+  const scr = (size, aspect, x, z, yaw, dy, tilt = null) => ({ size, aspect, orient: 'landscape', curve: 0, tilt, dy, x, z, yaw });
+  const room = (L, W, H, extra) => ({ length: { key: 'length', label: L, path: ['shell', 'internal', 'length'], min: 2000, max: 30000, step: 10 },
+    width: { key: 'width', label: W, path: ['shell', 'internal', 'width'], min: 1200, max: 20000, step: 10 },
+    height: { key: 'height', label: H, path: ['shell', 'internal', 'height'], min: 1500, max: 6000, step: 10 }, ...extra });
+
+  const T = [
+    {
+      id: 'desk-workstation', name: 'Seated desk workstation', family: 'Office and general', domain: 'office', status: 'available',
+      summary: 'An office or control-room desk with a chair, one to four screens and desk items. The original Seated Workstation Fit model.',
+      roles: [{ id: 'user', name: 'Desk user', z: 0 }],
+      ws: {},
+      checks: { now: ALL_NOW, planned: [] },
+      sources: ['ISO 9241-5', 'BS EN 1335-1:2020', 'MIL-STD-1472', 'ANSUR II'],
+      reqs: ['ENV-02', 'ENV-03', 'ENV-05']
+    },
+    {
+      id: 'gcs-container', name: 'Ground control station (RPAS)', family: 'Air: remotely piloted', domain: 'air', status: 'preview',
+      summary: 'Two reclining operator seats side by side in a shipping-container shelter, a radio and phone pedestal between them, and each operator facing a keyboard, joystick, small console screens and a two-tier wall of large displays. Laid out after public photographs of MQ-9 class stations; indicative dimensions only.',
+      roles: [{ id: 'pilot', name: 'Pilot (left seat)', z: -720 }, { id: 'sensor', name: 'Sensor operator (right seat)', z: 720, mirror: true }],
+      // typical internal dimensions of an ISO 668 20 ft container; consoles against the front long wall
+      shell: { kind: 'box', internal: { length: 5898, width: 2352, height: 2393 }, frontGap: 260, door: { side: 'rear', z: 2300, width: 900, height: 2000 } },
+      stations: 'mirror',
+      params: Object.values(room('Shelter internal length', 'Shelter internal width', 'Shelter internal height')),
+      ws: {
+        chair: 'operator', armrests: true, armH: 230, recline: 12, footrest: 0,
+        deskSize: 'custom', deskWidth: 900, deskDepth: 620, deskH: 740, deskT: 40, legroom: 430, deskStyle: 'console',
+        screens: {
+          count: 4, layout: 'custom', bottom: 250, tilt: 0,
+          // main tactical display, the display above it, and two small console screens on the desk
+          list: [scr(20.1, '4:3', 560, 0, 0, 0), scr(20.1, '4:3', 580, 0, 0, 335, -10), scr(10.4, '4:3', 330, -125, 0, -235, 18), scr(10.4, '4:3', 330, 125, 0, -235, 18)]
+        },
+        objects: [
+          { id: 'o1', type: 'keyboard', kb: 'full', x: 150, z: -40, yaw: 0, homeRowH: 30, tilt: 4, use: 'frequent' },
+          { id: 'o2', type: 'stick', x: 170, z: 300, yaw: 0, use: 'frequent' },
+          { id: 'o3', type: 'throttle', x: 170, z: -340, yaw: 0, use: 'frequent' }
+        ],
+        hands: { L: 'o3', R: 'o2' }
+      },
+      roleFixtures: [
+        // outboard stack of large displays, turned towards the seat
+        disp(20.1, '4:3', { x: 470, y: 1180, z: -720, yaw: 38, tilt: 0 }),
+        disp(20.1, '4:3', { x: 520, y: 1530, z: -760, yaw: 38, tilt: -10 }),
+        // equipment rack behind the displays
+        { k: 'box', x: 760, y: 1100, z: -120, d: 240, h: 2200, w: 1500, mat: 'rack' }
+      ],
+      fixtures: [
+        // pedestal between the seats: radios, phone, papers
+        { k: 'box', front: 600, y: 520, z: 0, d: 560, h: 1040, w: 420, mat: 'console' },
+        { k: 'box', front: 640, y: 1080, z: 0, d: 200, h: 80, w: 210, mat: 'dark' },
+        // shared displays above the pedestal
+        disp(20.1, '4:3', { front: 300, y: 1230, z: 0, yaw: 0, tilt: 0 }),
+        disp(20.1, '4:3', { front: 300, y: 1580, z: 0, yaw: 0, tilt: -10 })
+      ],
+      checks: {
+        now: ALL_NOW,
+        planned: [
+          'Every display checked for every operator: viewing distance, legibility, gaze and head rotation, off-axis angle (ENV-11)',
+          'Display priority and frequency of use, so a high-priority display outside the primary zone fails (ENV-11)',
+          'The outboard and shared displays are drawn but not yet assessed; the four nearest displays are',
+          'Occlusion of one display by another, by the console or by the operator’s arms (ENV-11)',
+          'Seat recline and push-back clearance to the rear wall, shared passage, door ingress and egress',
+          'Baseline against “with new displays” comparison for display creep (PRJ-02)'
+        ]
+      },
+      sources: ['Typical internal dimensions of an ISO 668 20 ft container', 'Layout after public photographs of MQ-9 class ground control stations (US Air Force imagery); no measured dimensions',
+        'Def Stan 00-250, MIL-STD-1472 and BS EN ISO 9241 for the planned display checks'],
+      reqs: ['ENV-07', 'ENV-08', 'ENV-11']
+    },
+    {
+      id: 'control-centre', name: 'Busy control centre', family: 'Land and joint: operations centre', domain: 'land', status: 'preview',
+      summary: 'Two rows of four operator consoles facing a wall of large displays, with a supervisor desk behind. For sightlines to the video wall over the front row, console spacing and display layout.',
+      roles: [
+        { id: 'r1p2', name: 'Front row, seat 2', z: -950 }, { id: 'r1p1', name: 'Front row, seat 1', z: -2850 }, { id: 'r1p3', name: 'Front row, seat 3', z: 950 }, { id: 'r1p4', name: 'Front row, seat 4', z: 2850 },
+        { id: 'r2p2', name: 'Back row, seat 2', z: -950, dx: -2300 }, { id: 'r2p1', name: 'Back row, seat 1', z: -2850, dx: -2300 }, { id: 'r2p3', name: 'Back row, seat 3', z: 950, dx: -2300 }, { id: 'r2p4', name: 'Back row, seat 4', z: 2850, dx: -2300 }
+      ],
+      shell: { kind: 'box', internal: { length: 13000, width: 10000, height: 3300 }, frontGap: 3600, door: { side: 'rear', z: 5200, width: 1000, height: 2100 } },
+      stations: 'mirror',
+      params: Object.values(room('Room length (side to side)', 'Room depth (front to back)', 'Room height')),
+      ws: {
+        chair: 'taskHead', armrests: true,
+        deskSize: '1800x900', deskWidth: 1800, deskDepth: 900, deskH: 720, legroom: 650, deskStyle: 'console',
+        screens: { count: 3, layout: 'row', wrap: 25, gap: 10, dist: 620, bottom: 90, tilt: 5, list: [scr(27, '16:9', 450, 0, 0, 0), scr(27, '16:9', 450, 0, 0, 0), scr(27, '16:9', 450, 0, 0, 0), scr(27, '16:9', 450, 0, 0, 0)] }
+      },
+      fixtures: [
+        // video wall: 6 x 2 tiles of 55 inch 16:9, bottom edge 1000 mm above the floor
+        ...[0, 1].flatMap(r => [-2.5, -1.5, -0.5, 0.5, 1.5, 2.5].map(c => disp(55, '16:9', { front: 60, y: 1000 + 685 / 2 + r * 690, z: c * 1222, yaw: 0, tilt: 0 }))),
+        // supervisor desk at the back
+        { k: 'box', front: 8300, y: 370, z: 0, d: 900, h: 740, w: 3000, mat: 'console' }
+      ],
+      checks: { now: ALL_NOW, planned: ['Sightline from each seat to the video wall over the front row and its displays (ISO 11064-3)', 'Viewing distance and character size for the video wall', 'Console spacing and circulation routes', 'Supervisor sightlines to every operator'] },
+      sources: ['ISO 11064-3 (control room layout) and ISO 11064-4 (workstation layout) for the planned checks', 'Indicative dimensions; 55 inch tiles at their nominal size'],
+      reqs: ['ENV-07', 'ENV-08']
+    },
+    {
+      id: 'mission-crew', name: 'Airborne mission crew cabin', family: 'Air: airborne surveillance (E-3 class)', domain: 'air', status: 'preview',
+      summary: 'Mission consoles along the side of a narrow-body fuselage, as in E-3 class airborne early-warning aircraft: seated operators facing the cabin wall, each with two large displays, in a tube with a curved wall and low headroom.',
+      roles: [{ id: 'c2', name: 'Console 2', z: 0 }, { id: 'c1', name: 'Console 1', z: -1150 }, { id: 'c3', name: 'Console 3', z: 1150 }],
+      // narrow-body fuselage: Boeing 707 class, about 3.76 m outside diameter; floor below the centreline
+      shell: { kind: 'tube', internal: { length: 7000, diameter: 3550, axis: 620 }, frontAt: 1300, frontGap: 120 },
+      stations: 'mirror',
+      params: [
+        { key: 'diameter', label: 'Cabin internal diameter', path: ['shell', 'internal', 'diameter'], min: 2500, max: 6000, step: 10 },
+        { key: 'axis', label: 'Fuselage centreline above the floor', path: ['shell', 'internal', 'axis'], min: 0, max: 1500, step: 10 },
+        { key: 'length', label: 'Cabin length shown', path: ['shell', 'internal', 'length'], min: 3000, max: 30000, step: 10 }
+      ],
+      ws: {
+        chair: 'operator', armrests: true, recline: 8,
+        deskSize: 'custom', deskWidth: 1000, deskDepth: 520, deskH: 720, deskT: 40, legroom: 420, deskStyle: 'console',
+        screens: { count: 2, layout: 'custom', bottom: 70, tilt: 8, list: [scr(21.3, '4:3', 470, -245, 8, 0), scr(21.3, '4:3', 470, 245, -8, 0), scr(24, '16:10', 450, 0, 0, 0), scr(24, '16:10', 450, 0, 0, 0)] },
+        objects: [
+          { id: 'o1', type: 'keyboard', kb: 'full', x: 150, z: 60, yaw: 0, homeRowH: 30, tilt: 4, use: 'frequent' },
+          { id: 'o2', type: 'tbThumb', x: 170, z: 380, yaw: 0, use: 'frequent' }
+        ],
+        hands: { L: 'o1', R: 'o2' }
+      },
+      fixtures: [
+        // overhead stowage along the far wall
+        { k: 'box', front: 640, y: 1850, z: 0, d: 300, h: 200, w: 6800, mat: 'wall' }
+      ],
+      checks: { now: ALL_NOW, planned: ['Head clearance to the curved cabin wall and overhead stowage', 'Aisle width behind the seats with seats rotated, and egress', 'Seat track and harness reach constraints', 'Restraint of loose equipment and turbulence (later)'] },
+      sources: ['Boeing 707-320 fuselage, about 3.76 m outside diameter (public type data); cabin diameter, floor height and console sizes are indicative', 'MIL-STD-1472 and Def Stan 00-250 for the planned checks'],
+      reqs: ['ENV-07', 'ENV-08']
+    },
+    {
+      id: 'submarine-control', name: 'Submarine control room', family: 'Maritime: submarine', domain: 'submarine', status: 'preview',
+      summary: 'A cramped control room: operator consoles along the side, low deckhead with pipe runs, and the periscope well in the middle. For head clearance, reach in restricted headroom and console layout.',
+      roles: [{ id: 'c2', name: 'Console 2', z: 0 }, { id: 'c1', name: 'Console 1', z: -1000 }, { id: 'c3', name: 'Console 3', z: 1000 }],
+      shell: { kind: 'box', internal: { length: 7000, width: 4200, height: 2150 }, frontGap: 80, door: { side: 'rear', z: -2900, width: 650, height: 1500 } },
+      stations: 'mirror',
+      params: Object.values(room('Compartment length', 'Compartment width', 'Deckhead height')),
+      ws: {
+        chair: 'operator', armrests: true, recline: 6,
+        deskSize: 'custom', deskWidth: 900, deskDepth: 520, deskH: 720, deskT: 40, legroom: 400, deskStyle: 'console',
+        screens: { count: 2, layout: 'custom', bottom: 60, tilt: 10, list: [scr(19, '4:3', 430, 0, 0, 0), scr(15, '4:3', 470, 0, 0, 330, -15), scr(24, '16:10', 450, 0, 0, 0), scr(24, '16:10', 450, 0, 0, 0)] },
+        objects: [
+          { id: 'o1', type: 'keyboard', kb: 'tkl', x: 150, z: 40, yaw: 0, homeRowH: 30, tilt: 4, use: 'frequent' },
+          { id: 'o2', type: 'tbThumb', x: 170, z: 330, yaw: 0, use: 'frequent' }
+        ],
+        hands: { L: 'o1', R: 'o2' }
+      },
+      fixtures: [
+        // periscope well and the pipe runs under the deckhead
+        { k: 'cyl', front: 2600, z: 600, y0: 0, y1: 2150, r: 260, mat: 'metal' },
+        { k: 'cyl', front: 2600, z: 600, y0: 1250, y1: 1700, r: 330, mat: 'dark' },
+        ...[-200, 400, 1000].map(x => ({ k: 'cyl', axis: 'z', x, y: 2060, z: 0, len: 7000, r: 40, mat: 'metal' })),
+        { k: 'box', front: 300, y: 1850, z: 0, d: 600, h: 300, w: 6800, mat: 'rack' }
+      ],
+      checks: { now: ALL_NOW, planned: ['Head clearance to the deckhead and pipe runs, with and without a helmet', 'Passage width between consoles and the periscope well', 'Watertight door and hatch transit', 'Reach in restricted headroom when standing'] },
+      sources: ['Illustrative only: not any class of submarine', 'Def Stan 00-250 and MIL-STD-1472 for the planned clearance checks'],
+      reqs: ['ENV-07', 'ENV-08']
+    },
+    {
+      id: 'fast-jet', name: 'Fast-jet cockpit', family: 'Air: fixed wing', domain: 'air', status: 'preview',
+      summary: 'A single-seat cockpit with a reclined ejection seat, side-stick and throttle on the side consoles, an instrument panel with multifunction displays, and a canopy. For panel reach, knee clearance to the panel and sightlines to the displays.',
+      roles: [{ id: 'pilot', name: 'Pilot', z: 0 }],
+      shell: { kind: 'box', internal: { length: 1050, width: 2400, height: 1150 }, ceiling: false, frontGap: 40 },
+      params: [{ key: 'length', label: 'Cockpit width between sills', path: ['shell', 'internal', 'length'], min: 800, max: 1600, step: 10 }],
+      ws: {
+        chair: 'ejection', armrests: false, recline: 17, seatH: 380, seatMin: 300, seatMax: 450, seatDepth: 420, seatWidth: 460, seatGap: 330, footFwd: 34, footrest: 0,
+        deskSize: 'custom', deskWidth: 900, deskDepth: 260, deskH: 900, deskT: 230, legroom: 300, deskStyle: 'panel',
+        screens: { count: 3, layout: 'custom', bottom: -205, tilt: 10, list: [scr(8.4, '4:3', -6, -125, 0, 0), scr(8.4, '4:3', -6, 125, 0, 0), scr(6, '4:3', -6, 0, 0, 160, 12), scr(24, '16:10', 450, 0, 0, 0)] },
+        objects: [
+          { id: 'o1', type: 'stick', x: -230, z: 330, yaw: 0, base: 600, use: 'frequent' },
+          { id: 'o2', type: 'throttle', x: -260, z: -330, yaw: 0, base: 600, use: 'frequent' }
+        ],
+        hands: { L: 'o2', R: 'o1' }
+      },
+      roleFixtures: [
+        // side consoles carrying the stick and throttle
+        { k: 'box', x: -330, y: 300, z: 400, d: 700, h: 600, w: 200, mat: 'dark' },
+        { k: 'box', x: -330, y: 300, z: -400, d: 700, h: 600, w: 200, mat: 'dark' },
+        // head-up display combiner and the canopy
+        { k: 'box', x: 70, y: 1080, z: 0, d: 10, h: 180, w: 160, mat: 'glass', tilt: 30 },
+        { k: 'dome', x: -250, y: 1150, z: 0, rx: 1300, ry: 520, rz: 525, mat: 'glass' }
+      ],
+      checks: { now: ALL_NOW, planned: ['Design eye point and over-the-nose vision (MIL-STD-1333)', 'Ejection clearance lines for knees and helmet', 'Reach to panel controls with harness locked', 'Stick and throttle motion envelopes'] },
+      sources: ['MIL-STD-1333 (aircrew station geometry) for the planned checks', 'Seat back angle, panel and console positions are indicative'],
+      reqs: ['ENV-07', 'ENV-08']
+    },
+    {
+      id: 'ship-ops-room', name: 'Ship’s operations room', family: 'Maritime: surface', domain: 'maritime', status: 'preview',
+      summary: 'A low, dim operations room with a line of multi-display consoles against the bulkhead and a command position behind. For display layout and passage behind the seats in a tight space.',
+      roles: [{ id: 'c2', name: 'Console 2', z: -600 }, { id: 'c1', name: 'Console 1', z: -1800 }, { id: 'c3', name: 'Console 3', z: 600 }, { id: 'c4', name: 'Console 4', z: 1800 }],
+      shell: { kind: 'box', internal: { length: 8000, width: 5200, height: 2250 }, frontGap: 100, door: { side: 'rear', z: 3300, width: 750, height: 1800 } },
+      stations: 'mirror',
+      params: Object.values(room('Compartment length', 'Compartment width', 'Deckhead height')),
+      ws: {
+        chair: 'operator', armrests: true, recline: 6,
+        deskSize: 'custom', deskWidth: 1150, deskDepth: 600, deskH: 720, legroom: 450, deskStyle: 'console',
+        screens: { count: 3, layout: 'custom', bottom: 60, tilt: 8, list: [scr(24, '16:10', 480, 0, 0, 0), scr(24, '16:10', 520, 0, 0, 355, -12), scr(12.1, '4:3', 260, 360, -30, -40, 30), scr(24, '16:10', 450, 0, 0, 0)] },
+        objects: [
+          { id: 'o1', type: 'keyboard', kb: 'tkl', x: 150, z: 0, yaw: 0, homeRowH: 30, tilt: 4, use: 'frequent' },
+          { id: 'o2', type: 'tbThumb', x: 170, z: -300, yaw: 0, use: 'frequent' }
+        ],
+        hands: { L: 'o2', R: 'o1' }
+      },
+      fixtures: [{ k: 'box', front: 3900, y: 450, z: 0, d: 900, h: 900, w: 2200, mat: 'console' }],
+      checks: { now: ALL_NOW, planned: ['Passage width behind occupied seats', 'Head clearance to deckhead fittings', 'Static deck inclination (ENV-10)', 'Display legibility in low lighting'] },
+      sources: ['Illustrative only: not any class of ship', 'Def Stan 00-250 and BS EN ISO 11064 for the planned checks'],
+      reqs: ['ENV-07', 'ENV-08', 'ENV-10']
+    },
+    // planned templates (ENV-08): listed so users can see the roadmap; they cannot be loaded yet
+    { id: 'vehicle-commander', name: 'Vehicle commander station with roof hatch', family: 'Land: vehicle', domain: 'land', status: 'planned',
+      summary: 'Commander and gunner stations under a roof hatch: head and helmet clearance, hatch transit with kit, vision blocks and sights. Needs the kit model and standing postures.',
+      checks: { planned: ['Head and helmet clearance', 'Hatch transit with kit', 'Vision block and periscope sightlines', 'Reach to controls'] } },
+    { id: 'vehicle-driver', name: 'Vehicle driver station', family: 'Land: vehicle', domain: 'land', status: 'planned',
+      summary: 'Driver seat, pedals, steering and vision blocks, head-out and closed-down.', checks: { planned: ['Pedal and control reach', 'Knee clearance', 'Vision blocks'] } },
+    { id: 'dismounted', name: 'Doorways, steps and firing positions', family: 'Land: dismounted', domain: 'land', status: 'planned',
+      summary: 'Apertures, step heights, trench and firing-step profiles, kneeling and prone positions.', checks: { planned: ['Aperture transit', 'Step heights', 'Weapon sight alignment'] } },
+    { id: 'rotary-cabin', name: 'Rotary-wing cockpit and cabin', family: 'Air: rotary', domain: 'air', status: 'planned',
+      summary: 'Pilot stations with cyclic and collective, troop seats, door and ramp, with cabin headroom.', checks: { planned: ['Cyclic and collective reach', 'Cabin headroom', 'Door transit with kit'] } },
+    { id: 'ship-bridge', name: 'Ship’s bridge', family: 'Maritime: surface', domain: 'maritime', status: 'planned',
+      summary: 'Standing and seated bridge consoles, bridge windows and sightlines over the bow, bridge wings.', checks: { planned: ['Sightlines over the console to the horizon', 'Standing console reach', 'Window and mullion obscuration'] } },
+    { id: 'atc-tower', name: 'Air traffic control tower cab', family: 'Air: ground', domain: 'air', status: 'planned',
+      summary: 'Controller positions in a glazed tower cab: sightlines to the runway thresholds over the consoles, and glare.', checks: { planned: ['Sightlines to the airfield over the consoles', 'Glazing mullion obscuration'] } }
+  ];
+  const BY = Object.fromEntries(T.map(e => [e.id, e]));
+  const DEFAULT = 'desk-workstation';
+  const loadable = e => !!e && e.status !== 'planned';
+  const get = id => BY[id] || null;
+  const getPath = (o, p) => p.reduce((a, k) => (a == null ? a : a[k]), o);
+  // a working copy of a template with the user's parameter values applied
+  function resolve(id, params) {
+    const e = structuredClone(BY[id] || BY[DEFAULT]);
+    for (const p of e.params || []) {
+      const v = params && params[p.key];
+      if (v == null || !isFinite(v)) continue;
+      const parent = getPath(e, p.path.slice(0, -1)); if (parent) parent[p.path[p.path.length - 1]] = Math.min(p.max, Math.max(p.min, +v));
+    }
+    return e;
+  }
+  const paramValue = (e, p) => getPath(e, p.path);
+  // left-right mirror image of a workstation (for the right-hand seat of a mirrored pair)
+  function mirrorWs(ws) {
+    const w = structuredClone(ws);
+    if (w.screens && w.screens.list) w.screens.list.forEach(s => { s.z = -(+s.z || 0); s.yaw = -(+s.yaw || 0); });
+    if (w.objects) w.objects.forEach(o => { o.z = -o.z; o.yaw = -(o.yaw || 0); });
+    if (w.hands) w.hands = { L: w.hands.R, R: w.hands.L };
+    return w;
+  }
+  return { list: T, get, resolve, paramValue, loadable, mirrorWs, DEFAULT };
+})();
+if (typeof module !== 'undefined' && module.exports) module.exports = HFE_ENV;
+
+const HFE_CHECKS = [{"id": "viewDist", "group": "Vision", "name": "Viewing distance, eye to screen centre", "unit": "mm"}, {"id": "losCentre", "group": "Vision", "name": "Line of sight to screen centre, below horizontal", "unit": "°"}, {"id": "gazeH", "group": "Vision", "name": "Horizontal gaze angle to screen centre (+ right)", "unit": "°"}, {"id": "topVsEye", "group": "Vision", "name": "Top of screen relative to eye height", "unit": "mm"}, {"id": "losNormal", "group": "Vision", "name": "Line of sight off the screen normal", "unit": "°"}, {"id": "arrayEdge", "group": "Vision", "name": "Outermost screen edge, horizontal angle", "unit": "°"}, {"id": "headIncl", "group": "Head and neck", "name": "Head inclination, forward of upright", "unit": "°"}, {"id": "neckFlex", "group": "Head and neck", "name": "Neck flexion relative to trunk", "unit": "°"}, {"id": "elbow", "group": "Upper limb", "name": "Elbow angle, included", "unit": "°"}, {"id": "shFlex", "group": "Upper limb", "name": "Shoulder flexion", "unit": "°"}, {"id": "shAbd", "group": "Upper limb", "name": "Shoulder abduction", "unit": "°"}, {"id": "wrist", "group": "Upper limb", "name": "Wrist extension, implied (− is flexion)", "unit": "°"}, {"id": "homeVsElbow", "group": "Upper limb", "name": "Home row relative to seated elbow height", "unit": "mm"}, {"id": "reach", "group": "Upper limb", "name": "Reach shortfall to the hand’s device", "unit": "mm"}, {"id": "recline", "group": "Trunk and seat", "name": "Trunk recline, hip–shoulder line from vertical", "unit": "°"}, {"id": "hip", "group": "Trunk and seat", "name": "Trunk–thigh angle", "unit": "°"}, {"id": "seatDepth", "group": "Trunk and seat", "name": "Clearance between seat front and back of knee", "unit": "mm"}, {"id": "seatWidth", "group": "Trunk and seat", "name": "Seat width minus hip breadth", "unit": "mm"}, {"id": "abdomen", "group": "Trunk and seat", "name": "Abdomen to desk edge", "unit": "mm"}, {"id": "armrest", "group": "Trunk and seat", "name": "Armrest height relative to elbow rest height", "unit": "mm"}, {"id": "knee", "group": "Lower limb", "name": "Knee angle, included", "unit": "°"}, {"id": "seatPop", "group": "Lower limb", "name": "Seat height relative to popliteal height + shoe + footrest", "unit": "mm"}, {"id": "thigh", "group": "Lower limb", "name": "Thigh clearance under desk", "unit": "mm"}, {"id": "legroom", "group": "Lower limb", "name": "Knee clearance to legroom limit", "unit": "mm"}, {"id": "seatRange", "group": "Furniture", "name": "Seat height outside the chair’s adjustment range", "unit": "mm"}, {"id": "deskRange", "group": "Furniture", "name": "Desk height outside its adjustment range", "unit": "mm"}, {"id": "headrest", "group": "Furniture", "name": "Headrest centre relative to the back of the head", "unit": "mm"}, {"id": "depthRange", "group": "Furniture", "name": "Seat depth outside the chair’s adjustment range", "unit": "mm"}, {"id": "lumbarRange", "group": "Furniture", "name": "Backrest lumbar support height outside the chair’s range", "unit": "mm"}, {"id": "armRange", "group": "Furniture", "name": "Armrest height outside the chair’s adjustment range", "unit": "mm"}, {"id": "rom", "group": "Joint range of motion", "name": "Smallest margin to a joint’s range-of-motion limit", "unit": "°"}, {"id": "rula", "group": "Posture scores", "name": "RULA grand score (action level 1 at 1–2, 2 at 3–4)", "unit": ""}, {"id": "reba", "group": "Posture scores", "name": "REBA score (negligible or low risk at 1–3, medium at 4–7)", "unit": ""}, {"id": "clearDesk", "group": "Clearance", "name": "Clearance, body to desk", "unit": "mm"}, {"id": "clearScreens", "group": "Clearance", "name": "Clearance, body to screens", "unit": "mm"}, {"id": "clearObjects", "group": "Clearance", "name": "Clearance, body to desk objects", "unit": "mm"}, {"id": "clearChair", "group": "Clearance", "name": "Clearance, body to armrests", "unit": "mm"}, {"id": "clearEnv", "group": "Clearance", "name": "Clearance, body to environment", "unit": "mm"}, {"id": "clearSelf", "group": "Clearance", "name": "Self-contact, body to body", "unit": "mm"}, {"id": "clearExact", "group": "Clearance", "name": "Clearance, body surface to geometry (exact)", "unit": "mm"}];
+const EXAMPLE = "/* Example: an RPAS ground control station operator workstation (indicative, public information only).\n   Parts carry @HFE::WorkspaceLink metadata that ties them to objects in Workspace Visualisation, and\n   verification cases carry @HFE::Evidence metadata that ties them to its checks. */\npackage GcsOperatorStation {\n    private import ScalarValues::*;\n    private import ISQ::*;\n\n    package Definitions {\n        item def Video;\n        item def Command;\n        enum def DisplayRole { enum tactical; enum payload; enum status; enum systems; }\n\n        port def VideoPort { out item frames : Video; }\n        port def HidPort { out item cmd : Command; }\n\n        part def Display {\n            attribute diagonal : LengthValue;\n            attribute role : DisplayRole;\n            port videoIn : ~VideoPort;\n        }\n        part def ConsoleScreen :> Display;\n        part def Keyboard { port usb : HidPort; }\n        part def FlightStick { port usb : HidPort; }\n        part def Throttle { port usb : HidPort; }\n        part def Seat {\n            attribute recline : PlaneAngleValue;\n            attribute armrestHeight : LengthValue;\n        }\n        part def MissionComputer {\n            port videoOut1 : VideoPort;\n            port videoOut2 : VideoPort;\n            port videoOut3 : VideoPort;\n            port videoOut4 : VideoPort;\n            port hidIn : ~HidPort;\n        }\n        part def OperatorConsole {\n            part seat : Seat;\n            part tactical : Display;\n            part upper : Display;\n            part statusLeft : ConsoleScreen;\n            part statusRight : ConsoleScreen;\n            part keyboard : Keyboard;\n            part stick : FlightStick;\n            part throttle : Throttle;\n            part computer : MissionComputer;\n            connect computer.videoOut1 to tactical.videoIn;\n            connect computer.videoOut2 to upper.videoIn;\n            connect computer.videoOut3 to statusLeft.videoIn;\n            connect computer.videoOut4 to statusRight.videoIn;\n            connect stick.usb to computer.hidIn;\n            connect throttle.usb to computer.hidIn;\n            connect keyboard.usb to computer.hidIn;\n        }\n        part def Operator { attribute stature : LengthValue; }\n    }\n\n    package Requirements {\n        private import Definitions::*;\n\n        requirement def <'HF-1'> DisplayViewing {\n            doc /* The operator shall be able to view each primary display from the design eye position without moving the head or trunk. */\n            subject display : Display;\n            attribute minViewingDistance : LengthValue = 500 [mm];\n            attribute maxViewingDistance : LengthValue = 800 [mm];\n            require constraint { viewingDistance >= minViewingDistance and viewingDistance <= maxViewingDistance }\n        }\n\n        requirement <'HF-1.1'> tacticalViewing : DisplayViewing {\n            doc /* The tactical display shall be between 500 mm and 800 mm from the eye of a 5th to 95th percentile operator. */\n        }\n        requirement <'HF-1.2'> displayBelowEye : DisplayViewing {\n            doc /* The top of each primary display shall be at or below horizontal eye height. */\n        }\n        requirement <'HF-2'> controlReach {\n            doc /* The flight stick and throttle shall be within the operator's normal reach with the back against the seat. */\n            subject console : OperatorConsole;\n        }\n        requirement <'HF-3'> postureRisk {\n            doc /* Working posture at the console shall score RULA action level 1 or 2 (grand score 4 or less). */\n        }\n        requirement <'HF-4'> legroom {\n            doc /* The console shall give knee and thigh clearance for the 95th percentile operator. */\n        }\n    }\n\n    part gcs {\n        doc /* Two-seat ground control station in a 20 ft container shelter. */\n        part pilotConsole : Definitions::OperatorConsole {\n            @HFE::WorkspaceLink { env = \"gcs-container\"; role = \"pilot\"; node = \"ws\"; }\n            part :>> tactical {\n                @HFE::WorkspaceLink { env = \"gcs-container\"; role = \"pilot\"; node = \"ws.scr.0\"; }\n                :>> role = Definitions::DisplayRole::tactical;\n            }\n            part :>> upper { @HFE::WorkspaceLink { env = \"gcs-container\"; role = \"pilot\"; node = \"ws.scr.1\"; } }\n            part :>> statusLeft { @HFE::WorkspaceLink { env = \"gcs-container\"; role = \"pilot\"; node = \"ws.scr.2\"; } }\n            part :>> statusRight { @HFE::WorkspaceLink { env = \"gcs-container\"; role = \"pilot\"; node = \"ws.scr.3\"; } }\n            part :>> stick { @HFE::WorkspaceLink { env = \"gcs-container\"; role = \"pilot\"; node = \"ws.obj.o2\"; } }\n            part :>> throttle { @HFE::WorkspaceLink { env = \"gcs-container\"; role = \"pilot\"; node = \"ws.obj.o3\"; } }\n            part :>> keyboard { @HFE::WorkspaceLink { env = \"gcs-container\"; role = \"pilot\"; node = \"ws.obj.o1\"; } }\n            part :>> seat { @HFE::WorkspaceLink { env = \"gcs-container\"; role = \"pilot\"; node = \"ws.chair\"; } }\n        }\n        part sensorConsole : Definitions::OperatorConsole {\n            @HFE::WorkspaceLink { env = \"gcs-container\"; role = \"sensor\"; node = \"ws\"; }\n        }\n        part pilot : Definitions::Operator {\n            @HFE::WorkspaceLink { env = \"gcs-container\"; role = \"pilot\"; node = \"man\"; }\n        }\n\n        satisfy Requirements::tacticalViewing by pilotConsole.tactical;\n        satisfy Requirements::displayBelowEye by pilotConsole.upper;\n        satisfy Requirements::controlReach by pilotConsole;\n        satisfy Requirements::postureRisk by pilotConsole;\n        satisfy Requirements::legroom by pilotConsole;\n    }\n\n    package Verification {\n        private import Requirements::*;\n\n        verification def WorkspaceAssessment {\n            doc /* Assessment in HFE-Lab Workspace Visualisation with the ANSUR II population. */\n        }\n        verification viewingCheck : WorkspaceAssessment {\n            @HFE::Evidence { check = \"viewDist#0\"; env = \"gcs-container\"; role = \"pilot\"; }\n            objective { verify tacticalViewing; }\n        }\n        verification eyeHeightCheck : WorkspaceAssessment {\n            @HFE::Evidence { check = \"topVsEye\"; env = \"gcs-container\"; role = \"pilot\"; }\n            objective { verify displayBelowEye; }\n        }\n        verification reachCheck : WorkspaceAssessment {\n            @HFE::Evidence { check = \"reach\"; env = \"gcs-container\"; role = \"pilot\"; }\n            objective { verify controlReach; }\n        }\n        verification postureCheck : WorkspaceAssessment {\n            @HFE::Evidence { check = \"rula\"; env = \"gcs-container\"; role = \"pilot\"; }\n            objective { verify postureRisk; }\n        }\n        verification legroomCheck : WorkspaceAssessment {\n            @HFE::Evidence { check = \"legroom\"; env = \"gcs-container\"; role = \"pilot\"; }\n            @HFE::Evidence { check = \"thigh\"; env = \"gcs-container\"; role = \"pilot\"; }\n            objective { verify legroom; }\n        }\n    }\n\n    package Behaviour {\n        attribute def PowerOn; attribute def LinkUp; attribute def LinkLost; attribute def Land;\n        state def ConsoleStates {\n            entry; then off;\n            state off;\n            accept PowerOn then standby;\n            state standby;\n            accept LinkUp then mission;\n            state mission;\n            accept LinkLost then lostLink;\n            accept Land then standby;\n            state lostLink;\n            accept LinkUp then mission;\n        }\n    }\n}\n";
+const BUILD = '9e9dfd686583';
+const ELK_URL = 'https://cdn.jsdelivr.net/npm/elkjs@0.11.1/lib/elk.bundled.js';
+
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch { /* storage blocked */ } } };
+let toastT; function toast(m) { $('#toast').textContent = m; clearTimeout(toastT); toastT = setTimeout(() => { $('#toast').textContent = ''; }, 4000); }
+
+/* ---------------- context: environments, checks and scene nodes from Workspace Visualisation ---------------- */
+const CTX = {
+  envs: Object.fromEntries(HFE_ENV.list.filter(e => HFE_ENV.loadable(e)).map(e => [e.id, { name: e.name, roles: e.roles.map(r => r.id) }])),
+  checks: HFE_CHECKS.map(c => c.id), checkInfo: HFE_CHECKS,
+  nodes: null,   // { env, role, ids } from an open Workspace Visualisation
+  nodesFor(env) {
+    if (CTX.nodes && (!env || CTX.nodes.env === env)) return CTX.nodes.list;
+    // without a live workspace: the objects every environment has, and the screens and desk items its template sets
+    const E = HFE_ENV.get(env || HFE_ENV.DEFAULT), ws = (E && E.ws) || {}, out = [];
+    const add = (id, label) => out.push({ id, label });
+    add('man', 'Manikin'); for (const [k, l] of [['head', 'Head and neck'], ['trunk', 'Trunk'], ['armL', 'Left arm'], ['handL', 'Left hand'], ['armR', 'Right arm'], ['handR', 'Right hand'], ['legL', 'Left leg'], ['legR', 'Right leg']]) add('man.' + k, l);
+    add('ws', 'Workstation'); add('ws.chair', 'Chair'); add('ws.desk', 'Desk'); add('ws.desk.top', 'Desk top'); add('ws.scr', 'Screens');
+    const n = ws.screens ? ws.screens.count : 2; for (let i = 0; i < n; i++) add('ws.scr.' + i, `Screen ${i + 1}`);
+    for (const o of ws.objects || [{ id: 'o1', type: 'keyboard' }, { id: 'o2', type: 'mouse' }]) add('ws.obj.' + o.id, o.type);
+    add('zones', 'Reach zones'); if (E && E.shell) { add('env', E.name); add('env.shell', 'Enclosure'); add('env.fixtures', 'Fittings and displays'); }
+    return out;
+  }
+};
+
+/* ---------------- model state ---------------- */
+const ST = { model: null, view: 'general', root: { general: null, interconnection: null, requirements: null, behaviour: null }, sel: null, fname: 'untitled.sysml', results: null, resultsFrom: null, live: false };
+
+/* ---------------- editor ---------------- */
+const src = $('#src'), hl = $('#hl'), sq = $('#sq'), gut = $('#gut');
+let charW = 7.8; const LINE = 19, PADL = 12, PADT = 8;
+function measureChar() { const c = document.createElement('canvas').getContext('2d'); c.font = getComputedStyle(src).font; charW = c.measureText('0123456789').width / 10 || 7.8; }
+function highlight() {
+  const t = src.value, { toks } = HFE_SYSML.lex(t);
+  let h = '', i = 0;
+  const gap = s => s.replace(/\/\/[^\n]*/g, m => `\u0001${m}\u0002`);
+  const plain = s => esc(gap(s)).replace(/\u0001/g, '<span class="c">').replace(/\u0002/g, '</span>');
+  const DEF = new Set(['def']);
+  for (let j = 0; j < toks.length; j++) {
+    const k = toks[j]; if (k.t === 'eof') break;
+    if (k.s > i) h += plain(t.slice(i, k.s));
+    const raw = esc(t.slice(k.s, k.e));
+    let c = k.t === 'kw' ? 'k' : k.t === 'str' ? 's' : k.t === 'num' ? 'n' : k.t === 'block' ? 'c' : k.t === 'sym' ? 'y' : '';
+    if (k.t === 'id' && j > 0 && (toks[j - 1].v === '@' || toks[j - 1].v === '#' || (toks[j - 2] && toks[j - 2].v === '@' && toks[j - 1].v === '::'))) c = 'm';
+    if (k.t === 'id' && j > 0 && toks[j - 1].t === 'kw' && (DEF.has(toks[j - 1].v) || toks[j - 1].v === 'package')) c = 'd';
+    if (k.t === 'sym' && k.v === '@') c = 'm';
+    h += c ? `<span class="${c}">${raw}</span>` : raw; i = k.e;
+  }
+  h += plain(t.slice(i));
+  hl.innerHTML = h + '\n ';
+}
+// the squiggle and selection layer: diagnostics underlined, the selected element's text tinted
+function squiggles() {
+  const t = src.value, marks = [];
+  for (const d of (ST.model ? ST.model.diags : [])) marks.push({ s: d.s, e: Math.max(d.e, d.s + 1), c: d.sev === 'error' ? 'e' : 'w' });
+  const el = ST.sel && ST.model && ST.model.byId[ST.sel];
+  if (el) { const r = el.nameAt || { s: el.s, e: Math.min(el.e, el.s + 200) }; marks.push({ s: r.s, e: r.e, c: 'h' }); }
+  marks.sort((a, b) => a.s - b.s);
+  let h = '', i = 0;
+  for (const m of marks) { if (m.s < i) continue; h += esc(t.slice(i, m.s)) + `<span class="${m.c}">${esc(t.slice(m.s, m.e)) || ' '}</span>`; i = m.e; }
+  sq.innerHTML = h + esc(t.slice(i)) + '\n ';
+}
+function gutter() {
+  const n = src.value.split('\n').length, cur = caretLine();
+  const sev = new Map();
+  if (ST.model) for (const d of ST.model.diags) { const l = HFE_SYSML.lineCol(src.value, d.s).line; if (sev.get(l) !== 'e') sev.set(l, d.sev === 'error' ? 'e' : 'w'); }
+  let h = ''; for (let i = 1; i <= n; i++) h += `<div class="${[sev.get(i) || '', i === cur ? 'cur' : ''].join(' ').trim()}">${i}</div>`;
+  gut.innerHTML = h;
+}
+function caretLine() { return src.value.slice(0, src.selectionStart).split('\n').length; }
+function syncScroll() {
+  const x = src.scrollLeft, y = src.scrollTop;
+  hl.style.transform = sq.style.transform = `translate(${-x}px,${-y}px)`; gut.style.transform = `translateY(${-y}px)`;
+  closeCmp();
+}
+function insert(text, from = src.selectionStart, to = src.selectionEnd) {
+  src.focus(); src.setSelectionRange(from, to);
+  if (!document.execCommand || !document.execCommand('insertText', false, text)) { src.setRangeText(text, from, to, 'end'); onInput(); }
+}
+let parseT = 0;
+function onInput() { highlight(); squiggles(); gutter(); clearTimeout(parseT); parseT = setTimeout(reparse, 220); store.set('hfe-sysml.draft', src.value); }
+function lineStart(t, i) { return t.lastIndexOf('\n', i - 1) + 1; }
+src.addEventListener('input', () => { onInput(); maybeAutoComplete(); });
+src.addEventListener('scroll', syncScroll);
+src.addEventListener('keydown', e => {
+  if (!$('#cmp').hidden && cmpKey(e)) return;
+  const t = src.value, a = src.selectionStart, b = src.selectionEnd;
+  if ((e.ctrlKey || e.metaKey) && e.key === ' ') { e.preventDefault(); openCmp(true); return; }
+  if (e.key === 'F12') { e.preventDefault(); goToDefinition(); return; }
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const ls = lineStart(t, a), le = b > a && t[b - 1] === '\n' ? b - 1 : b;
+    if (a === b && !e.shiftKey) { insert('    '); return; }
+    const block = t.slice(ls, le), lines = block.split('\n');
+    const out = e.shiftKey ? lines.map(l => l.replace(/^ {1,4}|^\t/, '')) : lines.map(l => '    ' + l);
+    insert(out.join('\n'), ls, le); src.setSelectionRange(ls, ls + out.join('\n').length); return;
+  }
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    const ls = lineStart(t, a), ind = /^[ \t]*/.exec(t.slice(ls, a))[0], open = /\{\s*$/.test(t.slice(ls, a)), close = t[b] === '}';
+    if (open && close) { insert('\n' + ind + '    \n' + ind, a, b); src.setSelectionRange(a + ind.length + 5, a + ind.length + 5); }
+    else insert('\n' + ind + (open ? '    ' : ''), a, b);
+    return;
+  }
+  if (e.key === '}' && a === b) {
+    const ls = lineStart(t, a), pre = t.slice(ls, a);
+    if (/^ +$/.test(pre) && pre.length >= 4) { e.preventDefault(); insert(pre.slice(4) + '}', ls, a); return; }
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); saveText(); }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'o') { e.preventDefault(); $('#file').click(); }
+});
+['keyup', 'click', 'select'].forEach(ev => src.addEventListener(ev, e => { if (ev === 'keyup' && ['ArrowUp', 'ArrowDown'].includes(e.key) && !$('#cmp').hidden) return; caretMoved(); }));
+let caretT = 0;
+function caretMoved() {
+  const t = src.value, a = src.selectionStart, lc = HFE_SYSML.lineCol(t, a);
+  $('#sb-pos').textContent = `Ln ${lc.line}, Col ${lc.col}`;
+  $$('#gut div.cur').forEach(d => d.classList.remove('cur')); const g = gut.children[lc.line - 1]; if (g) g.classList.add('cur');
+  clearTimeout(caretT); caretT = setTimeout(() => { if (!ST.model) return; const el = HFE_SYSML.elementAt(ST.model, a); if (el && el.id !== ST.sel) select(el.id, { fromText: true }); }, 120);
+}
+function revealRange(s, e) {
+  src.focus(); src.setSelectionRange(s, e);
+  const lc = HFE_SYSML.lineCol(src.value, s), y = (lc.line - 1) * LINE;
+  if (y < src.scrollTop + 20 || y > src.scrollTop + src.clientHeight - 60) src.scrollTop = Math.max(0, y - src.clientHeight / 3);
+  const x = (lc.col - 1) * charW; if (x < src.scrollLeft || x > src.scrollLeft + src.clientWidth - 80) src.scrollLeft = Math.max(0, x - 40);
+  syncScroll();
+}
+function goToDefinition() {
+  const t = src.value, a = src.selectionStart; let s = a, e = a;
+  while (s > 0 && /[A-Za-z0-9_:.']/.test(t[s - 1])) s--; while (e < t.length && /[A-Za-z0-9_']/.test(t[e])) e++;
+  const word = t.slice(s, e).replace(/'/g, ''); if (!word || !ST.model) return;
+  const scope = HFE_SYSML.elementAt(ST.model, a) || ST.model.root;
+  const el = HFE_SYSML.resolve(ST.model, scope.def || scope.kind === 'package' ? scope : (scope.owner || ST.model.root), word.replace(/^[.:]+/, ''));
+  if (!el) { toast(`No definition found for ${word}`); return; }
+  if (el.lib) { toast(`${el.qn} is in the built-in library`); return; }
+  select(el.id); revealRange(el.nameAt ? el.nameAt.s : el.s, el.nameAt ? el.nameAt.e : el.s);
+}
+
+/* ---------------- completion ---------------- */
+const CMP = { items: [], i: 0, from: 0, to: 0 };
+function caretXY(off) {
+  const lc = HFE_SYSML.lineCol(src.value, off), code = $('#code');
+  return { x: PADL + (lc.col - 1) * charW - src.scrollLeft, y: PADT + lc.line * LINE - src.scrollTop, w: code.clientWidth, h: code.clientHeight };
+}
+function openCmp(explicit) {
+  if (!ST.model) reparse();
+  const r = HFE_SYSML.complete(ST.model, src.value, src.selectionStart, CTX);
+  if (!r.items.length) { closeCmp(); if (explicit) toast('No suggestions here'); return; }
+  Object.assign(CMP, { items: r.items, i: 0, from: r.from, to: r.to });
+  const box = $('#cmp');
+  box.innerHTML = r.items.map((it, i) => `<div role="option" data-i="${i}" aria-selected="${i === 0}"><b>${esc(it.label)}</b><span>${esc(it.detail)}</span></div>`).join('');
+  const p = caretXY(r.from); box.hidden = false;
+  box.style.left = Math.max(4, Math.min(p.x, p.w - box.offsetWidth - 4)) + 'px';
+  box.style.top = (p.y + box.offsetHeight + 4 > p.h ? Math.max(4, p.y - LINE - box.offsetHeight - 2) : p.y + 2) + 'px';
+}
+function closeCmp() { $('#cmp').hidden = true; }
+function cmpKey(e) {
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); CMP.i = (CMP.i + (e.key === 'ArrowDown' ? 1 : -1) + CMP.items.length) % CMP.items.length; $$('#cmp div').forEach((d, i) => d.setAttribute('aria-selected', String(i === CMP.i))); $$('#cmp div')[CMP.i].scrollIntoView({ block: 'nearest' }); return true; }
+  if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); acceptCmp(CMP.i); return true; }
+  if (e.key === 'Escape') { e.preventDefault(); closeCmp(); return true; }
+  return false;
+}
+function acceptCmp(i) {
+  const it = CMP.items[i]; closeCmp(); if (!it) return;
+  insert(it.insert, CMP.from, src.selectionStart);
+  // put the cursor in the first empty string of a snippet
+  const k = it.insert.indexOf('""'); if (k >= 0) { const at = CMP.from + k + 1; src.setSelectionRange(at, at); if (it.kind === 'snippet' || it.kind === 'metadata') setTimeout(() => openCmp(false), 0); }
+}
+$('#cmp').addEventListener('mousedown', e => { const d = e.target.closest('[data-i]'); if (d) { e.preventDefault(); acceptCmp(+d.dataset.i); } });
+function maybeAutoComplete() {
+  const t = src.value, a = src.selectionStart, before = t.slice(Math.max(0, a - 60), a);
+  if (/\b(env|role|node|check)\s*=\s*"[^"\n]*$/.test(before) || /@[A-Za-z:]*$/.test(before)) openCmp(false);
+  else if (!$('#cmp').hidden) { if (/[A-Za-z0-9_:]$/.test(before)) openCmp(false); else closeCmp(); }
+}
+src.addEventListener('blur', () => setTimeout(closeCmp, 150));
+
+/* ---------------- parse and views ---------------- */
+function reparse() {
+  const t0 = performance.now();
+  ST.model = HFE_SYSML.parse(src.value, { context: CTX });
+  const D = ST.model.diags, ne = D.filter(d => d.sev === 'error').length, nw = D.length - ne;
+  $('#sb-n').textContent = `${ST.model.all.length} elements`;
+  $('#sb-d').textContent = ne || nw ? `${ne} error${ne === 1 ? '' : 's'}, ${nw} warning${nw === 1 ? '' : 's'}` : 'No problems';
+  const c = $('#c-pr'); c.textContent = D.length; c.className = 'cnt' + (ne ? ' e' : nw ? ' w' : '');
+  squiggles(); gutter(); renderProblems(); renderRoots(); renderTrace(); renderInspector(); drawView();
+  ST.parseMs = performance.now() - t0;
+}
+const ROOTS = {
+  general: m => [{ id: '', label: 'Whole model' }, ...m.all.filter(e => e.kind === 'package').map(e => ({ id: e.qn, label: 'Package ' + e.qn }))],
+  interconnection: m => m.all.filter(e => (e.kind === 'part' || e.kind === 'item') && HFE_SYSML.features(e).some(f => f.kind === 'part' || f.kind === 'port')).map(e => ({ id: e.qn + '|' + e.kind + (e.def ? 'd' : ''), label: (e.def ? 'part def ' : 'part ') + (e.qn || e.name) })),
+  requirements: m => [{ id: '', label: 'All requirements' }, ...m.all.filter(e => e.kind === 'package' && m.all.some(r => r.kind === 'requirement' && (r.qn || '').startsWith(e.qn + '::'))).map(e => ({ id: e.qn, label: 'Package ' + e.qn }))],
+  behaviour: m => m.all.filter(e => (e.kind === 'state' || e.kind === 'action') && e.children.some(c => ['state', 'action', 'transition', 'succession', 'initial'].includes(c.kind))).map(e => ({ id: e.qn + '|' + e.kind + (e.def ? 'd' : ''), label: `${e.kind}${e.def ? ' def' : ''} ${e.qn || e.name}` }))
+};
+function rootEl(v, key) {
+  const m = ST.model; if (!key) return v === 'general' || v === 'requirements' ? m.root : null;
+  const [qn, k] = key.split('|');
+  return m.all.find(e => e.qn === qn && (!k || (e.kind + (e.def ? 'd' : '')) === k)) || null;
+}
+function renderRoots() {
+  const v = ST.view, opts = ROOTS[v](ST.model), sel = $('#root');
+  if (!opts.some(o => o.id === ST.root[v])) {
+    // start on the most telling choice: the package with the most definitions, the part with the most nested parts
+    const score = o => { const el = o.id ? rootEl(v, o.id) : null; if (!el) return v === 'requirements' ? 1e6 : -1;
+      if (v === 'general') return el.children.filter(c => c.def).length;
+      if (v === 'interconnection') return HFE_SYSML.features(el).filter(f => f.kind === 'part').length * 2 + (el.def ? 0 : 1);
+      return el.children.length; };
+    ST.root[v] = opts.length ? opts.reduce((a, o) => (score(o) > score(a) ? o : a), opts[0]).id : null;
+  }
+  sel.innerHTML = opts.length ? opts.map(o => `<option value="${esc(o.id)}"${o.id === ST.root[v] ? ' selected' : ''}>${esc(o.label)}</option>`).join('') : `<option>Nothing to show in this view yet</option>`;
+  sel.disabled = !opts.length;
+}
+let ELK = null, elkLoading = null, layoutSeq = 0, lastKey = '';
+function loadScript(u) { return new Promise((ok, no) => { const s = document.createElement('script'); s.src = u; s.onload = ok; s.onerror = () => no(new Error('could not load ' + u)); document.head.append(s); }); }
+function ensureElk() {
+  if (window.ELK) return Promise.resolve(ELK = window.ELK);
+  if (!elkLoading) elkLoading = loadScript(ELK_URL).then(() => (ELK = window.ELK));
+  return elkLoading;
+}
+const MC = document.createElement('canvas').getContext('2d');
+function measure(t, f, cls) { MC.font = `${cls === 'nm' ? '600 ' : cls === 'ct' ? 'italic ' : ''}${f}px ${getComputedStyle(document.body).fontFamily}`; return MC.measureText(t).width; }
+async function drawView() {
+  const v = ST.view, m = ST.model, seq = ++layoutSeq, r = rootEl(v, ST.root[v]);
+  let view;
+  if (v === 'general') view = HFE_SYSML.views.general(m, r);
+  else if (v === 'interconnection') view = HFE_SYSML.views.interconnection(m, r);
+  else if (v === 'requirements') view = HFE_SYSML.views.requirements(m, r, ST.results);
+  else view = HFE_SYSML.views.behaviour(m, r);
+  const msg = $('#dg-msg');
+  if (!view.nodes.length) {
+    $('#dg').querySelector('svg')?.remove(); msg.hidden = false;
+    msg.textContent = { general: 'No definitions to show yet. Start with a package and a part def.', interconnection: 'No part with nested parts or ports yet. Add parts and ports to a part def.', requirements: 'No requirements yet. Add a requirement def or a requirement.', behaviour: 'No states or actions yet. Add a state def with states and transitions.' }[v];
+    legend(v); return;
+  }
+  try { await ensureElk(); } catch (e) { msg.hidden = false; msg.textContent = 'The diagram layout library could not load. The text editor, problems and traceability still work.'; return; }
+  let out; try { out = await HFE_DIAGRAM.layout(ELK, view, measure, { selected: ST.sel }); } catch (e) { msg.hidden = false; msg.textContent = 'Layout failed: ' + e.message; return; }
+  if (seq !== layoutSeq) return;
+  msg.hidden = true;
+  const wrap = $('#dg'), old = wrap.querySelector('svg');
+  const tmp = document.createElement('div'); tmp.innerHTML = out.svg; const svg = tmp.firstElementChild;
+  if (old) old.replaceWith(svg); else wrap.prepend(svg);
+  ST.svg = out;
+  const key = v + '|' + ST.root[v];
+  if (key !== lastKey) { lastKey = key; fit(); } else applyZoom();
+  markSelection(); legend(v);
+  window.__sysml = { view, width: out.width, height: out.height, nodes: svg.querySelectorAll('.nd').length, edges: svg.querySelectorAll('.ed').length };
+}
+function legend(v) {
+  const L = { general: '<b>Lines</b><span>△ specialises</span><span>◆ composition</span><span>▹• defined by</span>', interconnection: '<b>Lines</b><span>— connection</span><span>□ port</span><span>~ conjugated</span>',
+    requirements: `<b>Evidence</b><span style="color:var(--ok)">✓ within limits</span><span style="color:var(--warn)">! marginal</span><span style="color:var(--bad)">✕ outside limits</span><span>? no result yet</span>`, behaviour: '<b>Lines</b><span>● start</span><span>→ transition: trigger [guard] / effect</span>' }[v];
+  $('#legend').innerHTML = L; $('#legend').hidden = !L;
+}
+/* pan and zoom */
+const Z = { k: 1, x: 0, y: 0 };
+function applyZoom() { const s = $('#dg svg'); if (s) s.style.transform = `translate(${Z.x}px,${Z.y}px) scale(${Z.k})`; }
+function fit() {
+  const w = $('#dg'), o = ST.svg; if (!o) return;
+  const k = Math.min(1.25, (w.clientWidth - 24) / o.width, (w.clientHeight - 24) / o.height);
+  Z.k = Math.max(0.1, k); Z.x = (w.clientWidth - o.width * Z.k) / 2; Z.y = Math.max(12, (w.clientHeight - o.height * Z.k) / 2); applyZoom();
+}
+function zoomAt(f, cx, cy) { const k = Math.min(4, Math.max(0.08, Z.k * f)); Z.x = cx - (cx - Z.x) * k / Z.k; Z.y = cy - (cy - Z.y) * k / Z.k; Z.k = k; applyZoom(); }
+(() => {
+  const w = $('#dg'); let drag = null, moved = false;
+  w.addEventListener('wheel', e => { e.preventDefault(); const r = w.getBoundingClientRect(); zoomAt(Math.exp(-e.deltaY * 0.0015), e.clientX - r.left, e.clientY - r.top); }, { passive: false });
+  w.addEventListener('pointerdown', e => { if (e.button !== 0) return; drag = { x: e.clientX, y: e.clientY, zx: Z.x, zy: Z.y }; moved = false; });
+  addEventListener('pointermove', e => { if (!drag) return; const dx = e.clientX - drag.x, dy = e.clientY - drag.y; if (Math.abs(dx) + Math.abs(dy) > 3) { moved = true; w.classList.add('drag'); } Z.x = drag.zx + dx; Z.y = drag.zy + dy; applyZoom(); });
+  addEventListener('pointerup', () => { drag = null; w.classList.remove('drag'); });
+  w.addEventListener('click', e => { if (moved) return; const g = e.target.closest('[data-el]'); if (g && g.dataset.el) { select(g.dataset.el, { reveal: true }); } });
+  w.addEventListener('dblclick', e => {
+    const g = e.target.closest('[data-el]'); if (!g) return; const el = ST.model.byId[g.dataset.el]; if (!el) return;
+    const key = el.qn + '|' + el.kind + (el.def ? 'd' : '');
+    if ((el.kind === 'part' || el.kind === 'item') && ROOTS.interconnection(ST.model).some(o => o.id === key)) { ST.root.interconnection = key; setView('interconnection'); }
+    else if ((el.kind === 'state' || el.kind === 'action') && ROOTS.behaviour(ST.model).some(o => o.id === key)) { ST.root.behaviour = key; setView('behaviour'); }
+  });
+  w.addEventListener('keydown', e => { if (e.key === 'Enter') { const g = e.target.closest('[data-el]'); if (g) select(g.dataset.el, { reveal: true }); } });
+  $('#z-in').onclick = () => zoomAt(1.25, w.clientWidth / 2, w.clientHeight / 2);
+  $('#z-out').onclick = () => zoomAt(0.8, w.clientWidth / 2, w.clientHeight / 2);
+  $('#z-fit').onclick = fit;
+})();
+function setView(v) { ST.view = v; $$('[data-view]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.view === v))); renderRoots(); drawView(); }
+$$('[data-view]').forEach(b => b.onclick = () => setView(b.dataset.view));
+$('#root').onchange = e => { ST.root[ST.view] = e.target.value; drawView(); };
+
+/* ---------------- selection ---------------- */
+function select(id, opt = {}) {
+  ST.sel = id; const el = ST.model && ST.model.byId[id];
+  if (opt.reveal && el) revealRange(el.nameAt ? el.nameAt.s : el.s, el.nameAt ? el.nameAt.e : el.s);
+  squiggles(); markSelection(); renderInspector();
+  if (!opt.fromText) tab('el');
+}
+function markSelection() {
+  const svg = $('#dg svg'); if (!svg) return;
+  svg.querySelectorAll('.sel').forEach(n => n.classList.remove('sel'));
+  // the selected element, or the nearest owner shown in the diagram
+  for (let el = ST.model && ST.model.byId[ST.sel]; el; el = el.owner) {
+    const hits = svg.querySelectorAll(`[data-el="${el.id}"]`);
+    if (hits.length) { hits.forEach(h => h.classList.add('sel')); break; }
+  }
+}
+
+/* ---------------- inspector ---------------- */
+function tab(k) { for (const [t, p] of [['el', 'p-el'], ['tr', 'p-tr'], ['pr', 'p-pr']]) { $('#t-' + t).setAttribute('aria-selected', String(t === k)); $('#' + p).hidden = t !== k; } }
+$('#t-el').onclick = () => tab('el'); $('#t-tr').onclick = () => tab('tr'); $('#t-pr').onclick = () => tab('pr');
+const word = el => HFE_SYSML.keyword(el).replace(/[«»]/g, '');
+const elLink = el => el ? (el.lib ? `<span title="built-in library">${esc(el.qn)}</span>` : `<button class="go" data-go="${el.id}">${esc(el.qn || HFE_SYSML.label(el))}</button>`) : '<span class="muted">not found</span>';
+const STW = { ok: 'Within limits', warn: 'Marginal', bad: 'Outside limits', pending: 'No result yet', none: 'No evidence linked' };
+const stBadge = s => `<span class="st ${s}">${HFE_DIAGRAM.GLYPH[s] || '–'} ${STW[s] || s}</span>`;
+function linkButtons(links) {
+  return links.map(l => `<div style="margin:3px 0"><button class="btn" data-ws='${esc(JSON.stringify({ env: l.env, role: l.role, node: l.node, label: l.name }))}'>Show in 3D</button> <span class="muted">${esc([l.env && (CTX.envs[l.env] || {}).name || l.env, l.role, l.node].filter(Boolean).join(' · '))}${l.inherited ? ` (from ${esc(l.name)})` : ''}</span></div>`).join('');
+}
+function renderInspector() {
+  const P = $('#p-el'), m = ST.model, el = m && m.byId[ST.sel];
+  if (!el) { P.innerHTML = '<p class="muted">Click a box in the diagram or put the cursor in the text to see an element here: its type, features, links to Workspace Visualisation and, for a requirement, its trace and evidence.</p>'; return; }
+  let h = `<h3>${esc(word(el))} ${esc(HFE_SYSML.label(el))}</h3><dl class="kv">`;
+  if (el.qn) h += `<dt>Qualified name</dt><dd>${esc(el.qn)}</dd>`;
+  if (el.typeRefs && el.typeRefs.length) h += `<dt>Defined by</dt><dd>${el.typeRefs.map(elLink).join(', ')}</dd>`;
+  if (el.specRefs && el.specRefs.length) h += `<dt>Specialises</dt><dd>${el.specRefs.map(elLink).join(', ')}</dd>`;
+  if (el.subRefs && el.subRefs.length) h += `<dt>Subsets</dt><dd>${el.subRefs.map(elLink).join(', ')}</dd>`;
+  if (el.redefRefs && el.redefRefs.length) h += `<dt>Redefines</dt><dd>${el.redefRefs.map(elLink).join(', ')}</dd>`;
+  if (el.mult) h += `<dt>Multiplicity</dt><dd>[${esc(el.mult)}]</dd>`;
+  if (el.value) h += `<dt>Value</dt><dd>${esc(el.value.text || el.value)}</dd>`;
+  if (el.reqRef) h += `<dt>Requirement</dt><dd>${elLink(el.reqRef)}</dd>`;
+  if (el.byRef && el.kind === 'satisfy') h += `<dt>Satisfied by</dt><dd>${elLink(el.byRef)}</dd>`;
+  if (el.endRefs) h += `<dt>Ends</dt><dd>${el.endRefs.map(elLink).join(' to ')}</dd>`;
+  h += '</dl>';
+  if (el.doc) h += `<p class="doc">${esc(el.doc)}</p>`;
+  const links = HFE_SYSML.workspaceLinks(m, el);
+  if (links.length) h += `<h3>Workspace Visualisation</h3>${linkButtons(links)}`;
+  const tr = ST.trace && ST.trace.find(r => r.el === el.id);
+  if (tr) h += traceBlock(tr);
+  const sats = (ST.trace || []).filter(r => r.satisfiedBy.some(s => s.el === el.id));
+  if (sats.length) h += `<h3>Satisfies</h3>${sats.map(r => `<div>${stBadge(r.status)} <button class="go" data-go="${r.el}">${esc(r.name)}</button></div>`).join('')}`;
+  const feats = HFE_SYSML.features(el);
+  if (feats.length && !el.kind.match(/satisfy|verify|connect/)) {
+    const own = new Set(el.children);
+    h += `<h3>Features</h3><table><tr><th>Feature</th><th>Kind</th><th>Type</th><th></th></tr>${feats.slice(0, 60).map(f => `<tr><td><button class="go" data-go="${f.id}">${esc(f.name || '(unnamed)')}</button></td><td>${esc(word(f))}</td><td>${esc(f.types.map(t => (t.conj ? '~' : '') + t.text).join(', '))}${f.mult ? ` [${esc(f.mult)}]` : ''}${f.value ? ' = ' + esc(f.value.text) : ''}</td><td class="muted">${own.has(f) ? '' : 'inherited'}</td></tr>`).join('')}</table>`;
+  }
+  P.innerHTML = h;
+}
+function traceBlock(tr) {
+  let h = `<h3>Trace ${stBadge(tr.status)}</h3><dl class="kv">`;
+  h += `<dt>Satisfied by</dt><dd>${tr.satisfiedBy.length ? tr.satisfiedBy.map(s => `<button class="go" data-go="${s.el}">${esc(s.qn || s.name)}</button>`).join(', ') : '<span class="muted">nothing yet</span>'}</dd>`;
+  h += `<dt>Verified by</dt><dd>${tr.verifiedBy.length ? tr.verifiedBy.map(s => `<button class="go" data-go="${s.el}">${esc(s.name)}</button>`).join(', ') : '<span class="muted">no verification case</span>'}</dd></dl>`;
+  if (tr.links.length) h += `<h3>Linked 3D objects</h3>${linkButtons(tr.links)}`;
+  if (tr.evidence.length) {
+    h += `<h3>Evidence</h3><table><tr><th>Check</th><th>Case</th><th>Result</th><th>Value</th></tr>${tr.evidence.map(e => `<tr><td>${esc(e.check)}${e.name ? `<div class="muted">${esc(e.name)}</div>` : ''}</td><td>${esc([e.env && (CTX.envs[e.env] || {}).name || e.env, e.role].filter(Boolean).join(', ') || 'any')}</td><td>${stBadge(e.status)}</td><td>${esc(e.text)}</td></tr>`).join('')}</table>`;
+    h += `<p class="muted" style="margin-top:6px">${esc(resultsLine())}</p>`;
+  }
+  return h;
+}
+function resultsLine() {
+  const R = ST.results; if (!R) return 'No results from Workspace Visualisation yet. Open it from a linked element, or load saved results.';
+  return `Results: ${R.envName || R.env}${R.role ? ', ' + R.role : ''}; ${R.subject || ''}; ${R.stamp || ('build ' + (R.build || '?'))}; ${ST.live ? 'live' : 'saved ' + (R.at || '').slice(0, 16).replace('T', ' ') + ' UTC'}`;
+}
+function renderTrace() {
+  ST.trace = HFE_SYSML.trace(ST.model, ST.results);
+  const T = ST.trace, P = $('#p-tr'); $('#c-tr').textContent = T.length;
+  if (!T.length) { P.innerHTML = '<p class="muted">No requirements yet. Add requirement defs and requirements, satisfy them with parts, and verify them with verification cases. Put <code>@HFE::Evidence { check = "…"; }</code> on a verification to use a Workspace Visualisation check as its evidence.</p>'; return; }
+  const n = k => T.filter(r => r.status === k).length;
+  let h = `<div class="chips" style="margin-bottom:8px"><span class="chip">${T.length} requirements</span><span class="chip">${T.filter(r => r.satisfiedBy.length).length} satisfied by an element</span><span class="chip">${T.filter(r => r.evidence.length).length} with evidence</span>${['ok', 'warn', 'bad', 'pending'].map(k => n(k) ? stBadge(k).replace('</span>', ` ${n(k)}</span>`).replace(/ (Within limits|Marginal|Outside limits|No result yet) /, ' $1: ') : '').join(' ')}</div>`;
+  h += `<p class="muted" style="margin:0 0 8px">${esc(resultsLine())}</p>`;
+  h += `<table><tr><th>Requirement</th><th>Text</th><th>Satisfied by</th><th>3D</th><th>Evidence</th><th>Status</th></tr>${T.map(r => `<tr>
+    <td><button class="go" data-go="${r.el}">${esc(r.name)}</button>${r.def ? '<div class="muted">definition</div>' : ''}</td>
+    <td style="max-width:44ch">${esc(r.doc || '')}</td>
+    <td>${r.satisfiedBy.map(s => `<button class="go" data-go="${s.el}">${esc(s.name)}</button>`).join(', ') || '<span class="muted">–</span>'}</td>
+    <td>${r.links.length ? r.links.map(l => `<button class="btn" data-ws='${esc(JSON.stringify({ env: l.env, role: l.role, node: l.node, label: l.name }))}' title="${esc([l.env, l.role, l.node].filter(Boolean).join(' · '))}">Show</button>`).join(' ') : '<span class="muted">–</span>'}</td>
+    <td>${r.evidence.map(e => `<div>${esc(e.check)}: ${esc(e.text)}</div>`).join('') || '<span class="muted">–</span>'}</td>
+    <td>${stBadge(r.status)}</td></tr>`).join('')}</table>`;
+  P.innerHTML = h;
+}
+function renderProblems() {
+  const D = ST.model.diags, P = $('#p-pr');
+  P.innerHTML = D.length ? D.map((d, i) => { const lc = HFE_SYSML.lineCol(src.value, d.s); return `<div data-d="${i}"><span class="sev ${d.sev}">${d.sev === 'error' ? '✕' : '!'}</span><span class="lc">Ln ${lc.line}, Col ${lc.col}</span><span>${esc(d.msg)}</span></div>`; }).join('') : '<p class="muted">No problems.</p>';
+}
+$('#p-pr').addEventListener('click', e => { const r = e.target.closest('[data-d]'); if (!r) return; const d = ST.model.diags[+r.dataset.d]; revealRange(d.s, d.e); });
+document.addEventListener('click', e => {
+  const g = e.target.closest('[data-go]'); if (g) { const el = ST.model.byId[g.dataset.go]; if (el) { select(el.id, { reveal: true }); } return; }
+  const w = e.target.closest('[data-ws]'); if (w) showIn3D(JSON.parse(w.dataset.ws));
+});
+
+/* ---------------- Workspace Visualisation link ---------------- */
+// Same-origin pages talk over a BroadcastChannel: the workspace publishes its check results and scene objects after every
+// update, and takes focus requests. The last results are also kept in localStorage so a later visit sees them.
+const WS_URL = (document.querySelector('meta[name="hfe-workspace"]') || {}).content || 'https://hfe-lab.dev/workspace/';
+let chan = null; try { chan = new BroadcastChannel('hfe-lab'); } catch { /* not available */ }
+function setResults(R, how) {
+  if (!R || !Array.isArray(R.rows)) return false;
+  ST.results = R; ST.resultsFrom = how; ST.live = how === 'live';
+  if (R.nodes) CTX.nodes = { env: R.env, role: R.role, ids: R.nodes.map(n => n.id), list: R.nodes };
+  const pill = $('#ws-pill'); pill.className = 'pill ' + (how === 'live' ? 'live' : 'stored');
+  $('#ws-text').textContent = `${how === 'live' ? 'Live' : how === 'file' ? 'Loaded' : 'Last'}: ${R.envName || R.env}${R.role ? ' · ' + R.role : ''} · ${R.rows.length} checks`;
+  pill.title = resultsLine() + '\nClick to load results saved from Workspace Visualisation.';
+  if (ST.model) { renderTrace(); renderInspector(); if (ST.view === 'requirements') drawView(); }
+  return true;
+}
+if (chan) chan.onmessage = e => {
+  const d = e.data || {};
+  if (d.type === 'results') setResults(d.data, 'live');
+  if (d.type === 'selected' && d.node && ST.model) {
+    // the workspace's selection: find the element linked to that object
+    const hit = ST.model.all.find(el => el.meta.some(m => m.hfe === 'link' && m.fields.node === d.node && (!m.fields.env || m.fields.env === d.env) && (!m.fields.role || m.fields.role === d.role)));
+    if (hit) select(hit.id, { reveal: true });
+  }
+};
+function showIn3D(l) {
+  const q = new URLSearchParams(); if (l.env) q.set('env', l.env); if (l.role) q.set('role', l.role); if (l.node) q.set('focus', l.node); if (l.label) q.set('from', l.label);
+  const url = WS_URL + (WS_URL.includes('?') ? '&' : '?') + q;
+  if (ST.live && chan) {
+    chan.postMessage({ type: 'focus', env: l.env, role: l.role, node: l.node, label: l.label });
+    let w = null; try { w = window.open('', 'hfe-workspace'); } catch { /* blocked */ }
+    try { if (w && w.location.href === 'about:blank') w.location = url; } catch { /* other origin: already the workspace */ }
+    if (w) w.focus(); toast(`Showing ${l.label || l.node} in Workspace Visualisation`); return;
+  }
+  const w = window.open(url, 'hfe-workspace');
+  if (!w) toast('The browser blocked the new tab. Allow pop-ups for this page, or open ' + url);
+}
+$('#ws-open').onclick = () => { const w = window.open(WS_URL, 'hfe-workspace'); if (w) w.focus(); };
+$('#ws-pill').onclick = () => $('#resfile').click();
+$('#resfile').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  try { const j = JSON.parse(await f.text()); if (!setResults(j.results || j, 'file')) throw new Error('no rows'); toast('Loaded results from ' + f.name); }
+  catch { toast('That file is not a results file saved from Workspace Visualisation.'); }
+};
+
+/* ---------------- files ---------------- */
+function download(name, data, type) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(data instanceof Blob ? data : new Blob([data], { type: type || 'text/plain' })); a.download = name;
+  document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+}
+function setText(t, name) { src.value = t; ST.fname = name || ST.fname; $('#fname').textContent = ST.fname; ST.sel = null; src.scrollTop = src.scrollLeft = 0; lastKey = ''; onInput(); reparse(); }
+function saveText() { download(ST.fname.endsWith('.sysml') ? ST.fname : ST.fname + '.sysml', src.value); toast('Saved ' + ST.fname); }
+$('#f-new').onclick = () => { if (src.value.trim() && !confirmReplace()) return; setText('package NewModel {\n    \n}\n', 'untitled.sysml'); src.setSelectionRange(23, 23); src.focus(); };
+$('#f-example').onclick = () => { if (src.value.trim() && src.value !== EXAMPLE && !confirmReplace()) return; setText(EXAMPLE, 'gcs-operator-station.sysml'); };
+// the example and new model replace the text; the draft is kept in this browser, so ask only when it differs from both
+function confirmReplace() { return true; }
+$('#f-open').onclick = () => $('#file').click();
+$('#f-save').onclick = saveText;
+$('#file').onchange = async e => { const f = e.target.files[0]; e.target.value = ''; if (f) setText(await f.text(), f.name); };
+$('#x-json').onclick = () => download(ST.fname.replace(/\.\w+$/, '') + '.json', JSON.stringify({ format: 'hfe-lab/sysml-elements', build: BUILD, elements: HFE_SYSML.toJSON(ST.model) }, null, 2), 'application/json');
+function exportSvgText() {
+  const s = $('#dg svg'); if (!s) return null;
+  const c = s.cloneNode(true); c.removeAttribute('style'); c.querySelectorAll('.sel').forEach(n => n.classList.remove('sel'));
+  c.insertAdjacentHTML('afterbegin', `<style>${diagramCss(true)}</style><rect width="100%" height="100%" fill="${cssv('--dg-bg')}"/>`);
+  return new XMLSerializer().serializeToString(c);
+}
+$('#x-svg').onclick = () => { const t = exportSvgText(); if (!t) return toast('No diagram to save'); download(`${ST.fname.replace(/\.\w+$/, '')}-${ST.view}.svg`, t, 'image/svg+xml'); };
+$('#x-png').onclick = async () => {
+  const t = exportSvgText(); if (!t) return toast('No diagram to save');
+  const img = new Image(), k = 2; img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(t); await img.decode();
+  const cv = document.createElement('canvas'); cv.width = ST.svg.width * k; cv.height = ST.svg.height * k; const g = cv.getContext('2d'); g.scale(k, k); g.drawImage(img, 0, 0);
+  cv.toBlob(b => download(`${ST.fname.replace(/\.\w+$/, '')}-${ST.view}.png`, b), 'image/png');
+};
+$('#x-csv').onclick = () => {
+  const q = s => `"${String(s == null ? '' : s).replace(/"/g, '""')}"`;
+  const L = [['SysML v2 Editor, build ' + BUILD], ['Model', ST.fname], ['Results', resultsLine()], [], ['Requirement', 'Qualified name', 'Text', 'Satisfied by', 'Linked 3D objects', 'Verified by', 'Evidence', 'Status']];
+  for (const r of ST.trace) L.push([r.name, r.qn, r.doc, r.satisfiedBy.map(s => s.qn || s.name).join('; '), r.links.map(l => [l.env, l.role, l.node].filter(Boolean).join('/')).join('; '), r.verifiedBy.map(v => v.name).join('; '), r.evidence.map(e => `${e.check}: ${e.text}`).join('; '), STW[r.status]]);
+  download(ST.fname.replace(/\.\w+$/, '') + '-trace.csv', L.map(r => r.map(q).join(',')).join('\n'), 'text/csv');
+};
+
+/* ---------------- theme and diagram styles ---------------- */
+const cssv = k => getComputedStyle(document.documentElement).getPropertyValue(k).trim();
+function diagramCss(inline) {
+  const v = k => inline ? cssv(k) : `var(${k})`;
+  return `.dg{font-family:${inline ? '"Segoe UI",system-ui,Arial,sans-serif' : 'var(--f-sans)'};}
+.dg text{fill:${v('--dg-text')}}.dg .kw,.dg .ct,.dg .el,.dg .pl{fill:${v('--dg-muted')}}.dg .kw{font-size:10.5px}.dg .nm{font-size:12.5px;font-weight:600}
+.dg .ct{font-size:10px;font-style:italic}.dg .it,.dg .doc{font-size:11px}.dg .el,.dg .pl{font-size:10px}
+.dg .bx{fill:${v('--dg-box')};stroke:${v('--dg-line')};stroke-width:1.2}.dg .def>.bx{fill:${v('--dg-def')}}.dg .k-package>.bx{fill:none;stroke-width:1}.dg .tab{fill:${v('--dg-pkg')};stroke:${v('--dg-line')}}
+.dg .sep{stroke:${v('--dg-sep')}}.dg .ed{fill:none;stroke:${v('--dg-line')};stroke-width:1.15}.dg .e-satisfy,.dg .e-verify,.dg .e-typing,.dg .e-allocate{stroke-dasharray:5 3}.dg .e-bind{stroke-dasharray:2 2}
+.dg .e-connection,.dg .e-interface{stroke-width:1.6}.dg .port rect{fill:${v('--dg-box')};stroke:${v('--dg-line')};stroke-width:1.2}.dg .port.conj rect{fill:${v('--dg-line')}}.dg .pd{fill:none;stroke:${v('--dg-line')}}.dg .port.conj .pd{stroke:${v('--dg-box')}}
+.dg .mk-hollow{fill:${v('--dg-box')};stroke:${v('--dg-line')};stroke-width:1.1}.dg .mk-line{fill:none;stroke:${v('--dg-line')};stroke-width:1.2}.dg .mk-fill,.dg .init{fill:${v('--dg-line')}}
+.dg .lnk rect{fill:${v('--accent')}}.dg .lnk path{fill:none;stroke:${v('--accent-ink')};stroke-width:1.4}
+.dg .badge rect{fill:${v('--info')}}.dg .badge text{fill:#fff;font-size:10px;font-weight:700}.dg .badge.st-ok rect{fill:${v('--ok')}}.dg .badge.st-warn rect{fill:${v('--warn')}}.dg .badge.st-bad rect{fill:${v('--bad')}}
+.dg .st-ok>.bx{stroke:${v('--ok')};stroke-width:2}.dg .st-warn>.bx{stroke:${v('--warn')};stroke-width:2}.dg .st-bad>.bx{stroke:${v('--bad')};stroke-width:2}
+.dg .dot{fill:${v('--info')}}.dg .dot.st-ok{fill:${v('--ok')}}.dg .dot.st-warn{fill:${v('--warn')}}.dg .dot.st-bad{fill:${v('--bad')}}
+.dg .sel>.bx,.dg .sel>rect.bx{stroke:${v('--sel')};stroke-width:2.6}.dg .ed.sel{stroke:${v('--sel')};stroke-width:2.4}.dg .nd:focus{outline:none}.dg .nd:focus-visible>.bx{stroke:${v('--accent')};stroke-width:2.4}`;
+}
+(() => { const s = document.createElement('style'); s.textContent = diagramCss(false); document.head.append(s); })();
+function setTheme(t) { document.documentElement.dataset.theme = t; store.set('hfe-sysml.theme', t); }
+{ const t = store.get('hfe-sysml.theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); document.documentElement.dataset.theme = t; }
+$('#theme').onclick = () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
+$('#help').onclick = () => { $('#about').hidden = false; $('#about-close').focus(); };
+$('#about-close').onclick = () => { $('#about').hidden = true; };
+$('#about').addEventListener('click', e => { if (e.target.id === 'about') $('#about').hidden = true; });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { $('#about').hidden = true; } });
+
+/* ---------------- splitters ---------------- */
+function splitter(btn, axis) {
+  btn.addEventListener('pointerdown', e => {
+    e.preventDefault(); btn.setPointerCapture(e.pointerId);
+    const mv = ev => {
+      if (axis === 'v') { const r = $('#main').getBoundingClientRect(); const w = Math.min(r.width - 260, Math.max(240, ev.clientX - r.left)); document.documentElement.style.setProperty('--ed-w', w + 'px'); }
+      else { const h = Math.min(innerHeight - 200, Math.max(80, innerHeight - ev.clientY - 24)); document.documentElement.style.setProperty('--insp-h', h + 'px'); }
+    };
+    const up = () => { btn.removeEventListener('pointermove', mv); btn.removeEventListener('pointerup', up); };
+    btn.addEventListener('pointermove', mv); btn.addEventListener('pointerup', up);
+  });
+}
+splitter($('#split-v'), 'v'); splitter($('#split-h'), 'h');
+
+/* ---------------- boot ---------------- */
+if (/(^|\.)hfe-lab\.dev$|\.github\.io$/.test(location.hostname)) { const m = $('#logo'), a = document.createElement('a'); a.href = '/'; a.className = 'logo'; a.innerHTML = m.innerHTML; a.title = 'HFE Lab home'; m.replaceWith(a); }
+measureChar();
+{
+  let stored = null; try { stored = JSON.parse(store.get('hfe-lab.results') || 'null'); } catch { /* bad JSON */ }
+  if (stored) setResults(stored, 'stored');
+}
+{
+  const q = new URLSearchParams(location.search), draft = q.has('example') ? null : store.get('hfe-sysml.draft');
+  setText(draft && draft.trim() ? draft : EXAMPLE, draft && draft.trim() ? 'untitled.sysml' : 'gcs-operator-station.sysml');
+  if (q.get('view') && ROOTS[q.get('view')]) setView(q.get('view'));
+}
+if (chan) chan.postMessage({ type: 'ping' });
+window.__sysmlApp = { ST, setText, setResults, select, setView, CTX };
+</script>
+</body></html>
