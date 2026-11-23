@@ -216,7 +216,7 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
       <div class="tp probs" id="p-p" role="tabpanel" hidden></div>
     </section>
   </div>
-  <footer class="status"><span id="sb-file">untitled.hmi.json</span><span id="sb-scr"></span><span id="sb-mode">Edit</span><span class="sp"></span><span id="sb-build">Build ff3d1e582a24</span></footer>
+  <footer class="status"><span id="sb-file">untitled.hmi.json</span><span id="sb-scr"></span><span id="sb-mode">Edit</span><span class="sp"></span><span id="sb-build">Build 6a84f3ab0520</span></footer>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
@@ -1380,10 +1380,12 @@ const HFE_ENV = (() => {
       ws: {
         chair: 'operator', armrests: true, recline: 8,
         deskSize: 'custom', deskWidth: 1000, deskDepth: 520, deskH: 720, deskT: 40, legroom: 420, deskStyle: 'console',
-        screens: { count: 2, layout: 'custom', bottom: 70, tilt: 8, list: [scr(21.3, '4:3', 470, -245, 8, 0), scr(21.3, '4:3', 470, 245, -8, 0), scr(24, '16:10', 450, 0, 0, 0), scr(24, '16:10', 450, 0, 0, 0)] },
+        // displays built into the console face, keyboard and trackball integrated into the shelf (fixed: they cannot be
+        // moved, turned or raised), as in public imagery of E-3 class mission consoles; sizes indicative
+        screens: { count: 2, layout: 'custom', bottom: 70, tilt: 8, fixed: true, list: [scr(21.3, '4:3', 470, -245, 8, 0), scr(21.3, '4:3', 470, 245, -8, 0), scr(24, '16:10', 450, 0, 0, 0), scr(24, '16:10', 450, 0, 0, 0)] },
         objects: [
-          { id: 'o1', type: 'keyboard', kb: 'full', x: 150, z: 60, yaw: 0, homeRowH: 30, tilt: 4, use: 'frequent' },
-          { id: 'o2', type: 'tbThumb', x: 170, z: 380, yaw: 0, use: 'frequent' }
+          { id: 'o1', type: 'keyboard', kb: 'full', x: 150, z: 60, yaw: 0, homeRowH: 30, tilt: 4, use: 'frequent', fixed: true },
+          { id: 'o2', type: 'tbThumb', x: 170, z: 380, yaw: 0, use: 'frequent', fixed: true }
         ],
         hands: { L: 'o1', R: 'o2' }
       },
@@ -1516,7 +1518,7 @@ const HFE_ENV = (() => {
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = HFE_ENV;
 
-const BUILD = 'ff3d1e582a24';
+const BUILD = '6a84f3ab0520';
 const H = HFE_HMI;
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');

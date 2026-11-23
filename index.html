@@ -22,7 +22,7 @@
 <style>
 /* Layout: two-column holding page. Text and the tool cards left, slowly turning wireframe manikin right. */
 :root{
-  --bg:#ffffff; --ink:#1c2530; --muted:#5b6672; --faint:#8a949e; --rule:#e1e5ea; --accent:#1f5a8a; --card:#f6f8fa; --wire:#5a7691; --floor:#dfe4e9;
+  --bg:#ffffff; --ink:#1c2530; --muted:#5b6672; --faint:#8a949e; --rule:#e1e5ea; --accent:#1f5a8a; --card:#f6f8fa; --wire:#5a7691; --floor:#dfe4e9; --mk:#b7c1ca;
   --f:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Roboto,Arial,sans-serif;
   color-scheme:light;
 }
@@ -55,6 +55,31 @@ canvas.dragging{cursor:grabbing}
 @media (max-width:860px){canvas{height:min(70vh,520px)}}
 figcaption{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 16px;font-size:12px;color:var(--faint);font-variant-numeric:tabular-nums;border-top:1px solid var(--rule);padding-top:8px}
 .foot{max-width:1120px;margin:0 auto;padding-block:0 24px;font-size:12px;color:var(--faint)}
+/* hero controls: what the manikin wears and how it is drawn */
+.seg{display:inline-flex;border:1px solid var(--rule);border-radius:5px;overflow:hidden}
+.seg button{font:inherit;font-size:12px;color:var(--muted);background:transparent;border:0;padding:3px 9px;cursor:pointer}
+.seg button+button{border-left:1px solid var(--rule)}
+.seg button[aria-pressed="true"]{background:var(--card);color:var(--ink);font-weight:600}
+.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.ctrls{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;font-size:12px;color:var(--faint)}
+.ctrls label{display:inline-flex;gap:6px;align-items:center}
+/* From the toolkit: pictures drawn by the tools themselves (tools/landing_shots.py) */
+.kit{max-width:1120px;margin:0 auto;padding-block:40px 56px;border-top:1px solid var(--rule)}
+.kit h2{font-size:22px;font-weight:600;margin:0 0 8px}
+.kit .sub{color:var(--muted);font-size:14.5px;line-height:1.55;max-width:70ch;margin:0 0 28px}
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:28px 24px;margin:0;padding:0;list-style:none}
+@media (max-width:960px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:600px){.grid{grid-template-columns:minmax(0,1fr)}}
+.grid figure{margin:0;display:flex;flex-direction:column;gap:6px;min-width:0}
+.shot{display:block;border:1px solid var(--rule);border-radius:6px;overflow:hidden;background:var(--card);aspect-ratio:4/3;margin-bottom:6px;transition:border-color .15s}
+.shot:hover{border-color:var(--accent)}
+.shot:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.shot img{display:block;width:100%;height:100%;object-fit:cover}
+.grid .k{display:block;margin:0}
+.grid .t{font-size:15.5px;margin:0}
+.grid .d{font-size:13.5px}
+.grid .go{margin-top:2px;font-size:13px;text-decoration:none}
+.grid .go:hover{text-decoration:underline}
 @media (prefers-reduced-motion: reduce){*{transition:none!important}}
 </style>
 </head>
@@ -93,10 +118,62 @@ figcaption{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 16p
     <p class="alt"><a href="/workspace/workspace-visualisation-offline.html" download="workspace-visualisation-offline.html">Download the offline version</a> of Workspace Visualisation: one HTML file with every library inside, for computers with no internet access.</p>
   </section>
   <figure class="figure">
-    <canvas id="c" role="img" aria-label="Slowly turning wireframe model of a seated person"></canvas>
+    <canvas id="c" role="img" aria-label="Slowly turning model of a seated person in combat clothing"></canvas>
+    <div class="ctrls">
+      <label>Wearing <span class="seg" id="kit-seg" role="group" aria-label="Clothing"><button data-kit="mtp" aria-pressed="true">MTP</button><button data-kit="raf-blues" aria-pressed="false">RAF blues</button><button data-kit="none" aria-pressed="false">None</button></span></label>
+      <label>Drawn as <span class="seg" id="mode-seg" role="group" aria-label="Drawing style"><button data-mode="solid" aria-pressed="true">Surface</button><button data-mode="wire" aria-pressed="false">Wire</button></span></label>
+    </div>
     <figcaption><span id="cap"></span><span>Built from one person's measurements. Drag to turn.</span></figcaption>
   </figure>
 </main>
+<section class="kit" aria-labelledby="kit-h">
+  <h2 id="kit-h">From the toolkit</h2>
+  <p class="sub">Every picture here was drawn by the tools themselves, from the current build and public ANSUR II data. Select one to see it full size, or open it in the tool.</p>
+  <ul class="grid">
+    <li><figure>
+      <a class="shot" href="gallery/stances.webp"><img src="gallery/stances.webp" width="1200" height="900" loading="lazy" decoding="async" alt="The manikin in MTP standing at a raised desk, kneeling and lying prone, with checks drawn as labels"></a>
+      <span class="k">Whole-body posture solver</span>
+      <span class="t">Standing, kneeling and prone</span>
+      <span class="d">One solver poses the whole body from the spine to the fingers, inside each joint's range of motion and balanced over its support, and the checks follow it off the seat.</span>
+      <a class="go" href="/workspace/">Try a stance →</a>
+    </figure></li>
+    <li><figure>
+      <a class="shot" href="gallery/vision.webp"><img src="gallery/vision.webp" width="1200" height="900" loading="lazy" decoding="async" alt="A projected vision plot from the pilot's eye in a ground control station, with each display outlined and the body and console below"></a>
+      <span class="k">Vision</span>
+      <span class="t">Vision plot and display occlusion</span>
+      <span class="d">Ray-cast from the solved eye point: what each display leaves visible, what blocks it, and how much a field-of-view mask such as night vision goggles takes away.</span>
+      <a class="go" href="/workspace/?env=gcs-container">Open in the ground control station →</a>
+    </figure></li>
+    <li><figure>
+      <a class="shot" href="gallery/clearance.webp"><img src="gallery/clearance.webp" width="1200" height="900" loading="lazy" decoding="async" alt="A seated manikin at a desk with an imported block through its knees, the clash shown in red and the clearance map in green and amber on the legs"></a>
+      <span class="k">Clearance</span>
+      <span class="t">Exact clearance and clash on imported CAD</span>
+      <span class="d">The posed body surface against the furniture and any GLB you import, with the clash depth in millimetres and a clearance map painted on the skin.</span>
+      <a class="go" href="/workspace/">Check clearance →</a>
+    </figure></li>
+    <li><figure>
+      <a class="shot" href="gallery/placement.webp"><img src="gallery/placement.webp" width="1200" height="900" loading="lazy" decoding="async" alt="A ground control station console with candidate screen positions painted from red to green by the share of people accommodated"></a>
+      <span class="k">Population</span>
+      <span class="t">Placement map</span>
+      <span class="d">Where a new display could go: each candidate position is painted with the share of the population it accommodates, each figure with its confidence interval.</span>
+      <a class="go" href="/workspace/?env=gcs-container">Map a display →</a>
+    </figure></li>
+    <li><figure>
+      <a class="shot" href="gallery/sysml.webp"><img src="gallery/sysml.webp" width="1200" height="900" loading="lazy" decoding="async" alt="A SysML v2 requirements diagram whose requirements carry live pass, marginal and fail evidence from Workspace Visualisation"></a>
+      <span class="k">SysML v2 Editor</span>
+      <span class="t">Requirements with live evidence</span>
+      <span class="d">Requirements written in SysML v2 link to objects in the 3D workspace, and its check results arrive as their verification evidence while both are open.</span>
+      <a class="go" href="/sysml/?example">Open the example model →</a>
+    </figure></li>
+    <li><figure>
+      <a class="shot" href="gallery/environments.webp"><img src="gallery/environments.webp" width="1200" height="900" loading="lazy" decoding="async" alt="Four environments from the library: a ground control station, a fast-jet cockpit, an airborne mission crew cabin and a ship's operations room"></a>
+      <span class="k">Environment library</span>
+      <span class="t">Military environments as data</span>
+      <span class="d">Ground control station, fast-jet cockpit, mission crew cabin, ship's operations room and more, each a template with its own seats, displays and checks. Geometry is indicative.</span>
+      <a class="go" href="/workspace/">Choose an environment →</a>
+    </figure></li>
+  </ul>
+</section>
 <footer class="foot">hfe-lab.dev</footer>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script>
 <script type="module">
@@ -1154,9 +1231,16 @@ const M = Object.fromEntries(SUBJ.dims.map((k, i) => [k, SUBJ.v[i]]));
 document.getElementById('cap').textContent = `ANSUR II subject ${SUBJ.id} · 50th percentile male stature · ${Math.round(M.stature)} mm`;
 const G = pose(M);
 const tok = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-const mats = { wire: new THREE.LineBasicMaterial({ color: tok('--wire'), transparent: true, opacity: 0.78 }) };
-const model = new THREE.Group();
-model.add(BODY.build(M, G, 'wire', mats));
+const std = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.75, metalness: 0.05, ...o });
+const mats = { wire: new THREE.LineBasicMaterial({ color: tok('--wire'), transparent: true, opacity: 0.78 }), mk: std(tok('--mk'), { roughness: 0.6 }), shoe: std('#3b434c', { roughness: 0.55 }), kb: std('#3a424a') };
+// the manikin as Workspace Visualisation draws it: the fitted MakeHuman surface, dressed from the kit catalogue
+const view = { kit: 'mtp', mode: 'solid' };
+const model = new THREE.Group(), body = new THREE.Group(); model.add(body);
+function dress() {
+  for (const o of body.children.splice(0)) o.traverse(c => { if (c.geometry) c.geometry.dispose(); });
+  body.add(BODY.build(M, G, view.mode, mats, { sex: 'male', kit: view.kit }));
+}
+dress();
 // stool, drawn as lines
 const stool = new THREE.Group(), lm = new THREE.LineBasicMaterial({ color: tok('--wire'), transparent: true, opacity: 0.45 });
 const sx = G.H.x + 20, top = G.seatY, r = 210;
@@ -1176,10 +1260,21 @@ const spokes = []; for (let i = 0; i < 12; i++) { const t = i / 12 * Math.PI * 2
 floor.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(spokes), fm));
 turn.add(floor);
 
+for (const [id, key] of [['kit-seg', 'kit'], ['mode-seg', 'mode']]) {
+  const seg = document.getElementById(id);
+  seg.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    view[key] = b.dataset[key]; seg.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b));
+    dress(); draw();
+  });
+}
 const canvas = document.getElementById('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 const scene = new THREE.Scene(); scene.add(turn);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8a949c, 1.25));
+const sun = new THREE.DirectionalLight(0xffffff, 1.35); sun.position.set(1800, 3200, 2600); scene.add(sun);
+const fill = new THREE.DirectionalLight(0xffffff, 0.45); fill.position.set(-2500, 1200, -1500); scene.add(fill);
 const cam = new THREE.PerspectiveCamera(26, 1, 10, 20000);
 const height = box.max.y - G.floorY;
 function size() {

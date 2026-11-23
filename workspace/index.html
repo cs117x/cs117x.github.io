@@ -375,6 +375,7 @@ table.kv td{padding:3px 0;overflow-wrap:anywhere}
 .vis-legend{display:flex;flex-wrap:wrap;gap:4px 14px;margin:6px 0 0;font-size:11.5px;color:var(--muted)}
 .vis-key i{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:5px;vertical-align:-1px;border:1px solid var(--rule-strong)}
 .drw-prev svg{width:100%;height:auto;display:block;background:#fff;box-shadow:0 1px 6px rgba(0,0,0,.14)}
+.sg-page{margin:0 0 14px}
 .about-card{width:min(780px,100%)}
 /* ---- environment library and tab ---- */
 .env-btn{border:0;border-left:1px solid var(--rule-strong);background:transparent;cursor:pointer;font:inherit;padding:2px 8px 2px 10px;border-radius:0}
@@ -474,6 +475,7 @@ table.kv td{padding:3px 0;overflow-wrap:anywhere}
         <button role="menuitem" data-click="#prj-open">Project details and marking…</button>
         <hr>
         <button role="menuitem" data-click="#exp-drw">Export drawing…<span class="kbd">PDF · SVG · DXF</span></button>
+        <button role="menuitem" data-click="#sg-open">Export desk setup guidance…<span class="kbd">PDF</span></button>
         <button role="menuitem" data-click="#exp-png">Save view image<span class="kbd">PNG</span></button>
         <button role="menuitem" data-click="#exp-csv">Save checks<span class="kbd">CSV</span></button>
         <button role="menuitem" data-click="#copy-csv">Copy checks table</button>
@@ -576,6 +578,7 @@ table.kv td{padding:3px 0;overflow-wrap:anywhere}
     </div><div class="rb-lbl">Analyse</div></div>
     <div class="rb-grp"><div class="rb-row">
       <button class="rb" data-click="#exp-drw" title="Export drawing: PDF, SVG, PNG or DXF"><svg class="i"><use href="#i-draw"/></svg><span>Drawing</span></button>
+      <button class="rb" id="sg-open" title="Desk setup guidance: smallest and largest user, screen heights, viewing angles, keyboard and mouse space, leg space (PDF)"><svg class="i"><use href="#i-person"/></svg><span>Setup guide</span></button>
       <button class="rb" data-click="#exp-png" title="Save the view as PNG"><svg class="i"><use href="#i-camera"/></svg><span>Image</span></button>
       <button class="rb" data-click="#exp-csv" title="Save the checks as CSV"><svg class="i"><use href="#i-grid"/></svg><span>Checks CSV</span></button>
       <button class="rb" id="prj-open" title="Project: title, protective marking, the stamp on every output, save and open"><svg class="i"><use href="#i-part"/></svg><span>Project</span></button>
@@ -911,6 +914,13 @@ table.kv td{padding:3px 0;overflow-wrap:anywhere}
   <div class="modal-card drw-card" role="dialog" aria-modal="true" aria-labelledby="vis-h">
     <div class="modal-head"><h2 id="vis-h">Vision plot and obscuration</h2><span class="help" id="vis-status" role="status"></span><span class="tb-spacer"></span><button class="icon-btn" id="vis-close" aria-label="Close">×</button></div>
     <div class="drw-body"><div class="drw-opts" id="vis-form"></div><div class="popa-out" id="vis-out"></div></div>
+  </div>
+</div>
+
+<div class="modal" id="sg" hidden>
+  <div class="modal-card drw-card" role="dialog" aria-modal="true" aria-labelledby="sg-h">
+    <div class="modal-head"><h2 id="sg-h">Desk setup guidance</h2><span class="help" id="sg-status" role="status"></span><span class="tb-spacer"></span><button class="icon-btn" id="sg-close" aria-label="Close">×</button></div>
+    <div class="drw-body"><div class="drw-opts" id="sg-form"></div><div class="drw-prev" id="sg-out"></div></div>
   </div>
 </div>
 
@@ -1455,10 +1465,12 @@ const HFE_ENV = (() => {
       ws: {
         chair: 'operator', armrests: true, recline: 8,
         deskSize: 'custom', deskWidth: 1000, deskDepth: 520, deskH: 720, deskT: 40, legroom: 420, deskStyle: 'console',
-        screens: { count: 2, layout: 'custom', bottom: 70, tilt: 8, list: [scr(21.3, '4:3', 470, -245, 8, 0), scr(21.3, '4:3', 470, 245, -8, 0), scr(24, '16:10', 450, 0, 0, 0), scr(24, '16:10', 450, 0, 0, 0)] },
+        // displays built into the console face, keyboard and trackball integrated into the shelf (fixed: they cannot be
+        // moved, turned or raised), as in public imagery of E-3 class mission consoles; sizes indicative
+        screens: { count: 2, layout: 'custom', bottom: 70, tilt: 8, fixed: true, list: [scr(21.3, '4:3', 470, -245, 8, 0), scr(21.3, '4:3', 470, 245, -8, 0), scr(24, '16:10', 450, 0, 0, 0), scr(24, '16:10', 450, 0, 0, 0)] },
         objects: [
-          { id: 'o1', type: 'keyboard', kb: 'full', x: 150, z: 60, yaw: 0, homeRowH: 30, tilt: 4, use: 'frequent' },
-          { id: 'o2', type: 'tbThumb', x: 170, z: 380, yaw: 0, use: 'frequent' }
+          { id: 'o1', type: 'keyboard', kb: 'full', x: 150, z: 60, yaw: 0, homeRowH: 30, tilt: 4, use: 'frequent', fixed: true },
+          { id: 'o2', type: 'tbThumb', x: 170, z: 380, yaw: 0, use: 'frequent', fixed: true }
         ],
         hands: { L: 'o1', R: 'o2' }
       },
@@ -7226,7 +7238,7 @@ let toastT; function toast(m) { $('#toast').textContent = m; clearTimeout(toastT
 /* ---------------- evidence: project files and output stamps (PRJ-01, PRJ-03, VAL-02, VAL-03, VAL-07) ----------------
    core/evidence.js does the hashing, migration and comparison; this gathers the tool's state for it. Every output
    (checks CSV, population CSVs, placement map CSV, image, drawing) carries the same stamp. */
-const TOOL = { name: 'HFE Lab Workspace Visualisation', build: 'a9b41db0ca07' };
+const TOOL = { name: 'HFE Lab Workspace Visualisation', build: '0effd10b57d3' };
 const VALIDATION = 'Not validated (posture from geometric rules, not a validated posture-prediction model; limits as stated under Checked against)';
 const solverName = W => W.solver === 'body' ? 'Whole body with joint limits (beta)' : 'Classic seated';
 function subjectText() {
@@ -9465,6 +9477,1240 @@ function bindVision() {
 bindVision();
 VISN.run = () => { const R = visRun(); if (!$('#vis').hidden) visRender(); return R; };
 VISN.V = HFE_VISION; window.__vision = VISN;
+
+/* ---------------- desk setup guidance: smallest and largest user, five diagrams, report pages (OUT-06) ----------------
+   Pure JavaScript with no dependencies (no DOM, no three.js), so it runs in the browser (inlined by tools/build.py at
+   __SETUP__) and in Node for unit tests (tests/setup_guide.test.js).
+
+   What it does. From the workstation on screen and two people solved by the tool's own posture model (the smallest user
+   with the seat raised until the elbow is level with the keyboard home row, feet on a footrest; the largest user with the
+   seat at popliteal height so the lower leg is vertical), it works out:
+   - each person's eye point: the smallest user's above the desk surface, the largest user's above the floor;
+   - whether the main screen's height adjustment covers both, and the setting that suits each (and both, if one does);
+   - horizontal viewing angles from each person's eye to every screen, against the eye rotation zones;
+   - clear desk space in front of each input device (150 mm), room to swivel a movable keyboard 30° either way, and a
+     working area for the pointing device;
+   - leg space under the desk for the largest user (thigh and knee) and foot support for the smallest.
+   Then it draws a short report: one A4 landscape page per diagram, each with brief setup guidance, the values it rests on,
+   the references and the evidence stamp, as SVG (the tool turns the pages into a PDF with jsPDF and svg2pdf.js).
+
+   Frame: millimetres, Y up, +X forward, +Z to the person's right; the desk's front edge is at x = 0 and the desk spans
+   x 0 to depth, z −width/2 to +width/2 (the tool's frame). Angles in degrees. Every rule carries the reference ids it rests
+   on (REFS). A reference whose clause text could not be checked against a public copy says so (`verified: false`), and
+   the report prints that flag next to it.
+*/
+const HFE_SETUP = (() => {
+  const D2R = Math.PI / 180, R2D = 180 / Math.PI;
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const r5 = v => Math.round(v / 5) * 5;
+
+  /* ---- references ----
+     verified: 'quote' when the quoted words were read in a public copy of that edition, 'heading' when only the clause
+     number and title were (the text is behind the standard's paywall), 'tool' for the tool's own rules, false when the
+     document itself could not be found or checked. */
+  const REFS = {
+    iso11064: {
+      short: 'ISO 11064-4', cite: 'ISO 11064-4:2004, Ergonomic design of control centres, Part 4: Layout and dimensions of workstations',
+      verified: 'quote', note: 'Quoted from the 2004 edition. The 2013 edition replaced it and renumbers some clauses; check the edition your project is bound to.',
+      clauses: {
+        '5.1': 'Workstations shall be designed to accommodate from the 5th to the 95th percentiles of the intended user population.',
+        '5.1.2 c)': 'Reach envelope: 5th percentile of the user population … Clearances: 95th percentile of the user population, e.g. clearances under worksurfaces.',
+        '3.11 Note 4': 'the extent of the visual field is approximately ± 35° around the line-of-sight'
+      }
+    },
+    iso9241: {
+      short: 'BS EN ISO 9241-5', cite: 'BS EN ISO 9241-5:1999 (ISO 9241-5:1998), Ergonomic requirements for office work with visual display terminals (VDTs), Part 5: Workstation layout and postural requirements',
+      verified: 'heading', note: 'Quote the clause text from your licensed copy.',
+      clauses: { '4.2': 'Versatility and flexibility', '4.3': 'Fit', '4.4': 'Postural change', '5.2': 'Postures', '5.4': 'Support surfaces', '5.5': 'Work chair', '5.6': 'Additional support elements', '5.7': 'Layout of workstations within the work space' }
+    },
+    mil1472: {
+      short: 'MIL-STD-1472H', cite: 'MIL-STD-1472H (15 September 2020), Department of Defense Design Criteria Standard: Human Engineering',
+      verified: 'heading', note: 'Clause, figure and table numbers checked against the revision H contents. The eye rotation values (optimum ±15°, maximum ±35° horizontally) are those the tool already uses for vision plots; check them against the figure in the revision your project is bound to.',
+      clauses: { '5.8': 'Anthropometric accommodation', '5.10.3': 'Workstation design', 'Fig. 2': 'Lines of sight', 'Fig. 58': 'Seated workspace dimensions', 'Fig. 68': 'Display mounting height', 'Fig. 71': 'Display mounting heights for seated personnel', 'Table VII': 'Keyboards', 'Table VIII': 'Mouse characteristics' }
+    },
+    hufims: {
+      short: 'HuFIMS', cite: 'HuFIMS (as named in the brief). Document number, issue and clauses to be added',
+      verified: false, note: 'No public copy could be found, so nothing is quoted from it. Add its reference and clause numbers before issue.',
+      clauses: {}
+    },
+    kbspace: {
+      short: 'Brief, keyboard clauses', cite: 'Keyboard and input device clauses quoted in the brief from a rail industry ("NR") standard, including 7.5.12',
+      verified: false, note: 'Wording as quoted in the brief; the standard’s number and issue were not given. Confirm before issue.',
+      clauses: {
+        '(clause number not given)': 'A minimum clear desk space of 150mm deep shall be left available in front of any input device.',
+        '7.5.12': 'For movable keyboards, sufficient desk space shall be available to allow for the keyboard to be swivelled around a vertical axis 30 deg in clockwise or counter-clockwise direction from its normal position parallel to the desk front edge'
+      }
+    },
+    examples: {
+      short: 'Brief, example figures', cite: 'Example figures supplied with the brief (vertical and horizontal viewing zones, mouse space, under-desk leg space); source document not stated',
+      verified: false, note: 'Values read from the example figures; the standard and clause they come from were not given. Confirm before issue.',
+      clauses: {
+        'Vertical viewing': 'normal line of sight 15° below the horizontal; recommended zone from the horizontal to 30° below; acceptable zone up to 40° above the horizontal and 40° below the recommended zone',
+        'Horizontal viewing': 'preferred zone 30° (±15°); 60° (±30°) limit for displays used regularly; acceptable zone 70° (±35°)',
+        'Mouse space': '200 x 240 mm, with 150 mm in front to support the forearms and wrists',
+        'Leg space': 'at least 700 mm high and 750 mm deep; minimum profile from the desk front edge (depth, height in mm): 0, 700; 400, 660; 750, 125; 750, 0'
+      }
+    },
+    tool: {
+      short: 'Tool rule', cite: 'HFE Lab Workspace Visualisation: Quick fit rules and check limits (guidance values, editable under Limits)',
+      verified: 'tool', note: 'The tool’s own rules, stated in full where they are used. Not a standard.', clauses: {}
+    }
+  };
+  const ZONES = { optimum: 15, regular: 30, maximum: 35 };   // horizontal eye rotation (MIL-STD-1472 visual field figure), and ISO 11064-4 3.11 Note 4 (±35°)
+  const DEFAULTS = { clearFront: 150, swivel: 30, mouseW: 200, mouseD: 240, screenTopBelowEye: 30 };   // mouse area as in the brief's example figure
+  // vertical viewing zones (degrees, + above the horizontal through the eye) and the minimum leg space profile
+  // ([depth from the desk front edge, height above the floor] in mm), both as read from the brief's example figures
+  const VZONES = { normal: -15, rec: [-30, 0], acc: [-70, 40] };
+  const LEGPROFILE = [[0, 700], [400, 660], [750, 125], [750, 0]];
+
+  const inR = (v, r) => (r[0] == null || v >= r[0] - 1e-9) && (r[1] == null || v <= r[1] + 1e-9);
+  function rate(v, lim) { if (v == null || !isFinite(v)) return 'info'; if (inR(v, lim.g)) return 'ok'; if (inR(v, lim.a)) return 'warn'; return 'bad'; }
+  const worst = list => ['bad', 'warn', 'ok', 'info'].find(s => list.includes(s)) || 'info';
+
+  /* ---- plan geometry: footprints as convex polygons of {x, z} ---- */
+  // a d (along x) by w (along z) rectangle centred on (x, z), turned by yaw (degrees, as the tool turns objects about +Y)
+  function footprint(x, z, d, w, yaw) {
+    const a = (yaw || 0) * D2R, c = Math.cos(a), s = Math.sin(a);
+    return [[-d / 2, -w / 2], [d / 2, -w / 2], [d / 2, w / 2], [-d / 2, w / 2]].map(([u, v]) => ({ x: x + u * c + v * s, z: z - u * s + v * c }));
+  }
+  function bounds(P) { return { x0: Math.min(...P.map(p => p.x)), x1: Math.max(...P.map(p => p.x)), z0: Math.min(...P.map(p => p.z)), z1: Math.max(...P.map(p => p.z)) }; }
+  // separating axis test for two convex polygons; touching edges do not count as overlap
+  function overlap(A, B) {
+    for (const P of [A, B]) for (let i = 0; i < P.length; i++) {
+      const p = P[i], q = P[(i + 1) % P.length], nx = -(q.z - p.z), nz = q.x - p.x;
+      const pa = A.map(v => v.x * nx + v.z * nz), pb = B.map(v => v.x * nx + v.z * nz);
+      if (Math.max(...pa) <= Math.min(...pb) + 1e-6 || Math.max(...pb) <= Math.min(...pa) + 1e-6) return false;
+    }
+    return true;
+  }
+  const rectPoly = (x0, x1, z0, z1) => [{ x: x0, z: z0 }, { x: x1, z: z0 }, { x: x1, z: z1 }, { x: x0, z: z1 }];
+  const onDesk = (P, desk) => P.every(p => p.x >= -1e-6 && p.x <= desk.depth + 1e-6 && Math.abs(p.z) <= desk.width / 2 + 1e-6);
+  const ang = (e, p) => Math.atan2(p.z - e.z, p.x - e.x) * R2D;
+
+  /* ---- assessment ----
+     inp: { desk: { h, t, depth, width, legroom, style, type, min, max }, chair: { label, min, max }, shoe,
+            screen: { label, bottom, h, tilt, adjMin, adjMax }   (main screen: bottom edge above the desk, active height, tilt back),
+            screens: [{ label, centre: {x, z}, left: {x, z}, right: {x, z} }],
+            devices: [{ id, label, type, x, z, d, w, yaw, input, movable, keyboard, pointer, onDesk }],
+            users: { small, large }, each { label, pop, pct, dims, seatWant, seatH, footrest, eye: {x, y, z}, thigh, legroom, footGap },
+            lim: { topVsEye: { g, a }, thigh: { g, a }, legroom: { g, a } }, opts: DEFAULTS overrides } */
+  function assess(inp) {
+    const o = { ...DEFAULTS, ...(inp.opts || {}) }, D = inp.desk, C = inp.chair, U = inp.users;
+    const sections = {};
+
+    // 1. the two users
+    const users = {};
+    for (const k of ['small', 'large']) {
+      const u = U[k], d = u.dims, steps = [], flags = [];
+      const pop = d.poplitealheight + inp.shoe;
+      if (k === 'small') {
+        steps.push(`Seat for the elbow level with the home row: desk ${D.h} + home row ${fmt(u.homeRow)} − elbow rest height ${fmt(d.elbowrestheight)} = ${fmt(u.seatWant)} mm.`);
+        if (u.seatWant > C.max) flags.push({ s: 'bad', t: `The chair only rises to ${C.max} mm, ${fmt(u.seatWant - C.max)} mm short: the elbow sits below the desk. Use a lower or sit-stand desk, or a higher gas lift.` });
+        steps.push(`Footrest: seat ${u.seatH} − (popliteal height ${fmt(d.poplitealheight)} + shoe ${inp.shoe}) = ${fmt(u.seatH - pop)} mm, rounded up to ${u.footrest} mm.`);
+      } else {
+        steps.push(`Seat for the lower leg vertical: popliteal height ${fmt(d.poplitealheight)} + shoe ${inp.shoe} = ${fmt(pop)} mm, rounded down to ${u.seatWant} mm.`);
+        if (u.seatWant < C.min) flags.push({ s: 'warn', t: `The chair does not go below ${C.min} mm, ${fmt(C.min - u.seatWant)} mm above the leg length: a footrest of ${u.footrest} mm is needed.` });
+        if (u.seatWant > C.max) flags.push({ s: 'warn', t: `The chair only rises to ${C.max} mm: the knees sit higher than the hips.` });
+      }
+      const eyeDesk = u.eye.y - D.h, eyeFloor = u.eye.y;
+      steps.push(`Eye point from the posture model: ${fmt(eyeFloor)} mm above the floor, ${fmt(eyeDesk)} mm above the desk surface (eye height sitting ${fmt(d.eyeheightsitting)} mm measured erect; the model adds the seat and its recline and head inclination).`);
+      users[k] = { ...u, eyeDesk, eyeFloor, steps, flags, status: worst(flags.map(f => f.s).concat('ok')) };
+    }
+    sections.users = { status: worst([users.small.status, users.large.status]), refs: ['iso11064', 'mil1472', 'iso9241'] };
+
+    // 2. screen height
+    {
+      const S = inp.screen, g = inp.lim.topVsEye.g, hc = S.h * Math.cos((S.tilt || 0) * D2R), pref = -o.screenTopBelowEye;
+      const per = {};
+      for (const k of ['small', 'large']) {
+        const e = users[k].eye.y, need = [e + g[0] - D.h - hc, e + g[1] - D.h - hc], want = e + pref - D.h - hc;
+        const lo = Math.max(need[0], S.adjMin), hi = Math.min(need[1], S.adjMax), can = lo <= hi + 1e-6;
+        const set = can ? clamp(r5(want), Math.ceil(lo / 5) * 5 <= hi ? Math.ceil(lo / 5) * 5 : lo, Math.floor(hi / 5) * 5 >= lo ? Math.floor(hi / 5) * 5 : hi) : clamp(want, S.adjMin, S.adjMax);
+        const topVsEye = D.h + set + hc - e;
+        const nowTop = D.h + S.bottom + hc - e;
+        per[k] = { need, want, set, can, topVsEye, nowTop, status: can ? 'ok' : (rate(topVsEye, inp.lim.topVsEye) === 'warn' ? 'warn' : 'bad') };
+      }
+      const lo = Math.max(per.small.need[0], per.large.need[0], S.adjMin), hi = Math.min(per.small.need[1], per.large.need[1], S.adjMax);
+      const common = lo <= hi + 1e-6 ? [lo, hi] : null;
+      const status = worst([per.small.status, per.large.status]);
+      const span = per.large.want - per.small.want;
+      sections.screen = { per, common, hc, status, span, adj: [S.adjMin, S.adjMax], range: S.adjMax - S.adjMin, refs: ['iso9241', 'mil1472', 'iso11064', 'tool'],
+        rule: `Top of the main screen's active area between ${fmt(-g[1])} and ${fmt(-g[0])} mm below eye height (the tool's green limit for "Top of screen relative to eye height"); aim for ${o.screenTopBelowEye} mm below (the tool's Quick fit rule).` };
+    }
+
+    // 3. horizontal viewing angles, from each user's eye in plan
+    {
+      const rows = inp.screens.map(s => {
+        const r = { label: s.label };
+        for (const k of ['small', 'large']) {
+          const e = users[k].eye, c = ang(e, s.centre), a = [ang(e, s.left), ang(e, s.right)];
+          r[k] = { centre: c, edges: a, outer: Math.max(...a.map(Math.abs)) };
+        }
+        const cMax = Math.max(Math.abs(r.small.centre), Math.abs(r.large.centre)), eMax = Math.max(r.small.outer, r.large.outer);
+        r.status = cMax <= ZONES.optimum ? (eMax <= ZONES.maximum ? 'ok' : 'warn') : cMax <= ZONES.maximum ? 'warn' : 'bad';
+        r.cMax = cMax; r.eMax = eMax;
+        return r;
+      });
+      sections.horizontal = { rows, zones: ZONES, status: worst(rows.map(r => r.status)), refs: ['mil1472', 'iso11064'] };
+    }
+
+    // 4. input devices: clear space in front, keyboard swivel, pointing device area
+    {
+      const devs = inp.devices.filter(d => d.onDesk !== false).map(d => ({ ...d, poly: footprint(d.x, d.z, d.d, d.w, d.yaw) }));
+      const others = d => devs.filter(x => x.id !== d.id);
+      const rows = [];
+      for (const d of devs.filter(x => x.input)) {
+        const b = bounds(d.poly), r = { id: d.id, label: d.label, type: d.type, keyboard: d.keyboard, pointer: d.pointer };
+        // clear space in front: from the device's front edge back towards the desk front edge, across its width
+        let lim = 0, by = 'the desk front edge';
+        for (const x of others(d)) {
+          const xb = bounds(x.poly);
+          if (xb.z1 > b.z0 + 1e-6 && xb.z0 < b.z1 - 1e-6 && xb.x0 < b.x0 - 1e-6 && xb.x1 > lim) { lim = Math.min(xb.x1, b.x0); by = x.label; }
+        }
+        r.front = b.x0 - lim; r.frontBy = by; r.frontStrip = rectPoly(Math.max(0, b.x0 - o.clearFront), b.x0, b.z0, b.z1);
+        r.frontStatus = r.front >= o.clearFront - 1e-6 ? 'ok' : 'bad';
+        const st = [r.frontStatus];
+        if (d.keyboard && d.movable !== false) {
+          r.swing = [-o.swivel, o.swivel].map(a => {
+            const P = footprint(d.x, d.z, d.d, d.w, a), hit = others(d).filter(x => overlap(P, x.poly)).map(x => x.label);
+            const off = !onDesk(P, inp.desk);
+            return { yaw: a, poly: P, hits: hit, off, ok: !hit.length && !off };
+          });
+          r.swingStatus = r.swing.every(s => s.ok) ? 'ok' : 'bad'; st.push(r.swingStatus);
+        }
+        r.fixed = d.movable === false;
+        if (d.pointer && d.movable !== false) {
+          const P = rectPoly(d.x - o.mouseD / 2, d.x + o.mouseD / 2, d.z - o.mouseW / 2, d.z + o.mouseW / 2);
+          r.area = { poly: P, hits: others(d).filter(x => overlap(P, x.poly)).map(x => x.label), off: !onDesk(P, inp.desk) };
+          r.areaStatus = !r.area.hits.length && !r.area.off ? 'ok' : 'warn'; st.push(r.areaStatus);
+        }
+        r.status = worst(st);
+        rows.push(r);
+      }
+      sections.input = { devices: devs, rows, status: rows.length ? worst(rows.map(r => r.status)) : 'info', refs: ['kbspace', 'mil1472', 'iso9241'], opts: { clearFront: o.clearFront, swivel: o.swivel, mouseW: o.mouseW, mouseD: o.mouseD } };
+    }
+
+    // 5. leg space under the desk
+    {
+      const L = users.large, Sm = users.small;
+      const thigh = rate(L.thigh, inp.lim.thigh), knee = rate(L.legroom, inp.lim.legroom);
+      const feet = Sm.footrest > 0 ? 'ok' : (Sm.footGap != null && Sm.footGap > 15 ? 'bad' : 'ok');
+      sections.legs = { under: D.h - D.t, thigh: { v: L.thigh, s: thigh }, knee: { v: L.legroom, s: knee }, smallThigh: { v: Sm.thigh, s: rate(Sm.thigh, inp.lim.thigh) },
+        feet: { s: feet, footrest: Sm.footrest }, status: worst([thigh, knee, feet, rate(Sm.thigh, inp.lim.thigh)]), refs: ['iso11064', 'mil1472', 'iso9241'] };
+    }
+    return { inp, opts: o, users, sections, status: worst(Object.values(sections).map(s => s.status)) };
+  }
+
+  /* ---- SVG pages ---- */
+  const PAL_C = { ink: '#1b1f24', muted: '#5b6570', rule: '#c4cad1', faint: '#eef1f4', desk: '#d9dee4', deskEdge: '#7d8791', chair: '#b9c0c8',
+    small: '#c2571a', smallFill: '#f6dccb', large: '#1f5fae', largeFill: '#d3e2f5', cur: '#3d4650', curFill: '#dfe4ea', legMin: '#7b3fa8',
+    ok: '#2e7d4f', warn: '#a96500', bad: '#b3261e', info: '#5b6570', zoneOpt: '#cfe8d8', zoneMax: '#f2ead2', screen: '#2b3640' };
+  // the technical drawing style (the default): black line work on white, zones in light greys, no colour coding; meanings
+  // are carried by line type and labels, as in a conventional engineering or standards figure
+  const PAL_P = { ink: '#000000', muted: '#3c3c3c', rule: '#9a9a9a', faint: '#f1f1f1', desk: '#e4e4e4', deskEdge: '#000000', chair: '#c8c8c8',
+    small: '#000000', smallFill: '#ffffff', large: '#000000', largeFill: '#ffffff', cur: '#000000', curFill: '#ffffff', legMin: '#000000',
+    ok: '#000000', warn: '#000000', bad: '#000000', info: '#3c3c3c', zoneOpt: '#d4d4d4', zoneMax: '#ededed', screen: '#000000' };
+  let PAL = PAL_P;
+  const WORD = { ok: 'Within limits', warn: 'Marginal', bad: 'Outside limits', info: 'Not assessed' };
+  const fmt = (v, d = 0) => (v == null || !isFinite(v)) ? '-' : (Math.round(v * 10 ** d) / 10 ** d).toFixed(d).replace(/^-(0(\.0+)?)$/, '$1');
+  const sgn = (v, d = 0) => (v > 0 ? '+' : '') + fmt(v, d);
+  const xe = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
+    .replace(/[−–—]/g, '-').replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/…/g, '...').replace(/±/g, '+/-').replace(/≤/g, '<=').replace(/≥/g, '>=').replace(/×/g, 'x');
+  const f2 = v => (+v).toFixed(2);
+  const FONT = 'Helvetica, Arial, sans-serif';
+
+  function T(x, y, s, o = {}) {
+    return `<text x="${f2(x)}" y="${f2(y)}" font-family="${FONT}" font-size="${o.size || 2.8}"${o.bold ? ' font-weight="bold"' : ''}${o.anchor ? ` text-anchor="${o.anchor}"` : ''} fill="${o.fill || PAL.ink}">${xe(s)}</text>`;
+  }
+  const L = (x1, y1, x2, y2, o = {}) => `<line x1="${f2(x1)}" y1="${f2(y1)}" x2="${f2(x2)}" y2="${f2(y2)}" stroke="${o.stroke || PAL.ink}" stroke-width="${o.w ?? 0.3}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}${o.cap ? ` stroke-linecap="${o.cap}"` : ''}/>`;
+  const R = (x, y, w, h, o = {}) => `<rect x="${f2(x)}" y="${f2(y)}" width="${f2(Math.abs(w))}" height="${f2(Math.abs(h))}" fill="${o.fill || 'none'}" stroke="${o.stroke || 'none'}" stroke-width="${o.w ?? 0.3}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}${o.op != null ? ` fill-opacity="${o.op}"` : ''}/>`;
+  const PG = (pts, o = {}) => `<polygon points="${pts.map(p => f2(p[0]) + ',' + f2(p[1])).join(' ')}" fill="${o.fill || 'none'}" stroke="${o.stroke || 'none'}" stroke-width="${o.w ?? 0.3}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}${o.op != null ? ` fill-opacity="${o.op}"` : ''}/>`;
+  const CI = (x, y, r, o = {}) => `<circle cx="${f2(x)}" cy="${f2(y)}" r="${f2(r)}" fill="${o.fill || 'none'}" stroke="${o.stroke || 'none'}" stroke-width="${o.w ?? 0.3}"/>`;
+  // wrap text to a width in mm, for Helvetica at the given size (mean glyph width about 0.5 em)
+  function wrap(text, width, size) {
+    const n = Math.max(8, Math.floor(width / (0.5 * size))), out = [];
+    for (const para of String(text).split('\n')) {
+      let line = '';
+      for (const w of para.split(/\s+/)) { if (!w) continue; if ((line + ' ' + w).trim().length > n && line) { out.push(line); line = w; } else line = (line + ' ' + w).trim(); }
+      out.push(line);
+    }
+    return out;
+  }
+  // a block of wrapped text; returns { svg, y } with y the baseline after the block
+  function para(x, y, width, text, o = {}) {
+    const size = o.size || 2.8, lh = size * 1.32, lines = wrap(text, width - (o.indent || 0), size);
+    let s = '';
+    lines.forEach((ln, i) => { s += T(x + (i || !o.bullet ? (o.indent || 0) : 0), y + i * lh, (i === 0 && o.bullet ? o.bullet + ' ' : '') + ln, { size, fill: o.fill, bold: o.bold }); });
+    return { svg: s, y: y + lines.length * lh + (o.after ?? 1.2) };
+  }
+  const chip = (x, y, st, label) => {
+    const t = label || WORD[st], w = t.length * 1.25 + 4;
+    if (PAL === PAL_P) return T(x, y, 'Assessment: ' + t, { size: 2.4, bold: true });
+    return R(x, y - 2.9, w, 4, { fill: '#fff', stroke: PAL[st], w: 0.35 }) + T(x + 2, y, t, { size: 2.4, bold: true, fill: PAL[st] });
+  };
+  function dimV(x, y1, y2, label, o = {}) {
+    const c = o.stroke || PAL.ink, a = 1.1 * Math.sign(y2 - y1 || 1);
+    let s = L(x, y1, x, y2, { stroke: c, w: 0.25 });
+    s += PG([[x, y1], [x - 0.6, y1 + a], [x + 0.6, y1 + a]], { fill: c }) + PG([[x, y2], [x - 0.6, y2 - a], [x + 0.6, y2 - a]], { fill: c });
+    const ty = (y1 + y2) / 2, lx = x + (o.left ? -1.2 : 1.2);
+    s += T(lx, ty + 0.9, label, { size: o.size || 2.4, anchor: o.left ? 'end' : 'start', fill: c, bold: o.bold });
+    return s;
+  }
+  function dimH(x1, x2, y, label, o = {}) {
+    const c = o.stroke || PAL.ink, a = 1.1 * Math.sign(x2 - x1 || 1);
+    let s = L(x1, y, x2, y, { stroke: c, w: 0.25 });
+    s += PG([[x1, y], [x1 + a, y - 0.6], [x1 + a, y + 0.6]], { fill: c }) + PG([[x2, y], [x2 - a, y - 0.6], [x2 - a, y + 0.6]], { fill: c });
+    s += T((x1 + x2) / 2, y - 1.2, label, { size: o.size || 2.4, anchor: 'middle', fill: c, bold: o.bold });
+    return s;
+  }
+
+  /* side elevation of the workstation and a person (pts from the tool's posture model) */
+  function sideScene(V, ws, person, o = {}) {
+    const P = (x, y) => [V.ox + x / V.s, V.oy - y / V.s], D = ws.desk, k = 1 / V.s;
+    let s = '';
+    if (!o.noDesk) {
+      const [a, b] = P(0, D.h), [c] = P(D.depth, 0);
+      s += R(a, b, c - a, D.t * k, { fill: PAL.desk, stroke: PAL.deskEdge, w: 0.3 });
+      if (D.style === 'console') { const [lx] = P(D.legroom, 0); s += R(lx, b + D.t * k, c - lx, (D.h - D.t) * k, { fill: PAL.faint, stroke: PAL.deskEdge, w: 0.25 }); }
+      else if (D.style !== 'panel') {
+        for (const x of [35, D.depth - 35]) { const [lx, ly] = P(x - 25, D.h - D.t); s += R(lx, ly, 50 * k, (D.h - D.t) * k, { fill: PAL.chair, stroke: PAL.deskEdge, w: 0.2 }); }
+        const [px, py] = P(D.legroom, D.h - D.t); s += L(px, py, px, py + Math.min(380, D.h - D.t - 80) * k, { stroke: PAL.deskEdge, w: 0.25, dash: '1 0.8' });
+      }
+    }
+    if (!o.noScreen && ws.screenSide) {
+      const sc = ws.screenSide, dy = (o.screenBottom != null ? o.screenBottom - ws.screen.bottom : 0);
+      const [x1, y1] = P(sc.bottom.x, sc.bottom.y + dy), [x2, y2] = P(sc.top.x, sc.top.y + dy);
+      s += L(x1, y1, x2, y2, { stroke: o.screenStroke || PAL.screen, w: 1.1, cap: 'round', dash: o.screenDash });
+      if (!o.screenDash) { const [bx, by] = P(sc.bottom.x + 40, D.h); s += L(bx, by, bx, y1, { stroke: PAL.deskEdge, w: 0.6 }) + L(bx - 90 * k, by, bx + 90 * k, by, { stroke: PAL.deskEdge, w: 0.8 }); }
+    }
+    if (person) s += personSide(V, person, o);
+    return s;
+  }
+  function personSide(V, u, o = {}) {
+    const P = (q) => [V.ox + q.x / V.s, V.oy - q.y / V.s], k = 1 / V.s, p = u.pts, col = o.col || PAL.cur, fill = o.fill || PAL.curFill, d = u.dims;
+    let s = '';
+    // chair: seat pan, backrest, column; footrest
+    if (!o.noChair) {
+      const [sx0, sy] = P({ x: p.seatRearX, y: u.seatH }), [sx1] = P({ x: p.seatFrontX, y: 0 });
+      s += R(sx0, sy, sx1 - sx0, 55 * k, { fill: PAL.chair, stroke: PAL.deskEdge, w: 0.25, op: o.chairOp });
+      const bk = u.chairBack || 500, rr = (u.recline || 0) * D2R, b0 = { x: p.seatRearX - 30, y: u.seatH + 80 }, b1 = { x: b0.x - bk * Math.sin(rr), y: b0.y + bk * Math.cos(rr) };
+      const [q0x, q0y] = P(b0), [q1x, q1y] = P(b1); s += L(q0x, q0y, q1x, q1y, { stroke: PAL.chair, w: 45 * k, cap: 'round' });
+      const [cx, cy] = P({ x: (p.seatRearX + p.seatFrontX) / 2, y: u.seatH }), [, fy] = P({ x: 0, y: 0 });
+      s += L(cx, cy + 55 * k, cx, fy - 30 * k, { stroke: PAL.deskEdge, w: 0.8 }) + L(cx - 300 * k, fy - 15 * k, cx + 300 * k, fy - 15 * k, { stroke: PAL.deskEdge, w: 1 });
+    }
+    if (u.footrest > 0 && !o.noChair) {
+      const [fx, fy] = P({ x: p.A.x - 0.35 * d.footlength, y: u.footrest }); s += R(fx, fy, 400 * k, u.footrest * k, { fill: PAL.faint, stroke: col, w: 0.3, dash: '1.2 0.8' });
+    }
+    // the manikin itself: a true-scale projection of the tool's body mesh when the tool supplies one (u.fig.side: a
+    // filled silhouette image and hidden-line-removed outlines, in world mm); else outlined capsules on the link segments
+    if (u.fig && u.fig.side) {
+      s += figure(u.fig.side, q => P({ x: q[0], y: q[1] }), col, o.lineW);
+      // the body is drawn unclothed; footwear is shown only as the shoe allowance, a sole under the foot (whose underside is
+      // the lateral malleolus height below the ankle, as the tool's own shoe last places it)
+      if (u.shoe > 0) { const fl = d.footlength, y0 = p.A.y - d.lateralmalleolusheight, [hx, hy] = P({ x: p.A.x - 0.27 * fl, y: y0 }), [tx] = P({ x: p.A.x + 0.8 * fl, y: 0 });
+        s += R(hx, hy, tx - hx, u.shoe * k, { fill: PAL.chair, stroke: col, w: 0.25 }); }
+      const [ex, ey] = P(u.eye); return s + eyeMark(ex, ey, col);
+    }
+    const seg = (a, b, r) => { const [x1, y1] = P(a), [x2, y2] = P(b); return [L(x1, y1, x2, y2, { stroke: col, w: 2 * r * k + 0.5, cap: 'round' }), L(x1, y1, x2, y2, { stroke: fill, w: 2 * r * k, cap: 'round' })]; };
+    const toe = { x: p.A.x + 0.76 * d.footlength, y: p.A.y - d.lateralmalleolusheight * 0.6 }, heel = { x: p.A.x - 0.2 * d.footlength, y: p.A.y - d.lateralmalleolusheight * 0.6 };
+    const parts = [seg(heel, toe, 32), seg(p.K, p.A, 48), seg(p.H, p.K, 0.5 * d.thighclearance + 10), seg(p.H, p.Sh, 0.45 * d.chestdepth), seg(p.C, p.Hc, 45),
+      seg(p.Sh, p.El, 42), seg(p.El, p.Wr, 33), seg(p.Wr, p.tip, 22)];
+    s += parts.map(q => q[0]).join('') + parts.map(q => q[1]).join('');
+    const [hx, hy] = P(p.Hc); s += CI(hx, hy, p.headR * k, { fill, stroke: col, w: 0.5 });
+    const [ex, ey] = P(u.eye); s += eyeMark(ex, ey, col);
+    return s;
+  }
+  // an angle dimension: an arc through ray(a, r) from a0 to a1 (degrees), arrowheads at both ends, label outside the arc
+  function arcDim(ray, a0, a1, r, label, o = {}) {
+    const c = o.stroke || PAL.ink, n = Math.max(6, Math.ceil(Math.abs(a1 - a0) / 2)), q = [];
+    for (let i = 0; i <= n; i++) q.push(ray(a0 + (a1 - a0) * i / n, r));
+    let s = `<polyline points="${q.map(p => p.map(f2).join(',')).join(' ')}" fill="none" stroke="${c}" stroke-width="0.22"/>`;
+    const head = (p, p1) => { const dx = p[0] - p1[0], dy = p[1] - p1[1], l = Math.hypot(dx, dy) || 1, ux = dx / l, uy = dy / l, a = 1.1, w = 0.45;
+      return PG([p, [p[0] - a * ux - w * uy, p[1] - a * uy + w * ux], [p[0] - a * ux + w * uy, p[1] - a * uy - w * ux]], { fill: c }); };
+    if (Math.abs(a1 - a0) * D2R * r > 3) s += head(q[0], q[1]) + head(q[n], q[n - 1]);
+    const [lx, ly] = ray((a0 + a1) / 2, r + (o.gap ?? 2.8));
+    return s + T(lx + (o.dx || 0), ly + 0.8, label, { size: o.size || 2.3, anchor: o.anchor || 'middle', fill: c, bold: o.bold });
+  }
+  // an aligned dimension between two page points, offset to one side by off (mm), label at the middle
+  function dimA(x1, y1, x2, y2, label, o = {}) {
+    const c = o.stroke || PAL.ink, dx = x2 - x1, dy = y2 - y1, l = Math.hypot(dx, dy) || 1, nx = -dy / l * (o.off ?? 3), ny = dx / l * (o.off ?? 3);
+    const a = [x1 + nx, y1 + ny], b = [x2 + nx, y2 + ny];
+    let s = L(x1, y1, a[0] + nx * 0.25, a[1] + ny * 0.25, { stroke: c, w: 0.15 }) + L(x2, y2, b[0] + nx * 0.25, b[1] + ny * 0.25, { stroke: c, w: 0.15 }) + L(a[0], a[1], b[0], b[1], { stroke: c, w: 0.22 });
+    const ux = dx / l, uy = dy / l, h = (p, sg) => PG([p, [p[0] + sg * (1.1 * ux) - 0.45 * uy, p[1] + sg * (1.1 * uy) + 0.45 * ux], [p[0] + sg * (1.1 * ux) + 0.45 * uy, p[1] + sg * (1.1 * uy) - 0.45 * ux]], { fill: c });
+    s += h(a, 1) + h(b, -1);
+    const t = o.at ?? 0.5, mx = a[0] + (b[0] - a[0]) * t + nx * 0.9, my = a[1] + (b[1] - a[1]) * t + ny * 0.9;
+    return s + T(mx, my + 0.8, label, { size: o.size || 2.3, anchor: 'middle', fill: c, bold: o.bold });
+  }
+  const eyeMark = (x, y, col) => CI(x, y, 0.75, { fill: col }) + CI(x, y, 1.5, { stroke: col, w: 0.25 });
+  // a projected figure: { img: { href, l, r, b, t } (world extent of the image: left, right, bottom, top in the view's
+  // axes), lines: [[[a, b], ...], ...] } through P, which maps a view point [a, b] to the page
+  function figure(F, P, col, w = 0.28) {
+    let s = '';
+    const img = PAL === PAL_P && F.imgPlain ? F.imgPlain : F.img;
+    if (img) {
+      const [x0, y0] = P([img.l, img.t]), [x1, y1] = P([img.r, img.b]);
+      s += `<image x="${f2(Math.min(x0, x1))}" y="${f2(Math.min(y0, y1))}" width="${f2(Math.abs(x1 - x0))}" height="${f2(Math.abs(y1 - y0))}" preserveAspectRatio="none" href="${img.href}" xlink:href="${img.href}"/>`;
+    }
+    for (const ln of F.lines || []) if (ln.length > 1) s += `<polyline points="${ln.map(q => P(q).map(f2).join(',')).join(' ')}" fill="none" stroke="${col}" stroke-width="${w}" stroke-linejoin="round" stroke-linecap="round"/>`;
+    return s;
+  }
+  // a scale bar: len mm at 1:sc, in five divisions
+  function scaleBar(x, y, sc, len = 500) {
+    const Lp = len / sc, n = 5; let s = '';
+    for (let i = 0; i < n; i++) s += R(x + i * Lp / n, y, Lp / n, 1.2, { fill: i % 2 ? '#ffffff' : PAL.ink, stroke: PAL.ink, w: 0.2 });
+    s += T(x, y + 4, '0', { size: 2.2, anchor: 'middle', fill: PAL.muted }) + T(x + Lp, y + 4, `${len} mm`, { size: 2.2, anchor: 'middle', fill: PAL.muted });
+    return s;
+  }
+
+  /* page frame: header, marking, footer with the stamp */
+  function frame(meta, n, N, title, body) {
+    const W = 297, H = 210;
+    let s = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${W}mm" height="${H}mm" viewBox="0 0 ${W} ${H}">` + R(0, 0, W, H, { fill: '#ffffff' });
+    if (meta.marking) { s += T(W / 2, 6.5, meta.marking, { size: 3.4, bold: true, anchor: 'middle' }) + T(W / 2, H - 3, meta.marking, { size: 3.4, bold: true, anchor: 'middle' }); }
+    s += T(12, 14, meta.docTitle || 'Desk workstation setup guidance', { size: 3, fill: PAL.muted }) + T(12, 21, title, { size: 5.2, bold: true });
+    s += T(285, 14, (meta.project || 'Untitled project'), { size: 3, anchor: 'end', fill: PAL.muted }) + T(285, 21, `Page ${n} of ${N}`, { size: 3, anchor: 'end', fill: PAL.muted });
+    s += L(12, 24, 285, 24, { stroke: PAL.rule, w: 0.4 });
+    s += body;
+    s += L(12, 188, 285, 188, { stroke: PAL.rule, w: 0.4 });
+    const st = para(12, 192, 273, meta.stampLine || '', { size: 2.2, fill: PAL.muted, after: 0 });
+    s += st.svg + T(12, st.y + 0.4, meta.footer || 'Generated from the setup on screen; geometry and posture from the tool’s models. Check against the standards your project is bound to before issue.', { size: 2.2, fill: PAL.muted });
+    return s + '</svg>';
+  }
+  const refLine = (ids, extra) => 'References: ' + ids.map(id => REFS[id].short + (REFS[id].verified === false ? ' (to be confirmed)' : '')).join('; ') + (extra ? '. ' + extra : '');
+  let lastBlocks = [];
+  function column(x, y, w, blocks) {
+    let s = ''; lastBlocks = blocks;
+    for (const b of blocks) {
+      if (b.h) { s += T(x, y, b.h, { size: 3.1, bold: true }); y += 4.6; continue; }
+      if (b.chip) { s += chip(x, y + 1.2, b.chip, b.label); y += 7.4; continue; }
+      if (b.rule) { s += L(x, y - 1.2, x + w, y - 1.2, { stroke: PAL.rule, w: 0.3 }); y += 1.6; continue; }
+      const r = para(x, y, w, b.t, { size: b.size || 2.75, bullet: b.bullet, indent: b.bullet ? 2.6 : 0, fill: b.fill, bold: b.bold, after: b.after }); s += r.svg; y = r.y;
+    }
+    return { svg: s, y };
+  }
+  // fit a world extent into a box at the largest standard scale (1:n) that fits
+  function fitScale(wMm, hMm, boxW, boxH) { for (const n of [5, 7.5, 10, 12.5, 15, 20, 25, 30, 40, 50]) if (wMm / n <= boxW && hMm / n <= boxH) return n; return 60; }
+  const legend = (x, y, items) => items.map((it, i) => (it.box ? R(x, y + i * 4.4 - 2.4, 4, 2.8, { fill: it.fill, stroke: it.col, w: 0.3, op: it.op }) : L(x, y + i * 4.4 - 1, x + 4, y + i * 4.4 - 1, { stroke: it.col, w: it.w || 0.8, dash: it.dash })) + T(x + 5.5, y + i * 4.4, it.t, { size: 2.4 })).join('');
+
+  /* ---- the report ----
+     A: assess() result. meta: { project, marking, stampLine, stampRows, docTitle, env, current: person, ws: { desk, screen, screenSide }, plan } */
+  function report(A, meta) {
+    PAL = meta.style === 'colour' ? PAL_C : PAL_P;
+    const N = 6, I = A.inp, D = I.desk, Us = A.users, out = [], figs = [], colX = 200, colW = 85;
+    let sheet = null;
+    const ws = { desk: D, screen: I.screen, screenSide: meta.screenSide };
+    const cur = meta.current;
+
+    // page 1: overall principles, on the manikin on screen
+    {
+      const xs = [Math.min(cur.pts.seatRearX - 650, -900), D.depth + 60], ys = [0, Math.max(1500, cur.pts.Hc.y + 200)];
+      const sc = fitScale(xs[1] - xs[0], ys[1] - ys[0], 175, 140), V = { s: sc, ox: 16 + (-xs[0]) / sc, oy: 178 };
+      let b = sideScene(V, ws, cur, { col: PAL.cur, fill: PAL.curFill });
+      const P = q => [V.ox + q.x / sc, V.oy - q.y / sc], p = cur.pts;
+      // sight line to the screen centre and eye height line
+      const [ex, ey] = P(cur.eye), sc0 = meta.screenSide;
+      if (sc0) {
+        const [cx, cy] = P(sc0.centre); b += L(ex, ey, cx, cy, { stroke: PAL.muted, w: 0.25, dash: '1.5 1' }); const [tx] = P(sc0.top); b += L(ex, ey, tx + 6, ey, { stroke: PAL.muted, w: 0.2, dash: '0.6 0.6' });
+        const ang = Math.atan2(sc0.centre.y - cur.eye.y, sc0.centre.x - cur.eye.x) / D2R, ray = (a, r) => [ex + r * Math.cos(a * D2R), ey - r * Math.sin(a * D2R)];
+        b += arcDim(ray, ang, 0, 15, `${fmt(Math.abs(ang))}° down`, { gap: 0, dx: 1.5, anchor: 'start' });
+        b += dimA(ex, ey, cx, cy, `${fmt(Math.hypot(sc0.centre.x - cur.eye.x, sc0.centre.y - cur.eye.y))} mm`, { off: -5, bold: true, at: 0.62 });
+      }
+      const tags = [
+        [cur.eye, 'top', 1], [sc0 ? sc0.centre : cur.eye, 'sc', 2], [p.El, 'el', 3], [p.Wr, 'wr', 4], [{ x: p.seatRearX + 60, y: cur.seatH + 220 }, 'bk', 5],
+        [{ x: (p.H.x + p.K.x) / 2, y: p.K.y + 60 }, 'th', 6], [p.A, 'ft', 7]];
+      const off = { top: [-8, -6], sc: [6, -4], el: [-4, 7], wr: [3, -6], bk: [-9, 0], th: [0, -6], ft: [-6, 5] };
+      for (const [q, id, n] of tags) { const [x, y] = P(q), [dx, dy] = off[id]; b += L(x, y, x + dx, y + dy, { stroke: PAL.ink, w: 0.2 }) + CI(x + dx, y + dy, 2.1, { fill: '#fff', stroke: PAL.ink, w: 0.3 }) + T(x + dx, y + dy + 1, String(n), { size: 2.6, bold: true, anchor: 'middle' }); }
+      b += T(16, 33, `Side elevation, true scale 1:${sc} at A4. Manikin: ${cur.label}.`, { size: 2.5, fill: PAL.muted }) + scaleBar(150, 180, sc);
+      const v = cur.values || {};
+      const c = column(colX, 31, colW, [
+        { h: 'Set up in this order' },
+        { bullet: '1', t: `Eyes: the top of the screen at or just below eye level (now ${sgn(v.topVsEye)} mm).` },
+        { bullet: '2', t: `Screen straight ahead at about arm’s length (now ${fmt(v.viewDist)} mm to its centre), looking slightly down (${fmt(v.losCentre)}°).` },
+        { bullet: '3', t: `Seat height first: elbows level with the keyboard home row, upper arms relaxed (home row ${sgn(v.homeVsElbow)} mm from elbow).` },
+        { bullet: '4', t: 'Forearms about horizontal, wrists straight; keyboard and mouse close, with room in front to rest the hands.' },
+        { bullet: '5', t: 'Backrest: lumbar support in the small of the back; recline a little rather than perching forward.' },
+        { bullet: '6', t: `Thighs clear of the desk underside and knees clear of the legroom limit (thigh clearance ${fmt(v.thigh)} mm).` },
+        { bullet: '7', t: 'Feet flat on the floor. If the seat has been raised to reach the desk, use a footrest.' },
+        { t: 'Change posture often; adjustment only helps if people know how to use it.', after: 2 },
+        { rule: true },
+        { h: 'Who the workstation must fit' },
+        { t: `Smallest user: ${Us.small.label}. Largest user: ${Us.large.label}. Design for the 5th to 95th percentile of the intended users (ISO 11064-4 5.1); reach for the smallest, clearances for the largest (5.1.2 c).`, size: 2.6 },
+        { t: refLine(['iso9241', 'iso11064', 'mil1472', 'hufims'], 'ISO 9241-5 4.2 to 4.4, 5.2, 5.4 to 5.6; MIL-STD-1472H 5.8, 5.10.3.'), size: 2.3, fill: PAL.muted }
+      ]);
+      figs.push({ n: 1, title: 'Figure 1. Setting up the overall workspace', body: b, blocks: lastBlocks, key: ['Top of screen at or just below eye level', 'Screen straight ahead, about arm’s length away', 'Elbows level with the keyboard home row', 'Forearms about horizontal, wrists straight', 'Backrest supporting the small of the back', 'Thighs and knees clear of the desk', 'Feet flat on the floor, or on a footrest'] }); out.push(frame(meta, 1, N, 'Figure 1. Setting up the overall workspace', b + c.svg));
+    }
+
+    // page 2: screen height for the smallest and largest users
+    {
+      const Sx = A.sections.screen, boxW = 88, scrX = meta.screenSide ? Math.max(meta.screenSide.top.x, meta.screenSide.bottom.x) : D.depth;
+      const xs = [Math.min(Us.small.pts.seatRearX, Us.large.pts.seatRearX) - 280, Math.min(D.depth, scrX + 260)], ys = [0, Math.max(Us.large.pts.Hc.y + Us.large.pts.headR, Us.large.eye.y + Sx.adj[1] - I.screen.bottom) + 60];
+      const sc = fitScale(xs[1] - xs[0] + 140, ys[1] - ys[0], boxW, 120);
+      let b = '';
+      const panel = (k, x0) => {
+        const u = Us[k], V = { s: sc, ox: x0 + (-xs[0]) / sc, oy: 170 }, P = q => [V.ox + q.x / V.s, V.oy - q.y / V.s], per = Sx.per[k];
+        const col = k === 'small' ? PAL.small : PAL.large, fill = k === 'small' ? PAL.smallFill : PAL.largeFill;
+        let s = sideScene(V, ws, null, { noScreen: true });
+        // the screen at the lowest and highest settings, and at the setting for this user
+        const side = meta.screenSide;
+        if (side) {
+          for (const [bot, dash] of [[Sx.adj[0], '0.8 0.8'], [Sx.adj[1], '0.8 0.8']]) s += sideScene(V, ws, null, { noDesk: true, screenBottom: bot, screenDash: dash, screenStroke: PAL.muted });
+          s += sideScene(V, ws, null, { noDesk: true, screenBottom: per.set, screenStroke: col });
+          // the band where the top of the screen should be for this user
+          const [tx] = P(side.top), e = u.eye.y, g = I.lim.topVsEye.g, [, b0] = P({ x: 0, y: e + g[0] }), [, b1] = P({ x: 0, y: e + g[1] });
+          s += R(tx + 1.2, b1, 2.2, b0 - b1, { fill: col, op: 0.25, stroke: col, w: 0.2 });
+          const [ex, ey] = P(u.eye); s += L(ex, ey, tx + 4, ey, { stroke: col, w: 0.25, dash: '1 0.7' });
+        }
+        // vertical viewing zones from this user's eye: acceptable (light), recommended (green), normal line of sight
+        {
+          const [ex0, ey0] = P(u.eye), Rv = (scrX - u.eye.x + 40) / sc, ray = a => [ex0 + Rv * Math.cos(a * D2R), ey0 - Rv * Math.sin(a * D2R)];
+          const fan = (a0, a1, f) => { const q = [[ex0, ey0]]; for (let a = a0; a <= a1 + 1e-6; a += 1) q.push(ray(a)); return PG(q, { fill: f, op: 0.55 }); };
+          s += fan(VZONES.acc[0], VZONES.acc[1], PAL.faint) + fan(VZONES.rec[0], VZONES.rec[1], PAL.zoneOpt);
+          for (const a of [VZONES.acc[0], VZONES.acc[1], VZONES.rec[0]]) { const [x, y] = ray(a); s += L(ex0, ey0, x, y, { stroke: PAL.muted, w: 0.2, dash: '0.6 0.6' }); }
+          const [nx, ny] = ray(VZONES.normal); s += L(ex0, ey0, nx, ny, { stroke: PAL.ok, w: 0.3, dash: '2 0.8 0.5 0.8' });
+        }
+        s += personSide(V, u, { col, fill });
+        { // angles of the zones, and the viewing distance to the screen centre at this user's setting
+          const [ex0, ey0] = P(u.eye), ray = (a, r) => [ex0 + r * Math.cos(a * D2R), ey0 - r * Math.sin(a * D2R)];
+          s += arcDim(ray, 0, VZONES.acc[1], 15, `${VZONES.acc[1]}°`, { gap: 2.4 });
+          s += arcDim(ray, VZONES.normal, 0, 20, `${-VZONES.normal}°`, { gap: 3.2 }) + arcDim(ray, VZONES.rec[0], VZONES.normal, 20, `${VZONES.normal - VZONES.rec[0]}°`, { gap: 3.2 });
+          s += arcDim(ray, VZONES.acc[0], VZONES.rec[0], 11, `${VZONES.rec[0] - VZONES.acc[0]}°`, { gap: 2.6 });
+          if (side) {
+            const dyS = per.set - I.screen.bottom, c = { x: side.centre.x, y: side.centre.y + dyS }, [cx, cy] = P(c);
+            s += dimA(ex0, ey0, cx, cy, `${fmt(Math.hypot(c.x - u.eye.x, c.y - u.eye.y))} mm`, { off: 4.5, bold: true, at: 0.75 });
+          }
+        }
+        const [, ey] = P(u.eye), [, dy] = P({ x: 0, y: D.h }), [, fy] = P({ x: 0, y: 0 }), [dx] = P({ x: scrX + 130, y: 0 });
+        s += L(dx - 8, ey, dx + 1, ey, { stroke: col, w: 0.2, dash: '1 0.7' });
+        if (k === 'small') s += dimV(dx, dy, ey, `${fmt(u.eyeDesk)}`, { stroke: col, bold: true, size: 2.6 }) + T(dx + 1.2, (dy + ey) / 2 + 4, 'eye above', { size: 2.2, fill: col }) + T(dx + 1.2, (dy + ey) / 2 + 6.8, 'desk', { size: 2.2, fill: col });
+        else s += dimV(dx, fy, ey, `${fmt(u.eyeFloor)}`, { stroke: col, bold: true, size: 2.6 }) + T(dx + 1.2, (fy + ey) / 2 + 4, 'eye above', { size: 2.2, fill: col }) + T(dx + 1.2, (fy + ey) / 2 + 6.8, 'floor', { size: 2.2, fill: col });
+        const hx = x0 + 2, hy = Math.max(41, V.oy - ys[1] / sc - 9);
+        s += T(hx, hy, k === 'small' ? 'Smallest user' : 'Largest user', { size: 3, bold: true, fill: col });
+        s += T(hx, hy + 4, u.label, { size: 2.3, fill: PAL.muted });
+        s += T(hx, hy + 8, k === 'small' ? `Seat ${u.seatH} mm, elbow at desk height, footrest ${u.footrest} mm` : `Seat ${u.seatH} mm, lower leg vertical${u.footrest ? `, footrest ${u.footrest} mm` : ''}`, { size: 2.3, fill: PAL.muted });
+        if (side) {
+          const dy = per.set - I.screen.bottom, ang = q => Math.atan2(q.y + dy - u.eye.y, q.x - u.eye.x) / D2R;
+          s += T(hx, 179.2, `Screen seen at ${sgn(ang(side.top))}° (top) to ${sgn(ang(side.bottom))}° (bottom)`, { size: 2.3, fill: PAL.muted });
+        }
+        s += T(hx, 175.5, `Screen bottom edge for this user: ${fmt(per.set)} mm above desk`, { size: 2.4, fill: col, bold: true });
+        s += chip(hx, 184, per.status);
+        return s;
+      };
+      b += panel('small', 12) + panel('large', 12 + boxW + 2);
+      { // one-line key to the vertical zones
+        let x = 14; const y = 36;
+        const item = (sw, t) => { const w = t.length * 2.3 * 0.5; const r = sw(x, y) + T(x + 5.5, y, t, { size: 2.3 }); x += 5.5 + w + 5; return r; };
+        b += item((x, y) => R(x, y - 2.4, 4, 2.8, { fill: PAL.zoneOpt, stroke: PAL.zoneOpt }), `Recommended viewing zone, 0° to ${VZONES.rec[0]}°`);
+        b += item((x, y) => L(x, y - 1, x + 4, y - 1, { stroke: PAL.ok, w: 0.5, dash: '2 0.8 0.5 0.8' }), `Normal line of sight, ${VZONES.normal}°`);
+        b += item((x, y) => R(x, y - 2.4, 4, 2.8, { fill: PAL.faint, stroke: PAL.muted, w: 0.2 }), `Acceptable zone, +${VZONES.acc[1]}° to ${VZONES.acc[0]}°`);
+      }
+      b += T(12, 31, `Side elevations, true scale 1:${sc} at A4. Dashed screens: lowest and highest stand settings. Shaded bar: where the top of the screen should sit for that user.`, { size: 2.4, fill: PAL.muted }) + scaleBar(150, 182.5, sc);
+      const ps = Sx.per.small, pl = Sx.per.large;
+      const c = column(colX, 31, colW, [
+        { h: 'Does the screen adjust enough?' },
+        { chip: Sx.status, label: Sx.status === 'ok' ? 'Range covers both users' : Sx.status === 'warn' ? 'Marginal for one user' : 'Range does not cover both' },
+        ...(I.screen.fixed ? [{ t: 'The displays are fixed in the console. Each user sets the seat (and footrest) so the eye sits in the right place for the displays, rather than moving the displays.', bold: true, size: 2.6 }] : []),
+        { t: `Vertical viewing: keep the screen between the horizontal through the eyes and ${-VZONES.rec[0]}° below it; the normal line of sight is about ${-VZONES.normal}° below the horizontal (brief’s example figure; to be confirmed).`, size: 2.5 },
+        { t: I.screen.fixed ? `Display bottom edge fixed at ${fmt(Sx.adj[0])} mm above the work surface. ${I.screen.rangeNote || ''}` : `Stand range: bottom edge ${fmt(Sx.adj[0])} to ${fmt(Sx.adj[1])} mm above the desk (${fmt(Sx.range)} mm of travel). ${I.screen.rangeNote || ''}` },
+        { t: `The smallest user needs the bottom edge at ${fmt(ps.need[0])} to ${fmt(ps.need[1])} mm, the largest at ${fmt(pl.need[0])} to ${fmt(pl.need[1])} mm: ${fmt(Math.abs(Sx.span))} mm apart.` },
+        { t: Sx.common ? `One setting suits both: ${fmt(Sx.common[0])} to ${fmt(Sx.common[1])} mm.` : (I.screen.fixed ? 'The fixed height does not suit both users: the seat has to make up the difference (below).' : 'No single setting suits both: re-set the screen for each user.') },
+        { rule: true },
+        ...(I.screen.fixed ? (() => {
+          const b0 = Sx.adj[0], move = per => per.need[0] <= b0 + 1e-6 && b0 <= per.need[1] + 1e-6 ? 0 : b0 < per.need[0] ? b0 - per.need[0] : b0 - per.need[1];
+          const say = (who, per, extra) => { const m = move(per); return m === 0 ? `${who}: the fixed displays suit this user with the seat set as shown${extra}.` : `${who}: ${m < 0 ? 'lower' : 'raise'} the eye by about ${fmt(Math.abs(m))} mm, by ${m < 0 ? 'lowering' : 'raising'} the seat${m > 0 ? ' and footrest' : ''}${extra}.`; };
+          return [{ h: 'Using a console with fixed displays' },
+            { bullet: '1', t: 'Set the seat for the elbow first (smallest user) or for the legs (largest user), as in Figure 1.' },
+            { bullet: '2', t: say('Smallest user', ps, ps.set === b0 && move(ps) < 0 ? '; this takes the elbow below the shelf, so trade the two off or fit a lower display' : '') },
+            { bullet: '3', t: say('Largest user', pl, '') },
+            { bullet: '4', t: 'Check the result against the vertical viewing zones in this figure, and for reflections from cabin lighting.' }];
+        })() : [
+        { h: 'How to use the adjustment' },
+        { bullet: '1', t: 'Set the chair first (seat for the elbow, then footrest), then the screen.' },
+        { bullet: '2', t: `Smallest user: eye about ${fmt(Us.small.eyeDesk)} mm above the desk surface. Set the bottom edge to ${fmt(ps.set)} mm (top ${sgn(ps.topVsEye)} mm from eye).` },
+        { bullet: '3', t: `Largest user: eye about ${fmt(Us.large.eyeFloor)} mm above the floor (${fmt(Us.large.eyeDesk)} mm above the desk). Set the bottom edge to ${fmt(pl.set)} mm (top ${sgn(pl.topVsEye)} mm from eye).` },
+        { bullet: '4', t: 'Then tilt the screen back slightly so it faces the eyes, and check for reflections.' },
+        ]),
+        { t: Sx.rule, size: 2.4, fill: PAL.muted },
+        { t: refLine(['iso9241', 'mil1472', 'iso11064', 'hufims'], 'MIL-STD-1472H Fig. 68 and 71; ISO 9241-5 5.4.'), size: 2.3, fill: PAL.muted }
+      ]);
+      figs.push({ n: 2, title: 'Figure 2. Setting up screen heights for the smallest and largest users', body: b, blocks: lastBlocks }); out.push(frame(meta, 2, N, 'Figure 2. Setting up screen heights for the smallest and largest users', b + c.svg));
+    }
+
+    // page 3: horizontal viewing angles, plan view
+    {
+      const H = A.sections.horizontal, pl = meta.plan, e = Us.large.eye;
+      const xs = [Math.min(pl.seatRearX, -700) - 50, Math.max(D.depth, ...I.screens.map(s => Math.max(s.left.x, s.right.x, s.centre.x))) + 80];
+      const zs = [Math.min(-D.width / 2, ...I.screens.map(s => Math.min(s.left.z, s.right.z))) - 80, Math.max(D.width / 2, ...I.screens.map(s => Math.max(s.left.z, s.right.z))) + 80];
+      const sc = fitScale(zs[1] - zs[0], xs[1] - xs[0], 180, 140), V = { ox: 12 + 90 - (zs[0] + zs[1]) / 2 / sc, oy: 178 + xs[0] / sc };
+      const P = q => [V.ox + q.z / sc, V.oy - q.x / sc];
+      let b = '';
+      const [ex, ey] = P(e), Rr = Math.min((xs[1] - e.x) / sc + 6, ey - 44);
+      const wedge = (a0, a1, fill) => { const pts = [[ex, ey]]; for (let a = a0; a <= a1 + 1e-6; a += 1) pts.push([ex + Rr * Math.sin(a * D2R), ey - Rr * Math.cos(a * D2R)]); return PG(pts, { fill, op: 0.9 }); };
+      b += wedge(-H.zones.maximum, H.zones.maximum, PAL.zoneMax) + wedge(-H.zones.optimum, H.zones.optimum, PAL.zoneOpt);
+      for (const a of [-H.zones.maximum, -H.zones.optimum, 0, H.zones.optimum, H.zones.maximum]) b += L(ex, ey, ex + Rr * Math.sin(a * D2R), ey - Rr * Math.cos(a * D2R), { stroke: a === 0 ? PAL.ink : PAL.muted, w: a === 0 ? 0.3 : 0.2, dash: a === 0 ? '2 1 0.5 1' : '1 0.8' });
+      const [dx0, dy0] = P({ x: D.depth, z: -D.width / 2 }), [dx1, dy1] = P({ x: 0, z: D.width / 2 });
+      b += R(dx0, dy0, dx1 - dx0, dy1 - dy0, { fill: PAL.desk, stroke: PAL.deskEdge, w: 0.3, op: 0.55 });
+      // the person: seat and shoulders, head
+      const [sx0, sy0] = P({ x: pl.seatFrontX, z: -pl.seatWidth / 2 }), [sx1, sy1] = P({ x: pl.seatRearX, z: pl.seatWidth / 2 });
+      b += R(sx0, sy0, sx1 - sx0, sy1 - sy0, { fill: PAL.chair, stroke: PAL.deskEdge, w: 0.25 });
+      if (Us.large.fig && Us.large.fig.plan) b += figure(Us.large.fig.plan, q => P({ z: q[0], x: q[1] }), PAL.large);
+      else {
+        const [shx, shy] = P({ x: pl.shX, z: 0 }); b += `<ellipse cx="${f2(shx)}" cy="${f2(shy)}" rx="${f2(pl.shW / 2 / sc)}" ry="${f2(pl.shD / 2 / sc)}" fill="${PAL.largeFill}" stroke="${PAL.large}" stroke-width="0.4"/>`;
+        const [hx, hy] = P({ x: pl.headX, z: 0 }); b += CI(hx, hy, pl.headR / sc, { fill: PAL.largeFill, stroke: PAL.large, w: 0.4 });
+      }
+      for (const a of [-ZONES.regular, ZONES.regular]) b += L(ex, ey, ex + Rr * Math.sin(a * D2R), ey - Rr * Math.cos(a * D2R), { stroke: PAL.warn, w: 0.35, dash: '2.4 1' });
+      b += CI(ex, ey, 0.9, { fill: PAL.large });
+      if (Us.small.eye.x !== e.x) { const [sx, sy] = P(Us.small.eye); b += CI(sx, sy, 0.9, { fill: PAL.small }); }
+      // screens
+      I.screens.forEach((s, i) => {
+        const r = H.rows[i], [ax, ay] = P(s.left), [bx, by] = P(s.right), [cx, cy] = P(s.centre);
+        b += L(ax, ay, bx, by, { stroke: PAL.screen, w: 1.2, cap: 'round' }) + L(ex, ey, cx, cy, { stroke: PAL[r.status], w: 0.3 });
+        b += T(cx, cy - 2.4, `${s.label}: ${sgn(r.large.centre)}°`, { size: 2.4, anchor: 'middle', bold: true, fill: PAL[r.status] });
+      });
+      { // the zone angles as angle dimensions round the eye, beyond the screens, and the plan distance to each screen
+        const ray = (a, r) => [ex + r * Math.sin(a * D2R), ey - r * Math.cos(a * D2R)];
+        b += arcDim(ray, -H.zones.optimum, H.zones.optimum, Rr - 16, `${2 * H.zones.optimum}°`, { gap: 2.2, bold: true });
+        b += arcDim(ray, -ZONES.regular, ZONES.regular, Rr - 9, `${2 * ZONES.regular}°`, { gap: 2.2, bold: true });
+        b += arcDim(ray, -H.zones.maximum, H.zones.maximum, Rr + 2, `${2 * H.zones.maximum}°`, { gap: 2.2, bold: true });
+        I.screens.forEach(sc1 => { const [cx, cy] = P(sc1.centre); b += dimA(ex, ey, cx, cy, `${fmt(Math.hypot(sc1.centre.x - e.x, sc1.centre.z - e.z))} mm`, { off: -(pl.shW / 2 / sc + 4), bold: true, at: 0.5 }); });
+      }
+      b += T(12, 31, `Plan view, true scale 1:${sc} at A4, from the largest user’s eye (the smallest user’s, in orange, is within a few millimetres in plan).`, { size: 2.4, fill: PAL.muted }) + scaleBar(150, 182.5, sc);
+      b += legend(14, 38, [{ box: true, fill: PAL.zoneOpt, col: PAL.zoneOpt, t: `Optimum eye rotation, ±${H.zones.optimum}°` }, { col: PAL.warn, dash: '2.4 1', w: 0.4, t: `±${ZONES.regular}° (60°): limit for displays used regularly` }, { box: true, fill: PAL.zoneMax, col: PAL.zoneMax, t: `Maximum eye rotation, ±${H.zones.maximum}° (beyond: turn the head)` }]);
+      const rows = H.rows.map(r => ({ bullet: '-', t: `${r.label}: centre ${sgn(r.large.centre)}° (smallest user ${sgn(r.small.centre)}°), edges ${sgn(r.large.edges[0])}° to ${sgn(r.large.edges[1])}°. ${WORD[r.status]}.` }));
+      const c = column(colX, 31, colW, [
+        { h: 'Horizontal viewing angles' },
+        { chip: H.status },
+        { t: `Put the main screen straight ahead, within ±${H.zones.optimum}° of the line the user faces, so it can be read by moving the eyes alone. Keep other screens and the edges of the array within ±${H.zones.maximum}°; anything further needs the head to turn.` },
+        { t: `Displays used regularly: within ±${ZONES.regular}° (a 60° zone, from the brief’s example figure; to be confirmed).` },
+        ...rows,
+        { t: 'Angles are measured in plan from the mid-eye point to each screen’s centre and to its left and right edges, positive to the right.', size: 2.5, fill: PAL.muted },
+        { rule: true },
+        { h: 'Setting up' },
+        { bullet: '1', t: 'Centre the chair and keyboard on the main screen, not on the desk.' },
+        { bullet: '2', t: 'Angle side screens in towards the user so each faces the eyes.' },
+        { bullet: '3', t: 'Put the screens used most nearest the centre; occasional ones further out.' },
+        { t: refLine(['mil1472', 'iso11064', 'hufims'], 'MIL-STD-1472H Fig. 2; ISO 11064-4 3.11 Note 4: visual field about ±35° around the line of sight.'), size: 2.3, fill: PAL.muted }
+      ]);
+      figs.push({ n: 3, title: 'Figure 3. Horizontal viewing angles', body: b, blocks: lastBlocks }); out.push(frame(meta, 3, N, 'Figure 3. Horizontal viewing angles', b + c.svg));
+    }
+
+    // page 4: keyboard and mouse space, plan view
+    {
+      const S4 = A.sections.input, pl = meta.plan, op = S4.opts;
+      const zs = [-D.width / 2 - 60, D.width / 2 + 60], xs = [-140, D.depth + 40];
+      const sc = fitScale(zs[1] - zs[0], xs[1] - xs[0], 182, 128), V = { ox: 12 + 91, oy: 172 + xs[0] / sc };
+      const P = q => [V.ox + q.z / sc, V.oy - q.x / sc], poly = (Q, o) => PG(Q.map(P), o);
+      const [dx0, dy0] = P({ x: D.depth, z: -D.width / 2 }), [dx1, dy1] = P({ x: 0, z: D.width / 2 });
+      let b = R(dx0, dy0, dx1 - dx0, dy1 - dy0, { fill: PAL.desk, stroke: PAL.deskEdge, w: 0.35 });
+      b += T((dx0 + dx1) / 2, dy1 + 4, 'Desk front edge (user side)', { size: 2.4, anchor: 'middle', fill: PAL.muted });
+      for (const r of S4.rows) {
+        b += poly(r.frontStrip, { fill: PAL[r.frontStatus], op: 0.16, stroke: PAL[r.frontStatus], w: 0.25, dash: '1 0.6' });
+        if (r.area) b += poly(r.area.poly, { stroke: PAL[r.areaStatus], w: 0.3, dash: '1.6 0.8' });
+        if (r.swing) for (const s of r.swing) b += poly(s.poly, { stroke: s.ok ? PAL.muted : PAL.bad, w: 0.3, dash: '2 1' });
+      }
+      for (const d of S4.devices) b += poly(d.poly, { fill: d.input ? '#ffffff' : PAL.faint, stroke: PAL.ink, w: 0.35 });
+      for (const d of S4.devices) { const c = d.poly.reduce((a, p) => ({ x: a.x + p.x / 4, z: a.z + p.z / 4 }), { x: 0, z: 0 }), [x, y] = P(c); b += T(x, y + 0.9, d.label, { size: 2.2, anchor: 'middle' }) + (d.movable === false && d.input ? T(x, y + 3.6, '(fixed)', { size: 2.1, anchor: 'middle', fill: PAL.muted }) : ''); }
+      for (const r of S4.rows) {
+        const bb = bounds(r.frontStrip), [x, y0] = P({ x: bb.x1, z: bb.z1 }), [, y1] = P({ x: bb.x1 - r.front, z: bb.z1 });
+        if (r.front > 0) b += dimV(x + 1.5, y0, y1, `${fmt(r.front)}`, { stroke: PAL[r.frontStatus], bold: true });
+      }
+      b += T(12, 31, `Plan view, true scale 1:${sc} at A4.`, { size: 2.4, fill: PAL.muted }) + scaleBar(150, 182.5, sc);
+      b += legend(14, 37, [{ box: true, fill: PAL.ok, op: 0.16, col: PAL.ok, t: `Clear space in front of an input device (${op.clearFront} mm wanted), to support the forearms and wrists` },
+        ...(S4.rows.some(r => r.swing) ? [{ col: PAL.muted, dash: '2 1', w: 0.4, t: `Keyboard swivelled ${op.swivel}° each way` }] : []),
+        ...(S4.rows.some(r => r.area) ? [{ col: PAL.ok, dash: '1.6 0.8', w: 0.4, t: `Pointing device working area, ${op.mouseW} x ${op.mouseD} mm (room to move and turn the mouse mat)` }] : [])]);
+      const rows = S4.rows.map(r => {
+        const bits = [`${fmt(r.front)} mm clear in front${r.front < op.clearFront ? ` (limited by ${r.frontBy})` : ''}`];
+        if (r.swing) bits.push(r.swing.every(s => s.ok) ? `swivels ±${op.swivel}° freely` : `swivel blocked: ${r.swing.filter(s => !s.ok).map(s => `${s.yaw > 0 ? '+' : ''}${s.yaw}° ${s.off ? 'off the desk' : ''}${s.hits.length ? (s.off ? ', ' : '') + 'hits ' + s.hits.join(', ') : ''}`).join('; ')}`);
+        if (r.area) bits.push(r.area.hits.length || r.area.off ? `working area ${r.area.off ? 'runs off the desk' : ''}${r.area.hits.length ? (r.area.off ? ' and ' : '') + 'overlaps ' + r.area.hits.join(', ') : ''}` : 'working area clear');
+        return { bullet: '-', t: `${r.label}: ${bits.join('; ')}. ${WORD[r.status]}.` };
+      });
+      const c = column(colX, 31, colW, [
+        { h: 'Keyboard' },
+        { chip: S4.status },
+        { t: `Leave at least ${op.clearFront} mm of clear desk in front of every input device, to rest the hands and forearms. A movable keyboard needs room to be turned ${op.swivel}° either way from square to the desk edge.` },
+        { t: `"${REFS.kbspace.clauses['(clause number not given)']}"`, size: 2.5, fill: PAL.muted },
+        { t: `"${REFS.kbspace.clauses['7.5.12']}" (7.5.12)`, size: 2.5, fill: PAL.muted },
+        { h: 'Mouse and other pointing devices' },
+        { t: 'Beside the keyboard, at the same height and as close as the hand allows, inside the normal reach zone. Leave clear space round it to move it without lifting the arm.' },
+        ...rows,
+        ...(S4.rows.some(r => r.fixed) ? [{ t: `Fixed (integrated) devices cannot be moved or turned, so the ${op.clearFront} mm applies to their installed position and has to be designed into the console; there is no swivel or mouse area to check.`, size: 2.5 }] : []),
+        { rule: true },
+        { t: `The pointing device working area, ${op.mouseW} x ${op.mouseD} mm, is the size in the brief’s example figure (to be confirmed); set it in the dialog. Screen stands are not included in the overlap checks.`, size: 2.4, fill: PAL.muted },
+        { t: refLine(['kbspace', 'mil1472', 'iso9241', 'hufims'], 'MIL-STD-1472H Table VII and Table VIII; ISO 9241-5 5.4.'), size: 2.3, fill: PAL.muted }
+      ]);
+      figs.push({ n: 4, title: 'Figure 4. Space for the keyboard and mouse', body: b, blocks: lastBlocks }); out.push(frame(meta, 4, N, 'Figure 4. Space for the keyboard and mouse', b + c.svg));
+    }
+
+    // page 5: leg space under the desk, the largest and the smallest user side by side
+    {
+      const S5 = A.sections.legs, boxW = 88, xs = [Math.min(Us.small.pts.seatRearX, Us.large.pts.seatRearX) - 280, D.depth + 40];
+      const ys = [0, Math.max(Us.large.pts.Hc.y + Us.large.pts.headR, Us.small.pts.Hc.y + Us.small.pts.headR) + 40];
+      const sc = fitScale(xs[1] - xs[0], ys[1] - ys[0], boxW, 125);
+      let b = '';
+      const panel = (k, x0) => {
+        const u = Us[k], V = { s: sc, ox: x0 + (-xs[0]) / sc, oy: 172 }, P = q => [V.ox + q.x / sc, V.oy - q.y / sc];
+        const col = k === 'small' ? PAL.small : PAL.large, fill = k === 'small' ? PAL.smallFill : PAL.largeFill;
+        const th = k === 'small' ? S5.smallThigh : S5.thigh;
+        let s = sideScene(V, ws, null, { noScreen: true }) + personSide(V, u, { col, fill });
+        const [ux, uy] = P({ x: D.depth - 70, y: D.h - D.t }), [, fy] = P({ x: 0, y: 0 });
+        s += dimV(ux, fy, uy, `${fmt(S5.under)}`, { left: true });
+        const tt = u.pts.thighTop;
+        if (tt && th.v != null) { const [tx, ty] = P(tt); s += dimV(tx, ty, uy, `${fmt(th.v)}`, { stroke: PAL[th.s], bold: true, size: 2.6 }); }
+        if (D.legroom && D.style !== 'panel') {
+          const [lx, ly] = P({ x: D.legroom, y: D.h - D.t }), [kx, ky] = P(u.pts.KF), kv = u.legroom, ks = rate(kv, I.lim.legroom);
+          s += L(lx, ly, lx, fy, { stroke: PAL.muted, w: 0.25, dash: '2 1 0.5 1' });
+          s += dimH(kx, lx, ky, `${fmt(kv)}`, { stroke: PAL[ks], bold: true, size: 2.6 });
+        }
+        s += `<polyline points="${LEGPROFILE.map(([d, h]) => P({ x: d, y: h }).map(f2).join(',')).join(' ')}" fill="none" stroke="${PAL.legMin}" stroke-width="0.45" stroke-dasharray="1.6 0.8"/>`;
+        s += T(x0 + 2, 42, k === 'small' ? 'Smallest user' : 'Largest user', { size: 3, bold: true, fill: col });
+        s += T(x0 + 2, 46, u.label, { size: 2.3, fill: PAL.muted });
+        s += T(x0 + 2, 50, k === 'small' ? `Seat ${u.seatH} mm for the desk, footrest ${u.footrest} mm` : `Seat ${u.seatH} mm, lower leg vertical${u.footrest ? `, footrest ${u.footrest} mm` : ''}`, { size: 2.3, fill: PAL.muted });
+        s += T(x0 + 2, 177.5, `Thigh clearance ${fmt(th.v)} mm; knee to legroom limit ${fmt(u.legroom)} mm`, { size: 2.4, fill: col, bold: true });
+        s += chip(x0 + 2, 183, worst([th.s, rate(u.legroom, I.lim.legroom)]));
+        return s;
+      };
+      b += panel('large', 12) + panel('small', 12 + boxW + 2);
+      b += L(14, 35, 18, 35, { stroke: PAL.legMin, w: 0.5, dash: '1.6 0.8' }) + T(19.5, 36, `Minimum leg space to keep clear: ${LEGPROFILE[0][1]} mm high at the desk edge, ${LEGPROFILE[2][0]} mm deep (example in the brief)`, { size: 2.3 });
+      b += scaleBar(150, 180.5, sc) + T(12, 31, `Side elevations, true scale 1:${sc} at A4. Black: desk underside ${fmt(S5.under)} mm above the floor. Dash-dot line: legroom limit, ${fmt(D.legroom)} mm from the desk edge.`, { size: 2.4, fill: PAL.muted });
+      const c = column(colX, 31, colW, [
+        { h: 'Under-desk leg space' },
+        { chip: S5.status },
+        { t: `Size the leg space for the largest user with the seat set for the legs (lower leg vertical): thighs must pass under the desk and knees stop short of any modesty panel, cabinet or leg.` },
+        { bullet: '-', t: `Thigh clearance, largest user: ${fmt(S5.thigh.v)} mm under the ${fmt(S5.under)} mm desk underside. ${WORD[S5.thigh.s]}.` },
+        { bullet: '-', t: `Knee clearance to the legroom limit (${fmt(D.legroom)} mm from the desk edge): ${fmt(S5.knee.v)} mm. ${WORD[S5.knee.s]}.` },
+        { bullet: '-', t: `Against the minimum leg space in the brief’s example (${LEGPROFILE[0][1]} mm high, ${LEGPROFILE[2][0]} mm deep, dashed line): underside ${fmt(S5.under)} mm (${S5.under >= LEGPROFILE[0][1] ? 'meets it' : `${fmt(LEGPROFILE[0][1] - S5.under)} mm short`})${D.legroom && D.style !== 'panel' ? `, legroom ${fmt(D.legroom)} mm deep (${D.legroom >= LEGPROFILE[2][0] ? 'meets it' : `${fmt(LEGPROFILE[2][0] - D.legroom)} mm short`})` : ''}.` },
+        { bullet: '-', t: `Smallest user, seat raised for the desk: thigh clearance ${fmt(S5.smallThigh.v)} mm (${WORD[S5.smallThigh.s].toLowerCase()}); ${S5.feet.footrest ? `feet on a ${S5.feet.footrest} mm footrest` : 'feet reach the floor'}.` },
+        { rule: true },
+        { h: 'Setting up' },
+        { bullet: '1', t: 'Keep the leg space clear of storage, cables, bins and pedestals.' },
+        { bullet: '2', t: 'A footrest should be large enough for both feet and adjustable for height and tilt.' },
+        { bullet: '3', t: 'If the largest user’s thighs meet the desk at the right seat height, the desk is too low: raise it (sit-stand desk) rather than lowering the seat.' },
+        { t: refLine(['iso11064', 'mil1472', 'iso9241', 'hufims'], 'ISO 11064-4 5.1.2 c): clearances for the 95th percentile; MIL-STD-1472H Fig. 58; ISO 9241-5 5.6.'), size: 2.3, fill: PAL.muted }
+      ]);
+      figs.push({ n: 5, title: 'Figure 5. Under-desk leg space', body: b, blocks: lastBlocks }); out.push(frame(meta, 5, N, 'Figure 5. Under-desk leg space', b + c.svg));
+    }
+
+    // page 6: the people, the numbers, assumptions and references
+    {
+      let b = '', y = 31;
+      const tbl = (x, y0, cols, rows, widths) => {
+        let s = '', yy = y0;
+        s += cols.map((c, i) => T(x + widths.slice(0, i).reduce((a, w) => a + w, 0), yy, c, { size: 2.5, bold: true })).join(''); yy += 1.6; s += L(x, yy, x + widths.reduce((a, w) => a + w, 0), yy, { stroke: PAL.rule, w: 0.3 }); yy += 3.4;
+        for (const r of rows) {
+          let h = 0;
+          r.forEach((c, i) => { const q = para(x + widths.slice(0, i).reduce((a, w) => a + w, 0), yy, widths[i] - 2, c, { size: 2.45, after: 0 }); s += q.svg; h = Math.max(h, q.y - yy); });
+          yy += h + 0.7;
+        }
+        return { svg: s, y: yy };
+      };
+      const d = k => Us[k].dims;
+      const people = [
+        ['Person', Us.small.label, Us.large.label],
+        ['Stature', fmt(d('small').stature), fmt(d('large').stature)],
+        ['Eye height, sitting (erect)', fmt(d('small').eyeheightsitting), fmt(d('large').eyeheightsitting)],
+        ['Elbow rest height', fmt(d('small').elbowrestheight), fmt(d('large').elbowrestheight)],
+        ['Popliteal height', fmt(d('small').poplitealheight), fmt(d('large').poplitealheight)],
+        ['Thigh clearance', fmt(d('small').thighclearance), fmt(d('large').thighclearance)],
+        ['Seat rule', 'Elbow level with home row', 'Lower leg vertical'],
+        ['Seat height', `${Us.small.seatH}`, `${Us.large.seatH}`],
+        ['Footrest', `${Us.small.footrest}`, `${Us.large.footrest}`],
+        ['Eye above floor', fmt(Us.small.eyeFloor), fmt(Us.large.eyeFloor)],
+        ['Eye above desk surface', fmt(Us.small.eyeDesk), fmt(Us.large.eyeDesk)],
+        ['Screen bottom edge, set to', fmt(A.sections.screen.per.small.set), fmt(A.sections.screen.per.large.set)]
+      ];
+      const t1 = tbl(12, y, ['', 'Smallest user', 'Largest user'], people, [42, 49, 49]);
+      b += T(12, y - 4.5 + 0.5, 'People and settings (mm)', { size: 3.1, bold: true }) ;
+      b += t1.svg; y = t1.y + 2;
+      const st = [...Us.small.steps.map(s => 'Smallest: ' + s), ...Us.large.steps.map(s => 'Largest: ' + s), ...Us.small.flags.map(f => 'Smallest: ' + f.t), ...Us.large.flags.map(f => 'Largest: ' + f.t)];
+      b += T(12, y + 2, 'How the numbers were found', { size: 3.1, bold: true }); y += 6.5;
+      for (const s of st) { const r = para(12, y, 140, s, { size: 2.4, bullet: '-', indent: 2.4, after: 0.6 }); b += r.svg; y = r.y; }
+      const asm = [
+        `Workstation: ${meta.env || 'desk workstation'}; desk ${D.h} mm high, ${D.t} mm thick, ${D.depth} x ${D.width} mm, legroom ${D.legroom} mm deep${D.type === 'sitstand' ? ` (sit-stand, ${D.min} to ${D.max} mm, kept at ${D.h} mm here)` : ''}. Chair ${I.chair.label}, seat ${I.chair.min} to ${I.chair.max} mm. Shoe allowance ${I.shoe} mm.`,
+        `Figures show the body unclothed, to scale; footwear is shown only as the ${I.shoe} mm shoe allowance (the sole under each foot), which is included in every height.`,
+        'Posture from the tool’s geometric model (not a validated posture-prediction model). The eye point includes the chair’s recline and the head inclining towards the main screen.',
+        'Limits are the tool’s guidance values unless changed under Limits; they are not quoted from a standard.'];
+      b += T(12, y + 2, 'Assumptions', { size: 3.1, bold: true }); y += 6.5;
+      sheet = { people: [['', 'Smallest user (mm)', 'Largest user (mm)'], ...people], steps: st, assumptions: asm };
+      for (const s of asm) { const r = para(12, y, 140, s, { size: 2.4, bullet: '-', indent: 2.4, after: 0.6 }); b += r.svg; y = r.y; }
+      // references, right half
+      let ry = 31; b += T(160, ry - 4, 'References', { size: 3.1, bold: true });
+      for (const id of ['hufims', 'mil1472', 'iso9241', 'iso11064', 'kbspace', 'examples', 'tool']) {
+        const Rf = REFS[id];
+        let r = para(160, ry, 125, Rf.cite, { size: 2.5, bold: true, after: 0.4 }); b += r.svg; ry = r.y;
+        const flag = Rf.verified === 'quote' ? 'Quoted text checked against a public copy.' : Rf.verified === 'heading' ? 'Clause numbers and titles checked; text not quoted.' : Rf.verified === 'tool' ? '' : 'TO BE CONFIRMED: not checked against the document.';
+        r = para(160, ry, 125, flag + ' ' + Rf.note, { size: 2.3, fill: Rf.verified === false ? PAL.bad : PAL.muted, after: 0.4 }); b += r.svg; ry = r.y;
+        const cl = Object.entries(Rf.clauses);
+        if (cl.length) { r = para(160, ry, 125, cl.map(([k, v]) => Rf.verified !== 'heading' ? `${k}: "${v}"` : `${k} ${v}`).join('; '), { size: 2.2, fill: PAL.muted, after: 1.6 }); b += r.svg; ry = r.y; }
+        else ry += 1.2;
+      }
+      if (meta.stampRows) {
+        ry += 1; b += T(160, ry, 'Evidence stamp', { size: 3.1, bold: true }); ry += 4.5;
+        for (const [k, v] of meta.stampRows) { const r = para(160, ry, 125, `${k}: ${v}`, { size: 2.1, fill: PAL.muted, after: 0.2 }); b += r.svg; ry = r.y; }
+      }
+      out.push(frame(meta, 6, N, 'Settings, assumptions and references', b));
+    }
+    return { pages: out, figs, sheet };
+  }
+  const pages = (A, meta) => report(A, meta).pages;
+
+  const figNoun = t => t.replace(/^Figure \d+\.\s*/, '');
+  /* ---- standalone diagram images ----
+     Just the drawing, its dimensions and labels, cropped tight (no page frame, subtitle or stamp block): for placing in a
+     report as an image. Drawn at the page's own size (so text stays legible and the scale bar true), at most o.maxWidth mm
+     wide. Figure 1 gets a key to its numbered callouts. The evidence stamp goes into the file's metadata (SVG <desc>;
+     pngText() for the PNG), not onto the picture. */
+  function bboxSvg(s) {
+    let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
+    const add = (x, y) => { y += dy; if (isFinite(x) && isFinite(y)) { l = Math.min(l, x); r = Math.max(r, x); t = Math.min(t, y); b = Math.max(b, y); } };
+    const re = /<(rect|image|line|circle|ellipse|polyline|polygon|text|g)\b([^>]*)>(?:([^<]*)<\/text>)?/g;
+    let dy = 0, carry = 0;
+    let m;
+    while ((m = re.exec(s))) {
+      const a = {}, tag = m[1]; m[2].replace(/([\w:-]+)="([^"]*)"/g, (_, k, v) => { a[k] = v; });
+      const n = k => +a[k] || 0;
+      dy = carry; carry = 0;
+      if (tag === 'g') { const q = /translate\(0 ([-\d.]+)\)/.exec(a.transform || ''); carry = q ? +q[1] : 0; continue; }
+      if (tag === 'rect' || tag === 'image') { add(n('x'), n('y')); add(n('x') + n('width'), n('y') + n('height')); }
+      else if (tag === 'line') { add(n('x1'), n('y1')); add(n('x2'), n('y2')); }
+      else if (tag === 'circle') { add(n('cx') - n('r'), n('cy') - n('r')); add(n('cx') + n('r'), n('cy') + n('r')); }
+      else if (tag === 'ellipse') { add(n('cx') - n('rx'), n('cy') - n('ry')); add(n('cx') + n('rx'), n('cy') + n('ry')); }
+      else if (tag === 'polyline' || tag === 'polygon') { for (const q of (a.points || '').trim().split(/\s+/)) { const [x, y] = q.split(',').map(Number); add(x, y); } }
+      else { const z = n('font-size') || 2.8, w = (m[3] || '').replace(/&\w+;/g, '_').length * z * (a['font-weight'] ? 0.58 : 0.53), x = n('x'), y = n('y');
+        const x0 = a['text-anchor'] === 'end' ? x - w : a['text-anchor'] === 'middle' ? x - w / 2 : x; add(x0, y - 0.8 * z); add(x0 + w, y + 0.25 * z); }
+    }
+    return { l, t, r, b };
+  }
+  // close up empty horizontal bands: the page layout leaves room (between a heading and the drawing, or above the scale
+  // bar) that a standalone image does not need. Every element is moved up by the empty space above it, less gap mm.
+  function collapse(body, gap) {
+    const els = body.match(/<text\b[^>]*>[^<]*<\/text>|<\w+\b[^>]*\/>/g) || [];
+    if (els.join('').length !== body.length) return body;   // not a flat list of elements: leave it alone
+    const bx = els.map(e => bboxSvg(e)), iv = bx.filter(b => isFinite(b.t)).map(b => [b.t, b.b]).sort((a, c) => a[0] - c[0]);
+    const cuts = []; let end = -Infinity;
+    for (const [t, b] of iv) { if (isFinite(end) && t - end > gap) cuts.push([end, t - end - gap]); end = Math.max(end, b); }
+    if (!cuts.length) return body;
+    return els.map((e, i) => { const d = cuts.filter(c => bx[i].t >= c[0]).reduce((a, c) => a + c[1], 0); return d > 0.01 ? `<g transform="translate(0 ${f2(-d)})">${e}</g>` : e; }).join('');
+  }
+  function figureImage(f, meta, o = {}) {
+    let body = collapse(f.body.replace(/<text[^>]*>[^<]*true scale 1:[^<]*<\/text>/g, ''), o.gap || 6);
+    let bb = bboxSvg(body);
+    if (f.key) {
+      let y = bb.b + 6, s = '';
+      const cols = 2, cw = Math.max(70, (bb.r - bb.l) / cols);
+      f.key.forEach((k, i) => { const x = bb.l + (i % cols) * cw, yy = y + Math.floor(i / cols) * 5;
+        s += CI(x + 2.1, yy - 0.9, 2.1, { fill: '#fff', stroke: PAL.ink, w: 0.3 }) + T(x + 2.1, yy, String(i + 1), { size: 2.6, bold: true, anchor: 'middle' }) + T(x + 5.5, yy, k, { size: 2.5 }); });
+      body += s; bb = bboxSvg(body);
+    }
+    const pad = 3; let top = bb.t - pad, bot = bb.b + pad, s = '';
+    if (meta.marking) { top -= 5; s += T((bb.l + bb.r) / 2, top + 3.6, meta.marking, { size: 3, bold: true, anchor: 'middle' }); s += T((bb.l + bb.r) / 2, bot + 3.6, meta.marking, { size: 3, bold: true, anchor: 'middle' }); bot += 5; }
+    const x0 = bb.l - pad, W = bb.r - bb.l + 2 * pad, H = bot - top, k = Math.min(1, (o.maxWidth || 160) / W);
+    const desc = `${figNoun(f.title)}. ${meta.stampLine || ''}`.trim();
+    return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${f2(W * k)}mm" height="${f2(H * k)}mm" viewBox="${f2(x0)} ${f2(top)} ${f2(W)} ${f2(H)}">` +
+      `<title>${xe(f.title)}</title><desc>${xe(desc)}</desc>` + R(x0, top, W, H, { fill: '#ffffff' }) + body + s + '</svg>';
+  }
+  // a PNG with a text chunk added after IHDR (keyword and Latin-1 text), so the stamp travels with the image
+  function pngText(png, key, text) {
+    const enc = s => Uint8Array.from(String(s).replace(/[^\x20-\x7e]/g, '?'), c => c.charCodeAt(0));
+    const data = new Uint8Array([...enc(key), 0, ...enc(text)]), type = enc('tEXt'), chunk = new Uint8Array(12 + data.length), dv = new DataView(chunk.buffer);
+    dv.setUint32(0, data.length); chunk.set(type, 4); chunk.set(data, 8);
+    dv.setUint32(8 + data.length, crc32(new Uint8Array([...type, ...data])));
+    const at = 8 + 12 + new DataView(png.buffer, png.byteOffset).getUint32(8), out = new Uint8Array(png.length + chunk.length);
+    out.set(png.subarray(0, at)); out.set(chunk, at); out.set(png.subarray(at), at + chunk.length);
+    return out;
+  }
+  // the size of a figure export in mm, for the Word file and the PNG
+  const figureSize = svg => { const m = /width="([\d.]+)mm" height="([\d.]+)mm"/.exec(svg); return m ? { w: +m[1], h: +m[2] } : null; };
+
+  /* ---- a Word file (.docx) with the figures, captions, guidance, settings and references ----
+     Written here as Office Open XML in a stored (uncompressed) zip, so the tool needs no library and the output is the
+     same in every browser. rep: report(); meta: as for pages(); imgs: one { png: Uint8Array, w, h (mm) } per figure. */
+  const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+  function crc32(b) { let c = 0xFFFFFFFF; for (let i = 0; i < b.length; i++) c = CRC[(c ^ b[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+  function zip(files) {
+    const enc = new TextEncoder(), parts = [], cen = []; let off = 0;
+    for (const f of files) {
+      const nm = enc.encode(f.name), d = typeof f.data === 'string' ? enc.encode(f.data) : f.data, c = crc32(d);
+      const h = new DataView(new ArrayBuffer(30));
+      h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(12, 0x21, true);
+      h.setUint32(14, c, true); h.setUint32(18, d.length, true); h.setUint32(22, d.length, true); h.setUint16(26, nm.length, true);
+      parts.push(new Uint8Array(h.buffer), nm, d);
+      const z = new DataView(new ArrayBuffer(46));
+      z.setUint32(0, 0x02014b50, true); z.setUint16(4, 20, true); z.setUint16(6, 20, true); z.setUint16(8, 0x0800, true); z.setUint16(14, 0x21, true);
+      z.setUint32(16, c, true); z.setUint32(20, d.length, true); z.setUint32(24, d.length, true); z.setUint16(28, nm.length, true); z.setUint32(42, off, true);
+      cen.push(new Uint8Array(z.buffer), nm); off += 30 + nm.length + d.length;
+    }
+    const csz = cen.reduce((a, b) => a + b.length, 0), e = new DataView(new ArrayBuffer(22));
+    e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true); e.setUint32(12, csz, true); e.setUint32(16, off, true);
+    const all = [...parts, ...cen, new Uint8Array(e.buffer)], out = new Uint8Array(all.reduce((a, b) => a + b.length, 0));
+    let p = 0; for (const a of all) { out.set(a, p); p += a.length; }
+    return out;
+  }
+  const wx = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const wrun = (t, o = {}) => `<w:r>${o.b || o.color || o.sz ? `<w:rPr>${o.b ? '<w:b/>' : ''}${o.color ? `<w:color w:val="${o.color}"/>` : ''}${o.sz ? `<w:sz w:val="${o.sz}"/>` : ''}</w:rPr>` : ''}<w:t xml:space="preserve">${wx(t)}</w:t></w:r>`;
+  const wpar = (inner, o = {}) => `<w:p>${o.style || o.keep || o.ind || o.jc ? `<w:pPr>${o.style ? `<w:pStyle w:val="${o.style}"/>` : ''}${o.keep ? '<w:keepNext/>' : ''}${o.ind ? `<w:ind w:left="${o.ind}" w:hanging="${o.hang || 0}"/>` : ''}${o.jc ? `<w:jc w:val="${o.jc}"/>` : ''}</w:pPr>` : ''}${inner}</w:p>`;
+  const EMU = 36000;
+  const wpic = (i, wMm, hMm, descr) => { const cx = Math.round(wMm * EMU), cy = Math.round(hMm * EMU);
+    return `<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${i}" name="Figure ${i}" descr="${wx(descr)}"/>` +
+      `<wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">` +
+      `<pic:pic><pic:nvPicPr><pic:cNvPr id="${i}" name="fig${i}.png"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="rIdFig${i}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>` +
+      `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`; };
+  const COLOR = { ok: '2E7D4F', warn: 'A96500', bad: 'B3261E', info: '5B6570' };
+  function wtable(rows, widthsMm) {
+    const tw = widthsMm.map(w => Math.round(w * 56.7)), b = s => `<w:${s} w:val="single" w:sz="4" w:space="0" w:color="C4CAD1"/>`;
+    return `<w:tbl><w:tblPr><w:tblW w:w="${tw.reduce((a, c) => a + c, 0)}" w:type="dxa"/><w:tblBorders>${['top', 'left', 'bottom', 'right', 'insideH', 'insideV'].map(b).join('')}</w:tblBorders>` +
+      `<w:tblCellMar><w:left w:w="80" w:type="dxa"/><w:right w:w="80" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>${tw.map(w => `<w:gridCol w:w="${w}"/>`).join('')}</w:tblGrid>` +
+      rows.map((r, i) => `<w:tr>${i === 0 ? '<w:trPr><w:tblHeader/></w:trPr>' : ''}${r.map((c, j) => `<w:tc><w:tcPr><w:tcW w:w="${tw[j]}" w:type="dxa"/></w:tcPr>${wpar(wrun(c, { b: i === 0 || j === 0, sz: 18 }), { style: 'TableText' })}</w:tc>`).join('')}</w:tr>`).join('') + '</w:tbl>';
+  }
+  function docx(rep, meta, imgs, o = {}) {
+    const NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" ' +
+      'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"';
+    const title = meta.docTitle || 'Desk workstation setup guidance';
+    let b = wpar(wrun(title), { style: 'Title' }) + wpar(wrun(meta.project || 'Untitled project'), { style: 'Subtitle' });
+    b += wpar(wrun('How to set up the desk, chair, screens, keyboard and mouse so the workstation fits its smallest and largest users. The figures are drawn to scale from the tool’s body model; the numbers come from its posture model. Each figure is followed by its guidance.'));
+    rep.figs.forEach((f, i) => {
+      const im = imgs[i];
+      b += wpar(wrun(figNoun(f.title)), { style: 'Heading1' });
+      if (im) b += wpar(wpic(i + 1, im.w, im.h, f.title), { keep: true, jc: 'center' });
+      b += wpar(wrun('Figure ') + `<w:fldSimple w:instr=" SEQ Figure \\* ARABIC "><w:r><w:t>${i + 1}</w:t></w:r></w:fldSimple>` + wrun('. ' + figNoun(f.title)), { style: 'Caption' });
+      for (const k of f.blocks || []) {
+        if (k.rule) continue;
+        if (k.h) b += wpar(wrun(k.h), { style: 'Heading2' });
+        else if (k.chip) b += wpar(wrun('Assessment: ', { b: true }) + wrun(k.label || WORD[k.chip], { b: true, color: COLOR[k.chip] }));
+        else if (k.bullet) b += wpar(wrun(k.bullet + '\t') + wrun(k.t), { ind: 360, hang: 360 });
+        else b += wpar(wrun(k.t, k.fill ? { color: '5B6570', sz: 18 } : {}));
+      }
+    });
+    const sh = rep.sheet;
+    if (sh) {
+      b += wpar(wrun('People and settings'), { style: 'Heading1' }) + wtable(sh.people, [55, 56, 56]);
+      b += wpar(wrun('How the numbers were found'), { style: 'Heading2' }) + sh.steps.map(t => wpar(wrun('-\t' + t), { ind: 360, hang: 360 })).join('');
+      b += wpar(wrun('Assumptions'), { style: 'Heading2' }) + sh.assumptions.map(t => wpar(wrun('-\t' + t), { ind: 360, hang: 360 })).join('');
+    }
+    b += wpar(wrun('References'), { style: 'Heading1' });
+    for (const id of ['hufims', 'mil1472', 'iso9241', 'iso11064', 'kbspace', 'examples', 'tool']) {
+      const Rf = REFS[id], flag = Rf.verified === 'quote' ? 'Quoted text checked against a public copy.' : Rf.verified === 'heading' ? 'Clause numbers and titles checked; text not quoted.' : Rf.verified === 'tool' ? '' : 'TO BE CONFIRMED: not checked against the document.';
+      b += wpar(wrun(Rf.cite, { b: true }));
+      b += wpar(wrun((flag + ' ' + Rf.note).trim(), { color: Rf.verified === false ? 'B3261E' : '5B6570', sz: 18 }));
+      const cl = Object.entries(Rf.clauses);
+      if (cl.length) b += wpar(wrun(cl.map(([k, v]) => Rf.verified !== 'heading' ? `${k}: "${v}"` : `${k} ${v}`).join('; '), { color: '5B6570', sz: 18 }));
+    }
+    if (meta.stampRows) { b += wpar(wrun('Evidence stamp'), { style: 'Heading1' }) + wtable([['Item', 'Value'], ...meta.stampRows.map(([k, v]) => [String(k), String(v)])], [45, 122]); }
+    const mark = meta.marking, hf = tag => `<w:${tag} ${NS}>${wpar(wrun(mark, { b: true }), { jc: 'center' })}</w:${tag}>`;
+    const sect = `<w:sectPr>${mark ? '<w:headerReference w:type="default" r:id="rIdHdr"/><w:footerReference w:type="default" r:id="rIdFtr"/>' : ''}<w:pgSz w:w="11906" w:h="16838"/>` +
+      '<w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="567" w:footer="567" w:gutter="0"/></w:sectPr>';
+    const document = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:document ${NS}><w:body>${b}${sect}</w:body></w:document>`;
+    const st = (id, name, o2) => `<w:style w:type="paragraph" w:styleId="${id}"><w:name w:val="${name}"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/>` +
+      `<w:pPr>${o2.keep ? '<w:keepNext/>' : ''}<w:spacing w:before="${o2.before || 0}" w:after="${o2.after || 120}"/>${o2.lvl != null ? `<w:outlineLvl w:val="${o2.lvl}"/>` : ''}</w:pPr>` +
+      `<w:rPr>${o2.b ? '<w:b/>' : ''}${o2.i ? '<w:i/>' : ''}${o2.color ? `<w:color w:val="${o2.color}"/>` : ''}<w:sz w:val="${o2.sz}"/></w:rPr></w:style>`;
+    const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">` +
+      '<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:eastAsia="Arial" w:cs="Arial"/><w:sz w:val="20"/><w:lang w:val="en-GB"/></w:rPr></w:rPrDefault>' +
+      '<w:pPrDefault><w:pPr><w:spacing w:after="100" w:line="264" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>' +
+      '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>' +
+      st('Title', 'Title', { b: true, sz: 36, after: 60 }) + st('Subtitle', 'Subtitle', { sz: 22, color: '5B6570', after: 240 }) +
+      st('Heading1', 'heading 1', { b: true, sz: 28, before: 320, after: 120, keep: true, lvl: 0 }) + st('Heading2', 'heading 2', { b: true, sz: 22, before: 200, after: 80, keep: true, lvl: 1 }) +
+      st('Caption', 'caption', { b: true, sz: 18, after: 200 }) + st('TableText', 'Table Text', { sz: 18, after: 0 }) + '</w:styles>';
+    const rels = [`<Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>`];
+    if (mark) rels.push('<Relationship Id="rIdHdr" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/>',
+      '<Relationship Id="rIdFtr" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>');
+    imgs.forEach((im, i) => { if (im) rels.push(`<Relationship Id="rIdFig${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/fig${i + 1}.png"/>`); });
+    const RELS = x => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${x}</Relationships>`;
+    const ct = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/>' +
+      '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
+      '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>' +
+      (mark ? '<Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/><Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>' : '') +
+      '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/></Types>';
+    const core = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/">' +
+      `<dc:title>${wx((meta.project ? meta.project + ': ' : '') + title)}</dc:title><dc:creator>HFE Lab, Workspace Visualisation</dc:creator></cp:coreProperties>`;
+    const files = [
+      { name: '[Content_Types].xml', data: ct },
+      { name: '_rels/.rels', data: RELS('<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>') },
+      { name: 'docProps/core.xml', data: core },
+      { name: 'word/document.xml', data: document },
+      { name: 'word/styles.xml', data: styles },
+      { name: 'word/_rels/document.xml.rels', data: RELS(rels.join('')) }];
+    if (mark) files.push({ name: 'word/header1.xml', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + hf('hdr') }, { name: 'word/footer1.xml', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + hf('ftr') });
+    imgs.forEach((im, i) => { if (im) files.push({ name: `word/media/fig${i + 1}.png`, data: im.png }); });
+    return zip(files);
+  }
+
+  // the numbers behind the report as CSV rows (label, value, unit, status, basis)
+  function rows(A) {
+    const U = A.users, Sx = A.sections.screen, out = [];
+    for (const k of ['small', 'large']) {
+      const u = U[k], w = k === 'small' ? 'Smallest user' : 'Largest user';
+      out.push([w, u.label, '', '', ''], [w + ', seat height', u.seatH, 'mm', u.status, k === 'small' ? 'elbow level with home row' : 'lower leg vertical'],
+        [w + ', footrest', u.footrest, 'mm', '', ''], [w + ', eye above floor', fmt(u.eyeFloor), 'mm', '', 'posture model'], [w + ', eye above desk', fmt(u.eyeDesk), 'mm', '', 'posture model'],
+        [w + ', screen bottom edge range', `${fmt(Sx.per[k].need[0])} to ${fmt(Sx.per[k].need[1])}`, 'mm above desk', Sx.per[k].status, 'top of screen limit'], [w + ', screen bottom edge set', fmt(Sx.per[k].set), 'mm above desk', '', '']);
+    }
+    out.push(['Screen stand range', `${fmt(Sx.adj[0])} to ${fmt(Sx.adj[1])}`, 'mm above desk', Sx.status, Sx.common ? `one setting suits both: ${fmt(Sx.common[0])} to ${fmt(Sx.common[1])}` : 'no single setting suits both']);
+    for (const r of A.sections.horizontal.rows) out.push([`${r.label}, horizontal angle to centre (largest, smallest)`, `${fmt(r.large.centre, 1)}; ${fmt(r.small.centre, 1)}`, '°', r.status, `outer edge ${fmt(r.eMax, 1)}°`]);
+    for (const r of A.sections.input.rows) {
+      out.push([`${r.label}, clear space in front`, fmt(r.front), 'mm', r.frontStatus, `limited by ${r.frontBy}`]);
+      if (r.swing) out.push([`${r.label}, swivel ±${A.opts.swivel}°`, r.swing.map(s => s.ok ? 'clear' : 'blocked').join('; '), '', r.swingStatus, r.swing.flatMap(s => s.hits).join(', ')]);
+      if (r.area) out.push([`${r.label}, working area ${A.opts.mouseW} x ${A.opts.mouseD}`, r.area.off ? 'off desk' : r.area.hits.length ? 'overlaps' : 'clear', '', r.areaStatus, r.area.hits.join(', ')]);
+    }
+    const Lg = A.sections.legs;
+    out.push(['Largest user, thigh clearance under desk', fmt(Lg.thigh.v), 'mm', Lg.thigh.s, ''], ['Largest user, knee clearance to legroom limit', fmt(Lg.knee.v), 'mm', Lg.knee.s, '']);
+    return out;
+  }
+
+  return { REFS, ZONES, VZONES, LEGPROFILE, DEFAULTS, assess, pages, report, figureImage, bboxSvg, pngText, figureSize, docx, zip, crc32, rows, footprint, overlap, bounds, rate, wrap, WORD };
+})();
+if (typeof module !== 'undefined' && module.exports) module.exports = HFE_SETUP;
+/* ---------------- desk setup guidance (OUT-06) ----------------
+   The Setup guide dialog (Export group). The rules, diagrams and pages are in core/setup_guide.js; this part picks the
+   smallest and largest users from the dataset, sets the chair for each with the Quick fit rules (Chair to keyboard for the
+   smallest, Chair to legs for the largest), solves each with the posture model on screen, and hands the numbers over.
+   State is kept in SG, not in S, so saved setups, checks, golden numbers and population runs are unchanged. */
+const SG = { pol: { popS: null, pctS: 5, popL: null, pctL: 95, adjMin: null, adjMax: null, clearFront: 150, swivel: 30, mouseW: 200, mouseD: 240, style: 'plain' }, last: null };
+try { const v = JSON.parse(localStorage.getItem('hfe-setup') || 'null'); if (v && typeof v === 'object') Object.assign(SG.pol, v); } catch { /* storage blocked */ }
+const saveSg = () => { try { localStorage.setItem('hfe-setup', JSON.stringify(SG.pol)); } catch { /* storage blocked */ } };
+const SG_POINTER = new Set(['mouse', 'tbThumb', 'tbFinger', 'trackpad']);
+
+// a person from a dataset at a percentile, by the method chosen on the Manikin tab (as manikinFromDataset does)
+function sgManikin(key, pct) {
+  const P = POPS[key], i = clamp(Math.round(pct), 1, 99) - 1, vals = {};
+  let label;
+  if (S.method === 'subject' && P.subj) { const s = P.subj[i]; DIMS.forEach((k, j) => vals[k] = s.v[j]); label = `${P.label}, subject ${s.id} (${ord(i + 1)} percentile)`; }
+  else if (S.method === 'regression') { const st = P.uni.stature[i]; DIMS.forEach(k => { const [a, b] = P.reg[k]; vals[k] = k === 'stature' ? st : Math.round((a + b * st) * 10) / 10; }); label = `${P.label}, ${ord(i + 1)} percentile stature, regression`; }
+  else { DIMS.forEach(k => vals[k] = P.uni[k][i]); label = `${P.label}, ${ord(i + 1)} percentile in every dimension`; }
+  return { M: vals, label: `${label}, stature ${fmt(vals.stature)} mm` };
+}
+const xy = p => ({ x: p.x, y: p.y });
+// the drawing points of a solved posture
+function sgPts(M, G, W) {
+  const a = G.arms[1], tip = a.hand && a.hand.tip ? a.hand.tip : a.W;
+  return { seatRearX: G.seatRearX, seatFrontX: G.seatFrontX, H: xy(G.H), K: xy(G.K), A: xy(G.A), KF: xy(G.KF), Sh: xy(G.Sh), C: xy(G.C), Hc: xy(G.Hc),
+    headR: 0.5 * M.headlength, El: xy(a.E), Wr: xy(a.W), tip: xy(tip), thighTop: G.maxTop != null ? { x: G.maxTopX, y: G.maxTop } : null };
+}
+// True-scale figures from the tool's own body mesh, fitted to the person and posed by the solver: a hidden-line-removed
+// outline (core/drawing.js hlrView, silhouettes and contours only) and a flat filled silhouette as a PNG with a
+// transparent background, both in world millimetres for core/setup_guide.js to place at the page's scale.
+let sgGL = null;
+// a polyline smoothed: resampled every 3 mm, then a moving average over ±15 mm, twice, with its ends (or, for a closed
+// loop, nothing) held; this takes out the staircase that silhouette edges of a triangle mesh leave, which is far smaller
+// than any body dimension the guidance uses (the numbers come from the solver, not from these lines)
+function sgSmooth(P) {
+  const closed = P.length > 3 && Math.hypot(P[0][0] - P[P.length - 1][0], P[0][1] - P[P.length - 1][1]) < 1;
+  const R = [P[0]];
+  for (let i = 1; i < P.length; i++) {
+    const a = P[i - 1], b = P[i], L = Math.hypot(b[0] - a[0], b[1] - a[1]), n = Math.max(1, Math.round(L / 3));
+    for (let k = 1; k <= n; k++) R.push([a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n]);
+  }
+  let Q = R; const h = 5, N = Q.length;
+  if (N < 2 * h + 2) return Q;
+  for (let pass = 0; pass < 2; pass++) {
+    Q = Q.map((q, i) => {
+      if (!closed && (i < h || i >= N - h)) { const w = Math.min(i, N - 1 - i); if (w === 0) return q; let x = 0, y = 0; for (let j = -w; j <= w; j++) { x += Q[i + j][0]; y += Q[i + j][1]; } return [x / (2 * w + 1), y / (2 * w + 1)]; }
+      let x = 0, y = 0; for (let j = -h; j <= h; j++) { const r = Q[((i + j) % N + N) % N]; x += r[0]; y += r[1]; } return [x / (2 * h + 1), y / (2 * h + 1)];
+    });
+  }
+  return simplifyPts(Q, 0.4);
+}
+// True-scale figures from the tool's own body mesh, fitted to the person and posed by the solver: a hidden-line-removed
+// outline (core/drawing.js hlrView, silhouettes and contours only) and a flat filled silhouette as a PNG with a
+// transparent background, both in world millimetres for core/setup_guide.js to place at the page's scale. The skin's
+// regions (trunk, arms, legs and so on) share one vertex buffer and are merged into one surface first, so no line is
+// drawn where one region meets the next.
+function sgFigure(M, G, sex, views, fill) {
+  const body = BODY.build(M, G, 'solid', MATS, { sex, kit: S.kit }); body.updateMatrixWorld(true);
+  const byPos = new Map(), made = [];
+  body.traverse(o => { if (o.isMesh && o.geometry.index && o.userData.part !== 'shoe' && o.userData.part !== 'sole') { const k = o.geometry.attributes.position; if (!byPos.has(k)) byPos.set(k, { mw: o.matrixWorld.clone(), idx: [] }); byPos.get(k).idx.push(o.geometry.index.array); } });
+  const srcs = [...byPos.entries()].map(([pos, g]) => {
+    const n = g.idx.reduce((a, x) => a + x.length, 0), I = new Uint32Array(n); let o = 0; for (const x of g.idx) { I.set(x, o); o += x.length; }
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', pos); geo.setIndex(new THREE.BufferAttribute(I, 1)); made.push(geo);
+    return { geo, mw: g.mw, layer: 'MANIKIN' };
+  });
+  const box = new THREE.Box3().setFromObject(body), DS = { srcs, root: body }, out = {}, pad = 15;
+  const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(fill), side: THREE.DoubleSide }), fsc = new THREE.Scene();
+  for (const sr of srcs) { const m = new THREE.Mesh(sr.geo, mat); m.matrixAutoUpdate = false; m.matrix.copy(sr.mw); fsc.add(m); }
+  fsc.updateMatrixWorld(true);
+  try {
+    for (const view of views) {
+      const side = view === 'side', vc = side ? viewCam(new V3(0, 0, 1), new V3(0, 1, 0)) : viewCam(new V3(0, 1, 0), new V3(1, 0, 0));
+      const ext = side ? { l: box.min.x - pad, r: box.max.x + pad, b: box.min.y - pad, t: box.max.y + pad } : { l: box.min.z - pad, r: box.max.z + pad, b: box.min.x - pad, t: box.max.x + pad };
+      // short fragments (where a contour flickers in and out of view) are left out
+      const len = P => P.reduce((t, q, i) => i ? t + Math.hypot(q[0] - P[i - 1][0], q[1] - P[i - 1][1]) : 0, 0);
+      const lines = hlrView(DS, vc, ext, 1, 0, 0).map(q => q.pts.map(([X, Y]) => [X + ext.l, ext.t - Y])).filter(P => len(P) >= 25).map(sgSmooth);
+      if (!sgGL) sgGL = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+      const k = Math.min(0.8, 2048 / Math.max(ext.r - ext.l, ext.t - ext.b)), cam = vc.c.clone();
+      Object.assign(cam, { left: ext.l, right: ext.r, top: ext.t, bottom: ext.b }); cam.updateProjectionMatrix();
+      sgGL.setPixelRatio(1); sgGL.setSize(Math.round((ext.r - ext.l) * k), Math.round((ext.t - ext.b) * k), false); sgGL.setClearColor(0xffffff, 0); sgGL.clear(); sgGL.render(fsc, cam);
+      const href = sgGL.domElement.toDataURL('image/png');
+      mat.color.set('#ffffff'); sgGL.clear(); sgGL.render(fsc, cam);   // a white fill too, for the technical drawing style
+      out[view] = { lines, img: { href, ...ext }, imgPlain: { href: sgGL.domElement.toDataURL('image/png'), ...ext } };
+      mat.color.set(fill);
+    }
+  } finally { mat.dispose(); if (DS.dmat) DS.dmat.dispose(); made.forEach(g => g.dispose()); body.traverse(o => o.geometry && o.geometry.dispose()); }
+  return out;
+}
+const sgSex = key => (/^f/i.test((POPS[key] || {}).sex || '') ? 'female' : 'male');
+function sgPerson(kind, key, pct) {
+  const { M, label } = sgManikin(key, pct), W = structuredClone(S.ws);
+  if (offSeat(W)) W.stance = 'seated';
+  const seatWant = kind === 'small' ? fitSeatToKeyboard(M, W, true) : fitSeatToLegs(M, W, true);
+  const { G, R } = solvePosture(M, W);
+  const kb = W.objects.find(o => o.type === 'keyboard');
+  return { label, pop: key, pct, dims: M, seatWant, seatH: W.seatH, footrest: W.footrest, shoe: W.shoe, homeRow: kb ? kb.homeRowH : 30,
+    eye: { x: G.E.x, y: G.E.y, z: G.E.z || 0 }, thigh: R.thigh, legroom: R.legroom, footGap: R.footGap,
+    chairBack: (CHAIRS[W.chair] || {}).back, recline: W.recline, pts: sgPts(M, G, W),
+    fig: sgFigure(M, G, sgSex(key), kind === 'large' ? ['side', 'plan'] : ['side'], kind === 'large' ? '#d3e2f5' : '#f6dccb') };
+}
+function sgDefaults() {
+  const P = SG.pol, fam = POPS[S.pop] && POPS[S.pop].family;
+  const pick = sex => Object.keys(POPS).find(k => POPS[k].family === fam && POPS[k].sex === sex) || S.pop;
+  if (!POPS[P.popS]) P.popS = pick('female');
+  if (!POPS[P.popL]) P.popL = pick('male');
+  if (P.adjAuto || P.adjMin == null || P.adjMax == null) { P.adjMin = S.ws.screens.bottom; P.adjMax = S.ws.screens.bottom + (S.ws.screens.fixed ? 0 : 130); P.adjAuto = true; }
+}
+function sgRun() {
+  const L = window.__last; if (!L) return null;
+  sgDefaults();
+  const P = SG.pol, W = S.ws, G = L.G, scr = G.scr, prim = scr.list[scr.primary];
+  const small = sgPerson('small', P.popS, P.pctS), large = sgPerson('large', P.popL, P.pctL);
+  const chair = CHAIRS[W.chair] || {};
+  const plan = p => ({ x: p.x, z: p.z });
+  const inp = {
+    desk: { h: W.deskH, t: W.deskT, depth: W.deskDepth, width: W.deskWidth, legroom: W.legroom, style: W.deskStyle, type: W.deskType, min: W.deskMin, max: W.deskMax },
+    chair: { label: chair.label || W.chair, min: W.seatMin, max: W.seatMax }, shoe: W.shoe,
+    screen: { label: 'Screen ' + (scr.primary + 1), bottom: W.screens.bottom, h: prim.h, tilt: deg(prim.tiltR), adjMin: +P.adjMin, adjMax: +P.adjMax,
+      fixed: !!W.screens.fixed && !!P.adjAuto, rangeNote: P.adjAuto ? (W.screens.fixed ? 'The displays are fixed in the console (no height adjustment).' : 'Assumed: the current setting plus 130 mm. Enter the stand’s own range in the dialog.') : 'As entered for the stand.' },
+    screens: scr.list.map((s, i) => ({ label: 'Screen ' + (i + 1), centre: plan(s.P.centre), left: plan(s.P.left), right: plan(s.P.right) })),
+    devices: W.objects.map(o => { const d = objDims(o); return { id: o.id, label: objName(o, W.objects), type: o.type, x: o.x, z: o.z, d: d.d, w: d.w, yaw: o.yaw || 0,
+      input: INPUT_TYPES.has(o.type), keyboard: o.type === 'keyboard', pointer: SG_POINTER.has(o.type), movable: !o.fixed, onDesk: o.base == null }; }),
+    users: { small, large },
+    lim: { topVsEye: S.lim.topVsEye, thigh: S.lim.thigh, legroom: S.lim.legroom },
+    opts: { clearFront: +P.clearFront, swivel: +P.swivel, mouseW: +P.mouseW, mouseD: +P.mouseD }
+  };
+  const A = HFE_SETUP.assess(inp), Rr = L.R, rs = Rr.screens[scr.primary] || {};
+  const cur = { label: subjectText(), dims: L.M, seatH: W.seatH, footrest: W.footrest, shoe: W.shoe, eye: { x: G.E.x, y: G.E.y, z: G.E.z || 0 }, chairBack: chair.back, recline: W.recline,
+    pts: sgPts(L.M, G, W), fig: sgFigure(L.M, G, manikinSex(), ['side'], '#dfe4ea'), values: { topVsEye: rs.topVsEye, viewDist: rs.viewDist, losCentre: rs.losCentre, homeVsElbow: Rr.homeVsElbow, thigh: Rr.thigh } };
+  const info = stampInfo(), env = HFE_ENV.get(S.env.id);
+  const meta = { style: P.style, docTitle: S.env.id === 'desk-workstation' ? 'Desk workstation setup guidance' : `Workstation setup guidance: ${env ? env.name : S.env.id}`, project: S.project.title || 'Untitled project', marking: S.project.marking, stampLine: HFE_EVIDENCE.stampLine(info), stampRows: HFE_EVIDENCE.stamp(info),
+    env: env ? env.name : S.env.id, current: cur, screenSide: { top: xy(prim.P.top), bottom: xy(prim.P.bottom), centre: xy(prim.P.centre) },
+    plan: { seatRearX: G.seatRearX, seatFrontX: G.seatFrontX, seatWidth: W.seatWidth, shX: G.Sh.x, shW: large.dims.bideltoidbreadth, shD: large.dims.chestdepth, headX: large.pts.Hc.x, headR: large.pts.headR } };
+  const rep = HFE_SETUP.report(A, meta);
+  SG.last = { A, meta, rep, pages: rep.pages, when: new Date(), info };
+  return SG.last;
+}
+function sgForm() {
+  sgDefaults();
+  const P = SG.pol, popOpts = v => Object.entries(POPS).map(([k, p]) => `<option value="${k}"${k === v ? ' selected' : ''}>${esc(p.label)}</option>`).join('');
+  const num = (id, label, v, min, max, u, step = 1) => `<div class="field"><label for="${id}">${label}</label><div class="numin"><input type="number" id="${id}" min="${min}" max="${max}" step="${step}" value="${v}"><span class="u">${u}</span></div></div>`;
+  $('#sg-form').innerHTML =
+    `<div class="sec">Drawing style</div><div class="field"><label for="sg-style">Figures</label><select id="sg-style"><option value="plain"${P.style !== 'colour' ? ' selected' : ''}>Technical drawing (black and white)</option><option value="colour"${P.style === 'colour' ? ' selected' : ''}>Colour</option></select></div>` +
+    `<div class="sec">Smallest user</div><div class="field"><label for="sg-popS">Population</label><select id="sg-popS">${popOpts(P.popS)}</select></div>` + num('sg-pctS', 'Percentile', P.pctS, 1, 99, '%') +
+    `<p class="help">Seat raised until the elbow is level with the keyboard home row; footrest for the feet. Eye height is then given above the desk surface.</p>` +
+    `<div class="sec">Largest user</div><div class="field"><label for="sg-popL">Population</label><select id="sg-popL">${popOpts(P.popL)}</select></div>` + num('sg-pctL', 'Percentile', P.pctL, 1, 99, '%') +
+    `<p class="help">Seat at popliteal height plus shoe, so the lower leg is vertical. Eye height is then given above the floor, and the leg space checked.</p>` +
+    `<div class="sec">Main screen stand</div>` + num('sg-adjMin', 'Lowest bottom edge above desk', P.adjMin, 0, 800, 'mm', 5) + num('sg-adjMax', 'Highest bottom edge above desk', P.adjMax, 0, 800, 'mm', 5) +
+    `<p class="help">${P.adjAuto ? 'Assumed range: the current setting plus 130 mm. ' : ''}Enter the range from the stand or monitor datasheet.</p>` +
+    `<div class="sec">Input devices</div>` + num('sg-clearFront', 'Clear space in front', P.clearFront, 0, 400, 'mm', 5) + num('sg-swivel', 'Keyboard swivel, each way', P.swivel, 0, 90, '°') +
+    num('sg-mouseW', 'Pointing device area, width', P.mouseW, 50, 600, 'mm', 10) + num('sg-mouseD', 'Pointing device area, depth', P.mouseD, 50, 600, 'mm', 10) +
+    `<div class="btnrow"><button class="btn primary" id="sg-pdf">Save PDF</button><button class="btn" id="sg-svg">Save SVG pages</button><button class="btn" id="sg-csv">Save CSV</button></div>` +
+    `<div class="btnrow"><button class="btn" id="sg-docx">Save Word (.docx)</button><button class="btn" id="sg-figpng">All images (PNG)</button><button class="btn" id="sg-figsvg">All images (SVG)</button></div>` +
+    `<p class="help">For a report: each diagram as a standalone image, cropped to the drawing, its dimensions and labels (at most 16 cm wide; PNG at 300 dpi or SVG). The evidence stamp is kept in the file’s metadata. Each page below also has its own Save image buttons. The Word file holds all five with Word captions, the guidance, the settings and the references.</p>` +
+    `<p class="help">Six A4 landscape pages: overall workspace, screen heights, horizontal angles, keyboard and mouse space, leg space, then the settings, assumptions and references. Every page carries the evidence stamp and the protective marking. References not checked against a public copy are marked "to be confirmed".</p>`;
+}
+function sgRender() {
+  const R = SG.last, out = $('#sg-out');
+  if (!R) { out.innerHTML = '<p class="popa-empty">Nothing to show yet.</p>'; return; }
+  out.innerHTML = R.pages.map((p, i) => `<div class="sg-page" aria-label="Page ${i + 1}">${p}${i < R.rep.figs.length ? `<div class="btnrow"><button class="btn" data-sgfig="${i}" data-kind="png">Save image (PNG)</button><button class="btn" data-sgfig="${i}" data-kind="svg">Save image (SVG)</button></div>` : ''}</div>`).join('');
+  const W = HFE_SETUP.WORD, s = R.A.sections;
+  $('#sg-status').textContent = `Screen height: ${W[s.screen.status].toLowerCase()}; angles: ${W[s.horizontal.status].toLowerCase()}; input devices: ${W[s.input.status].toLowerCase()}; leg space: ${W[s.legs.status].toLowerCase()}.`;
+}
+function sgRefresh() { $('#sg-status').textContent = 'Solving both users…'; setTimeout(() => { try { sgRun(); sgRender(); } catch (e) { $('#sg-status').textContent = 'Could not build the guidance: ' + e.message; } }, 20); }
+const sgName = () => `${slugOf(S.project.title) || 'desk'}-setup-guidance-${stamp()}`;
+function sgCsv(R) {
+  const q = s => `"${String(s).replace(/"/g, '""')}"`, lines = stampCsv(q);
+  lines.push('item,value,unit,status,basis');
+  for (const r of HFE_SETUP.rows(R.A)) lines.push(r.map(q).join(','));
+  lines.push('', 'reference,checked,citation,note');
+  for (const [id, f] of Object.entries(HFE_SETUP.REFS)) lines.push([id, f.verified === false ? 'to be confirmed' : f.verified, f.cite, f.note].map(q).join(','));
+  return lines.join('\n') + '\n';
+}
+// a figure SVG drawn to a PNG at dpi (300 by default: 160 mm is 1890 px wide)
+function sgPng(svg, dpi = 300) {
+  const z = HFE_SETUP.figureSize(svg), w = Math.round(z.w / 25.4 * dpi), h = Math.round(z.h / 25.4 * dpi);
+  return new Promise((ok, no) => {
+    const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' })), im = new Image();
+    im.onload = () => {
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, w, h); g.drawImage(im, 0, 0, w, h); URL.revokeObjectURL(url);
+      c.toBlob(b => b ? ok({ blob: b, w: z.w, h: z.h }) : no(new Error('PNG failed')), 'image/png');
+    };
+    im.onerror = () => { URL.revokeObjectURL(url); no(new Error('could not draw the figure')); };
+    im.src = url;
+  });
+}
+const sgFigs = R => R.rep.figs.map(f => HFE_SETUP.figureImage(f, R.meta));
+async function sgPngFile(R, svg) { const p = await sgPng(svg); return new Blob([HFE_SETUP.pngText(new Uint8Array(await p.blob.arrayBuffer()), 'Comment', R.meta.stampLine || '')], { type: 'image/png' }); }
+async function sgSaveFig(R, i, kind) {
+  const svg = sgFigs(R)[i], name = `${sgName()}-fig${i + 1}`;
+  try { if (kind === 'svg') await saveFile(name + '.svg', new Blob([svg], { type: 'image/svg+xml' })); else await saveFile(name + '.png', await sgPngFile(R, svg)); }
+  catch (e) { $('#sg-status').textContent = 'Could not save the image: ' + e.message; }
+}
+async function sgDocx(R) {
+  $('#sg-status').textContent = 'Preparing Word file…';
+  try {
+    const imgs = [];
+    for (const s of sgFigs(R)) { const z = HFE_SETUP.figureSize(s); imgs.push({ png: new Uint8Array(await (await sgPngFile(R, s)).arrayBuffer()), w: z.w, h: z.h }); }
+    const z = HFE_SETUP.docx(R.rep, R.meta, imgs); SG.lastDocx = z.length;
+    await saveFile(sgName() + '.docx', new Blob([z], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }));
+    sgRender();
+  } catch (e) { $('#sg-status').textContent = 'Could not make the Word file: ' + e.message; }
+}
+async function sgFigPng(R) {
+  $('#sg-status').textContent = 'Drawing figures…';
+  try { const F = sgFigs(R); for (let i = 0; i < F.length; i++) await saveFile(`${sgName()}-fig${i + 1}.png`, await sgPngFile(R, F[i])); sgRender(); }
+  catch (e) { $('#sg-status').textContent = 'Could not draw the figures: ' + e.message; }
+}
+async function sgPdf(R) {
+  $('#sg-status').textContent = 'Preparing PDF…';
+  try {
+    for (const s of PDFLIB) await loadScript(s);
+    const { jsPDF } = window.jspdf, doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true });
+    for (let i = 0; i < R.pages.length; i++) {
+      if (i) doc.addPage('a4', 'landscape');
+      const holder = document.createElement('div'); holder.style.cssText = 'position:fixed;left:-10000px;top:0;width:297px;height:210px;overflow:hidden'; holder.innerHTML = R.pages[i]; document.body.append(holder);
+      const el = holder.querySelector('svg');
+      if (doc.svg) await doc.svg(el, { x: 0, y: 0, width: 297, height: 210 }); else await window.svg2pdf.svg2pdf(el, doc, { x: 0, y: 0, width: 297, height: 210 });
+      holder.remove();
+    }
+    doc.setProperties({ title: (S.project.title ? S.project.title + ': ' : '') + 'Desk workstation setup guidance', subject: 'Desk workstation setup guidance', creator: 'HFE Lab · Workspace Visualisation' });
+    const blob = doc.output('blob'); SG.lastPdf = blob.size;
+    await saveFile(sgName() + '.pdf', blob);
+    sgRender();
+  } catch (e) { $('#sg-status').textContent = 'Could not make the PDF: ' + e.message; }
+}
+function openSg() { sgForm(); $('#sg').hidden = false; sgRefresh(); }
+function bindSg() {
+  $('#sg-open').onclick = openSg;
+  const close = () => { $('#sg').hidden = true; };
+  $('#sg-close').onclick = close;
+  $('#sg').addEventListener('click', e => { if (e.target.id === 'sg') close(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#sg').hidden) close(); });
+  $('#sg-form').addEventListener('change', e => {
+    const t = e.target, P = SG.pol, k = t.id.slice(3);
+    if (!(k in P)) return;
+    P[k] = t.tagName === 'SELECT' ? t.value : (+t.value || 0);
+    if (k === 'adjMin' || k === 'adjMax') { P.adjAuto = false; if (+P.adjMax < +P.adjMin) [P.adjMin, P.adjMax] = [P.adjMax, P.adjMin]; }
+    saveSg(); sgRefresh();
+  });
+  $('#sg-out').addEventListener('click', e => { const b = e.target.closest('[data-sgfig]'); if (b && SG.last) sgSaveFig(SG.last, +b.dataset.sgfig, b.dataset.kind); });
+  $('#sg-form').addEventListener('click', e => {
+    const R = SG.last; if (!R) return;
+    if (e.target.id === 'sg-pdf') sgPdf(R);
+    else if (e.target.id === 'sg-csv') saveFile(sgName() + '.csv', sgCsv(R));
+    else if (e.target.id === 'sg-docx') sgDocx(R);
+    else if (e.target.id === 'sg-figpng') sgFigPng(R);
+    else if (e.target.id === 'sg-figsvg') sgFigs(R).forEach((p, i) => setTimeout(() => saveFile(`${sgName()}-fig${i + 1}.svg`, new Blob([p], { type: 'image/svg+xml' })), i * 250));
+    else if (e.target.id === 'sg-svg') R.pages.forEach((p, i) => setTimeout(() => saveFile(`${sgName()}-p${i + 1}.svg`, new Blob([p], { type: 'image/svg+xml' })), i * 250));
+  });
+}
+bindSg();
+SG.run = () => { const R = sgRun(); if (!$('#sg').hidden) sgRender(); return R; };
+SG.H = HFE_SETUP; SG.png = sgPng; SG.figs = sgFigs; window.__setup = SG;
 
 /* ---------------- population accommodation (POP-05, POP-06) ----------------
    Every record of the chosen dataset is fitted to the workstation with the same rules as the Quick fit buttons,
