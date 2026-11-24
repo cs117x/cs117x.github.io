@@ -161,6 +161,12 @@ svg.i{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-widt
 .browser.min .br-head{border-bottom:0}
 .br-head .btn{margin-left:auto}
 .br-tree{overflow:auto;padding:3px 0 5px;min-height:0}
+.br-sets{display:flex;flex-direction:column;gap:4px;padding:6px 8px;border-bottom:1px solid var(--rule)}
+.br-sets label{font-size:11px;color:var(--muted)}
+.br-sets select,.br-sets input{width:100%;min-width:0;font:inherit;font-size:12px}
+.br-row{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
+.br-row input{flex:1}
+.br-note{margin:0;font-size:11px;line-height:1.35;color:var(--muted);white-space:normal}
 .tn{display:flex;align-items:center;gap:3px;height:22px;padding-right:6px;cursor:default;white-space:nowrap}
 .tn:hover{background:var(--field-hover)}
 .tn.off .tn-name{color:var(--faint)}
@@ -615,6 +621,13 @@ table.kv td{padding:3px 0;overflow-wrap:anywhere}
           <div class="stage" id="stage"><div class="label-layer" id="labels"></div>
             <div class="browser" id="browser">
               <div class="br-head"><span>Browser</span><button class="btn small" id="br-min" aria-expanded="true" title="Collapse the browser">–</button></div>
+              <div class="br-sets" id="br-sets" role="group" aria-label="Annotation sets">
+                <label for="ann-set">Annotations shown</label>
+                <select id="ann-set" title="Choose which annotations show: all, the key points for the smallest or largest user, or a set you saved"></select>
+                <div class="br-row"><button class="btn small" id="ann-load" hidden>Load smallest user</button><button class="btn small" id="ann-save" title="Save the annotations shown now as a named set">Save set</button><button class="btn small" id="ann-del" hidden>Delete set</button></div>
+                <div class="br-row" id="ann-name-row" hidden><input id="ann-name" maxlength="60" placeholder="Name, e.g. Seat setup" aria-label="Name of the annotation set"><button class="btn small" id="ann-name-ok">Save</button></div>
+                <p class="br-note" id="ann-note" hidden></p>
+              </div>
               <div class="br-tree" id="br-tree" role="tree" aria-label="Objects in the scene"></div>
             </div>
           </div>
@@ -1665,7 +1678,7 @@ const HFE_EVIDENCE = (() => {
   }
 
   // the parts of a project that are not inputs: they never change its inputs hash
-  const NOT_INPUTS = ['format', 'schema', 'title', 'marking', 'saved', 'tool', 'inputsHash', 'results', 'look'];   // look: appearance is cosmetic
+  const NOT_INPUTS = ['format', 'schema', 'title', 'marking', 'saved', 'tool', 'inputsHash', 'results', 'look', 'annotations'];   // look: appearance is cosmetic; annotations: which labels show
   function inputs(p) { const o = {}; for (const k of Object.keys(p)) if (!NOT_INPUTS.includes(k)) o[k] = p[k]; return o; }
   const inputsHash = p => sha256(canonical(inputs(p)));
 
@@ -1677,6 +1690,8 @@ const HFE_EVIDENCE = (() => {
     // the standards profile (core/standards.js) is only recorded when it is not the tool's default, so projects saved
     // before profiles existed keep the same inputs hash
     if (st.standard) p.standard = st.standard;
+    // which annotations show and the saved annotation sets (OUT-08): display only, so not inputs
+    if (st.annotations) p.annotations = st.annotations;
     p.inputsHash = inputsHash(p);
     if (st.results) p.results = st.results.map(r => ({ key: r.key, name: r.name, status: r.status, text: r.text }));
     return p;
@@ -6481,7 +6496,7 @@ function tag(text, status, pos, title) {
   const gl = status !== 'info' ? `<b>${STATUS[status].glyph}</b>` : '';
   el.innerHTML = gl + (title ? `<small>${title}</small>` : '') + text;
   const o = new CSS2DObject(el); o.position.copy(pos); o.userData.node = annNode; groups.ann.add(o);
-  labelsForExport.push({ pos: pos.clone(), title: title || '', text, status });
+  labelsForExport.push({ pos: pos.clone(), title: title || '', text, status, node: annNode });
   return o;
 }
 let annNode = 'ann.checks';
@@ -6507,55 +6522,61 @@ function buildAnnotations(M, G, R, W, rows) {
   const st = key => (rows.find(r => r.key === key) || {}).status || 'info';
   const armSt = (id, side) => rate(R[id][side < 0 ? 'L' : 'R'], S.lim[id]);
   const backX = G.seatRearX - 170;
-  annNode = 'ann.dims';
+  // every annotation has its own node (OUT-07), so each can be shown or hidden in the browser and in annotation sets
   const seated = !offSeat(W);   // off the seat, the seat, hip, knee and thigh annotations do not apply
-  if (seated) dimV(backX, 0, W.seatH, 0, `${fmt(W.seatH)} mm`, 'Seat', 'info', -10);
-  dimV(backX - 120, 0, G.E.y, 0, `${fmt(G.E.y)} mm`, 'Eye', 'info', -10);
-  dimV(W.deskDepth + 90, 0, W.deskH, 0, `${fmt(W.deskH)} mm`, 'Desk', 'info');
-  if (W.footrest > 0) dimV(G.A.x + 260, 0, W.footrest, 0, `${fmt(W.footrest)} mm`, 'Footrest');
+  annNode = 'ann.dims.seat'; if (seated) dimV(backX, 0, W.seatH, 0, `${fmt(W.seatH)} mm`, 'Seat', 'info', -10);
+  annNode = 'ann.dims.eye'; dimV(backX - 120, 0, G.E.y, 0, `${fmt(G.E.y)} mm`, 'Eye', 'info', -10);
+  annNode = 'ann.dims.desk'; dimV(W.deskDepth + 90, 0, W.deskH, 0, `${fmt(W.deskH)} mm`, 'Desk', 'info');
+  annNode = 'ann.dims.foot'; if (W.footrest > 0) dimV(G.A.x + 260, 0, W.footrest, 0, `${fmt(W.footrest)} mm`, 'Footrest');
   const E = v3(G.E), pi = G.scr.primary, nS = G.scr.list.length;
   G.scr.list.forEach((s, i) => {
     const Pc = s.P.centre;
-    annNode = 'ann.sight'; line([E, Pc], MATS.dash, true); annNode = 'ann.checks';
+    annNode = 'ann.sight.' + i; line([E, Pc], MATS.dash, true);
     if (i === pi) {
       const k = `#${i}`;
-      arc(E, new V3(1, 0, 0), new V3(Pc.x - E.x, Pc.y - E.y, 0), 150, `${fmt(R.screens[i].losCentre)}°`, st('losCentre' + k), 'LOS');
-      tag(`${fmt(R.screens[i].viewDist)} mm`, st('viewDist' + k), E.clone().lerp(Pc, 0.62).add(new V3(0, -38, 0)), nS > 1 ? `View S${i + 1}` : 'View');
-      annNode = 'ann.sight'; line([E, new V3(s.P.top.x + 30, G.E.y, s.P.top.z)], MATS.dash, true); annNode = 'ann.checks';
+      annNode = 'ann.checks.los'; arc(E, new V3(1, 0, 0), new V3(Pc.x - E.x, Pc.y - E.y, 0), 150, `${fmt(R.screens[i].losCentre)}°`, st('losCentre' + k), 'LOS');
+      annNode = 'ann.checks.view'; tag(`${fmt(R.screens[i].viewDist)} mm`, st('viewDist' + k), E.clone().lerp(Pc, 0.62).add(new V3(0, -38, 0)), nS > 1 ? `View S${i + 1}` : 'View');
+      annNode = 'ann.sight.' + i; line([E, new V3(s.P.top.x + 30, G.E.y, s.P.top.z)], MATS.dash, true);
+      annNode = 'ann.checks.top';
       const tx = s.P.top.x + 70, tz = s.P.top.z, ts = st('topVsEye' + k);
       line([new V3(tx, s.P.top.y, tz), new V3(tx, G.E.y, tz)], MATS['arc_' + ts]);
       for (const y of [s.P.top.y, G.E.y]) line([new V3(tx - 14, y - 14, tz), new V3(tx + 14, y + 14, tz)], MATS['arc_' + ts]);
       tag(`${R.screens[i].topVsEye > 0 ? '+' : ''}${fmt(R.screens[i].topVsEye)} mm`, ts, new V3(tx + 60, (s.P.top.y + G.E.y) / 2, tz), 'Top vs eye');
     } else {
       const ss = worst(['viewDist', 'losCentre', 'gazeH', 'topVsEye', 'losNormal'].map(id => st(`${id}#${i}`)));
+      annNode = 'ann.checks.scr-' + i;
       const ga = R.screens[i].gazeH;
       tag(`${fmt(R.screens[i].viewDist)} mm · ${fmt(Math.abs(ga))}° ${ga >= 0 ? 'R' : 'L'}`, ss, Pc.clone().add(new V3(-40, s.h / 2 + 40, 0)), `S${i + 1}`);
     }
   });
   const C = v3(G.C);
   const ref = rot(sub2(G.Hc0, G.C0), G.dR), cur = sub2(G.Hc, G.C);
+  annNode = 'ann.checks.neck';
   if (Math.abs(R.neckFlex) > 0.5) arc(C, new V3(ref.x, ref.y, 0), new V3(cur.x, cur.y, 0), 95, `${fmt(R.neckFlex)}°`, st('neckFlex'), 'Neck');
   else tag('0°', st('neckFlex'), C.clone().add(new V3(-60, 60, 0)), 'Neck');
   const z = G.legZ;
   const Hh = v3(G.H, z), Kk = v3(G.K, z), Aa = v3(G.A, z), Ss = v3(G.Sh, z);
   if (seated) {
-    arc(Hh, new V3().subVectors(Ss, Hh), new V3().subVectors(Kk, Hh), 120, `${fmt(R.hip)}°`, st('hip'), 'Hip');
-    arc(Kk, new V3().subVectors(Hh, Kk), new V3().subVectors(Aa, Kk), 95, `${fmt(R.knee)}°`, st('knee'), 'Knee');
+    annNode = 'ann.checks.hip'; arc(Hh, new V3().subVectors(Ss, Hh), new V3().subVectors(Kk, Hh), 120, `${fmt(R.hip)}°`, st('hip'), 'Hip');
+    annNode = 'ann.checks.knee'; arc(Kk, new V3().subVectors(Hh, Kk), new V3().subVectors(Aa, Kk), 95, `${fmt(R.knee)}°`, st('knee'), 'Knee');
   }
   const a = G.arms[1];
   if (offSeat(W) === 'prone') return;
-  arc(a.E, new V3().subVectors(a.S, a.E), new V3().subVectors(a.W, a.E), 80, `${fmt(a.elbow)}°`, armSt('elbow', 1), 'Elbow');
+  annNode = 'ann.checks.elbow'; arc(a.E, new V3().subVectors(a.S, a.E), new V3().subVectors(a.W, a.E), 80, `${fmt(a.elbow)}°`, armSt('elbow', 1), 'Elbow');
   const ue = new V3(a.E.x - a.S.x, a.E.y - a.S.y, 0);
+  annNode = 'ann.checks.shoulder';
   if (Math.abs(a.shFlex) > 1) arc(a.S, new V3(0, -1, 0), ue, 110, `${fmt(a.shFlex)}°`, armSt('shFlex', 1), 'Shoulder');
   else tag(`${fmt(a.shFlex)}°`, armSt('shFlex', 1), a.S.clone().add(new V3(-70, -60, 0)), 'Shoulder');
+  annNode = 'ann.checks.thigh';
   if (R.thigh != null && seated) {
     const x = Math.max(G.maxTopX, 15), y1 = G.maxTop, y2 = G.deskUnder, s = st('thigh');
     line([new V3(x, y1, 0), new V3(x, y2, 0)], MATS['arc_' + s]);
     for (const y of [y1, y2]) line([new V3(x - 12, y - 12, 0), new V3(x + 12, y + 12, 0)], MATS['arc_' + s]);
     tag(`${fmt(R.thigh)} mm`, s, new V3(x + 95, Math.min(y1, y2) - 30, 0), 'Thigh');
   }
+  annNode = 'ann.checks.feet';
   if (R.footGap > 1) tag(`${fmt(R.footGap)} mm gap`, 'bad', new V3(G.A.x + 120, G.floorY + 40, z), 'Feet');
-  let ti = 0; G.objs.forEach(ob => { const r = rows.find(x => x.key === 'obj#' + ob.o.id); if (r && r.status !== 'ok') tag(r.status === 'bad' ? 'out of reach' : 'max zone', r.status, ob.reachPt.clone().add(new V3(0, 70 + 34 * ti++, 0)), objName(ob.o, W.objects)); });
+  let ti = 0; G.objs.forEach(ob => { const r = rows.find(x => x.key === 'obj#' + ob.o.id); annNode = 'ann.checks.obj-' + ob.o.id; if (r && r.status !== 'ok') tag(r.status === 'bad' ? 'out of reach' : 'max zone', r.status, ob.reachPt.clone().add(new V3(0, 70 + 34 * ti++, 0)), objName(ob.o, W.objects)); });
 }
 
 /* ---------------- cameras ---------------- */
@@ -7036,7 +7057,7 @@ function update() {
   XC.after(rows);   // exact clearance (core/clearance.js): adds its rows, lines and map when it is on
   SYSLINK.changed();   // tell an open SysML v2 Editor (SYS-04)
   HMI3D.changed();    // tell an open HMI Builder which displays this scene has (HMI-03)
-  applyVisibility(); renderTree(); syncProxies();
+  if (ANNSET) ANNSET.refresh(); applyVisibility(); renderTree(); if (ANNSET) ANNSET.sync(); syncProxies();
   renderResults(rows); renderManikinPanel(M); syncWsControls(); $('#kit-help').textContent = kitHelp();
   if (!$('#cfg').hidden) renderPlan();
   requestRender();
@@ -7238,7 +7259,7 @@ let toastT; function toast(m) { $('#toast').textContent = m; clearTimeout(toastT
 /* ---------------- evidence: project files and output stamps (PRJ-01, PRJ-03, VAL-02, VAL-03, VAL-07) ----------------
    core/evidence.js does the hashing, migration and comparison; this gathers the tool's state for it. Every output
    (checks CSV, population CSVs, placement map CSV, image, drawing) carries the same stamp. */
-const TOOL = { name: 'HFE Lab Workspace Visualisation', build: '0effd10b57d3' };
+const TOOL = { name: 'HFE Lab Workspace Visualisation', build: '405b8b5df942' };
 const VALIDATION = 'Not validated (posture from geometric rules, not a validated posture-prediction model; limits as stated under Checked against)';
 const solverName = W => W.solver === 'body' ? 'Whole body with joint limits (beta)' : 'Classic seated';
 function subjectText() {
@@ -7251,7 +7272,7 @@ function kitText() { const fx = kitFx(), lo = HFE_KIT.loadouts[S.kit] || HFE_KIT
 function projectNow(results = lastRows) {
   return HFE_EVIDENCE.project({ title: S.project.title, marking: S.project.marking, saved: new Date().toISOString(), tool: { ...TOOL },
     env: S.env, manikin: { pop: S.pop, pct: S.pct, method: S.method, custom: S.custom || currentManikin().vals, customEdited: !!S.custom },
-    ws: S.ws, lim: S.lim, kit: S.kit, look: S.look, population: { pol: POPA.pol }, results,
+    ws: S.ws, lim: S.lim, kit: S.kit, look: S.look, population: { pol: POPA.pol }, results, annotations: ANNSET.state(),
     standard: S.standard === HFE_STANDARDS.DEFAULT ? null : S.standard });   // left out for the default, so older projects keep their inputs hash
 }
 function stampInfo() {
@@ -7278,13 +7299,19 @@ async function saveFile(filename, data) {
   try { await d.save({ filename, data }); toast('Saved.'); }
   catch (e) { toast(e && e.code === 'declined' ? 'Save cancelled.' : e && (e.code === 'rejected_extension' || e.code === 'extension_not_enabled') ? 'This view can\u2019t save that file type.' : 'Could not save the file here.'); }
 }
+// the labels a saved view carries: only the annotations shown (OUT-07), so hidden ones stay out, and placed measurements go in
+function pngLabels() {
+  if (!S.ann) return [];
+  const meas = MEAS ? MEAS.items.filter(it => nodeVisible('meas.' + it.id)).map(it => ({ pos: MEAS.at(it), title: '', text: MEAS.value(it).txt, status: 'info' })) : [];
+  return [...labelsForExport.filter(L => !L.node || nodeVisible(L.node)), ...meas];
+}
 async function exportPNG() {
   renderer.render(scene, cam);
   const src = renderer.domElement, w = src.width, h = src.height, pr = w / stage.clientWidth;
   const cv = document.createElement('canvas'); cv.width = w; cv.height = h; const ctx = cv.getContext('2d');
   ctx.drawImage(src, 0, 0);
   ctx.font = `${11 * pr}px ${FONT}`; ctx.textBaseline = 'middle';
-  for (const L of labelsForExport) {
+  for (const L of pngLabels()) {
     const p = L.pos.clone().project(cam); if (p.z > 1) continue;
     const x = (p.x + 1) / 2 * w, y = (1 - p.y) / 2 * h;
     const t = (L.status !== 'info' ? STATUS[L.status].glyph + ' ' : '') + (L.title ? L.title + ' ' : '') + L.text;
@@ -7904,7 +7931,7 @@ var SEC = null, MEAS = null;
     planes: [], key: '', last: null, sig: '', dirty: true, wasOn: false, stats: null,
     group: new THREE.Group(), helper: new THREE.Group()
   };
-  MEAS = { on: false, kind: 'dist', snap: true, onPlane: false, pts: [], items: [], group: new THREE.Group(), live: new THREE.Group() };
+  MEAS = { seq: 0, on: false, kind: 'dist', snap: true, onPlane: false, pts: [], items: [], group: new THREE.Group(), live: new THREE.Group() };
   SEC.group.userData.sec = true; SEC.helper.renderOrder = 5;
   scene.add(SEC.group, SEC.helper, MEAS.group, MEAS.live);
 
@@ -8245,7 +8272,8 @@ var SEC = null, MEAS = null;
   const mMat = () => ({ line: new THREE.LineBasicMaterial({ color: col('--sel'), depthTest: false, transparent: true }), pt: new THREE.PointsMaterial({ color: col('--sel'), size: 7, sizeAttenuation: false, depthTest: false, transparent: true }) });
   function drawItem(g, it, live) {
     const M = mMat(), pts = it.pts;
-    const add = o => { o.renderOrder = 30; g.add(o); return o; };
+    // a placed measurement is an annotation of its own in the browser (meas.<id>, OUT-07) and in annotation sets
+    const add = o => { o.renderOrder = 30; if (!live) o.userData.node = 'meas.' + it.id; g.add(o); return o; };
     add(new THREE.Points(new THREE.BufferGeometry().setFromPoints(pts), M.pt));
     if (pts.length > 1) add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), M.line));
     if (it.kind === 'angle' && pts.length === 3) {
@@ -8256,12 +8284,13 @@ var SEC = null, MEAS = null;
     }
     if (!live && pts.length === NEED[it.kind]) {
       const v = measValue(it), el = document.createElement('div'); el.className = 'tag meas'; el.textContent = v.txt; el.title = v.sub;
-      const o = new CSS2DObject(el);
-      o.position.copy(it.kind === 'dist' ? pts[0].clone().lerp(pts[1], 0.5) : pts[1]); g.add(o);
+      const o = new CSS2DObject(el); o.userData.node = 'meas.' + it.id;
+      o.position.copy(measAt(it)); g.add(o);
     }
   }
   const clearG = g => { for (const o of [...g.children]) { g.remove(o); if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); if (o.element) o.element.remove(); } };
-  function redrawMeas() { clearG(MEAS.group); MEAS.items.forEach(it => drawItem(MEAS.group, it)); syncMeasUI(); requestRender(); }
+  const measAt = it => it.kind === 'dist' ? it.pts[0].clone().lerp(it.pts[1], 0.5) : it.pts[1].clone();
+  function redrawMeas() { clearG(MEAS.group); MEAS.items.forEach(it => drawItem(MEAS.group, it)); applyVisibility(MEAS.group); syncMeasUI(); renderTree(); if (ANNSET) ANNSET.sync(); requestRender(); }
   function drawLive(hover) {
     clearG(MEAS.live);
     if (!MEAS.on) { requestRender(); return; }
@@ -8271,10 +8300,10 @@ var SEC = null, MEAS = null;
   }
   function measAdd(p) {
     MEAS.pts.push(p.clone());
-    if (MEAS.pts.length === NEED[MEAS.kind]) { MEAS.items.push({ kind: MEAS.kind, pts: MEAS.pts }); MEAS.pts = []; redrawMeas(); }
+    if (MEAS.pts.length === NEED[MEAS.kind]) { MEAS.items.push({ id: ++MEAS.seq, kind: MEAS.kind, pts: MEAS.pts }); MEAS.pts = []; redrawMeas(); }
     drawLive(null); syncMeasUI();
   }
-  MEAS.add = measAdd; MEAS.pickAt = pickAt; MEAS.value = measValue;
+  MEAS.add = measAdd; MEAS.pickAt = pickAt; MEAS.value = measValue; MEAS.at = measAt;
   MEAS.clear = () => { MEAS.items = []; MEAS.pts = []; redrawMeas(); drawLive(null); };
   function syncMeasUI() {
     for (const k of ['dist', 'angle']) $('#meas-k-' + k).setAttribute('aria-pressed', String(MEAS.kind === k));
@@ -8646,7 +8675,7 @@ var XC = null;
       const ln = new THREE.Line(new THREE.BufferGeometry().setFromPoints([r.a, r.b]), MATS['arc_' + st]); ln.renderOrder = 6; g.add(ln);
       for (const pt of [r.a, r.b]) { const s = new THREE.Mesh(new THREE.SphereGeometry(4, 10, 8), new THREE.MeshBasicMaterial({ color: col('--' + st), depthTest: false })); s.position.copy(pt); s.renderOrder = 6; g.add(s); }
       const el = document.createElement('div'); el.className = 'tag ' + st; el.textContent = `${r.hit ? 'Clash ' : ''}${fmt(r.d)} mm`;
-      const lb = new CSS2DObject(el); lb.position.copy(r.a).lerp(r.b, 0.5); g.add(lb);
+      const lb = new CSS2DObject(el); lb.userData.node = 'ann.clear'; lb.position.copy(r.a).lerp(r.b, 0.5); g.add(lb);   // a label is hidden only by its own node
       groups.ann.add(g);
     }
   }
@@ -10997,6 +11026,7 @@ function applyProject(p) {
   S.look = { ...LOOK_DEFAULT, ...(p.look || {}) }; renderLook();
   if (p.population && p.population.pol) { const d = POPA.pol; POPA.pol = { ...d, ...p.population.pol, groups: { ...d.groups, ...(p.population.pol.groups || {}) } }; }
   S.project = { title: p.title || '', marking: p.marking || '' };
+  ANNSET.load(p.annotations);   // which annotations show, and the saved annotation sets (not inputs)
   renderLimits(); popOptions(); update();
 }
 async function onJson(e) {
@@ -11585,7 +11615,7 @@ function onTheme() { syncThemeButtons(); makeMats(); makeCube(); update(); }
 new MutationObserver(onTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
 /* ---------------- workspace shell: object browser, menus, splitters, full screen ---------------- */
-const VIS = { hidden: new Set(), collapsed: new Set(['man', 'ws.chair', 'ws.desk', 'ws.scr', 'ws.obj', 'zones', 'ann', 'env.shell']) };
+const VIS = { hidden: new Set(), collapsed: new Set(['man', 'ws.chair', 'ws.desk', 'ws.scr', 'ws.obj', 'zones', 'ann', 'ann.dims', 'ann.checks', 'ann.sight', 'env.shell']) };
 try { const v = JSON.parse(localStorage.getItem('swf-vis') || 'null'); if (v) { VIS.hidden = new Set(v.hidden || []); if (v.collapsed) VIS.collapsed = new Set(v.collapsed); } } catch { /* storage blocked */ }
 const saveVis = () => { try { localStorage.setItem('swf-vis', JSON.stringify({ hidden: [...VIS.hidden], collapsed: [...VIS.collapsed] })); } catch { /* storage blocked */ } };
 // the three overlay toggles in the viewport header own these branches of the tree
@@ -11600,8 +11630,116 @@ function applyVisibility(root) {
   const set = o => { if (o.userData && o.userData.node) o.visible = nodeVisible(o.userData.node); };
   if (root) { root.traverse(set); return; }
   for (const g of Object.values(groups)) g.traverse(set);
+  if (MEAS) MEAS.group.traverse(set);   // placed measurements (core/section.js)
   groups.body.visible = nodeVisible('man');
   if (grid) grid.visible = nodeVisible('grid');
+}
+/* ---------------- annotation sets (OUT-07, OUT-08) ----------------
+   Every annotation in the 3D view has its own node, shown or hidden from the browser. An annotation set is a named
+   choice of which annotations show: the built-in key points for setting up for the smallest and largest users, and
+   sets the user saves. Only visibility is kept: annotations never change a check, a result or the inputs hash. */
+const ANN_NAMES = { 'ann.dims.seat': 'Seat height', 'ann.dims.eye': 'Eye height', 'ann.dims.desk': 'Desk height', 'ann.dims.foot': 'Footrest height',
+  'ann.checks.los': 'Line of sight angle', 'ann.checks.view': 'Viewing distance', 'ann.checks.top': 'Screen top vs eye', 'ann.checks.neck': 'Neck flexion',
+  'ann.checks.hip': 'Hip angle', 'ann.checks.knee': 'Knee angle', 'ann.checks.elbow': 'Elbow angle', 'ann.checks.shoulder': 'Shoulder flexion',
+  'ann.checks.thigh': 'Thigh clearance', 'ann.checks.feet': 'Feet off the floor' };
+const ANN_ORDER = Object.keys(ANN_NAMES);
+function annLabel(id) {
+  if (ANN_NAMES[id]) return ANN_NAMES[id];
+  let m = id.match(/^ann\.sight\.(\d+)$/); if (m) return `To screen ${+m[1] + 1}`;
+  m = id.match(/^ann\.checks\.scr-(\d+)$/); if (m) return `Screen ${+m[1] + 1} summary`;
+  m = id.match(/^ann\.checks\.obj-(.+)$/); if (m) { const o = S.ws.objects.find(x => x.id === m[1]); return (o ? objName(o, S.ws.objects) : 'Desk item') + ' reach'; }
+  return id.split('.').pop();
+}
+function annOrder(a, b) { const ia = ANN_ORDER.indexOf(a), ib = ANN_ORDER.indexOf(b); return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib) || a.localeCompare(b, undefined, { numeric: true }); }
+var ANNSET = (() => {   // var: update() can run before this block (an early resize), and then skips it
+  // the built-in sets list what they show; anything else drawn is hidden. Reach for the smallest user, clearances for the
+  // largest (ISO 11064-4 5.1.2 c), as on the Setup guide pages; sight lines and measurements show in both.
+  const BUILTIN = [
+    { id: 'all', name: 'All annotations', show: ['ann', 'meas'] },
+    { id: 'small', name: 'Smallest user key points', user: 'small', show: ['ann.dims.seat', 'ann.dims.foot', 'ann.dims.desk', 'ann.dims.eye', 'ann.checks.elbow', 'ann.checks.shoulder',
+      'ann.checks.top', 'ann.checks.los', 'ann.checks.view', 'ann.checks.obj', 'ann.sight', 'meas'],
+      note: 'Reach for the smallest user: seat for the elbow at the keyboard home row, footrest, eye height, screen top, line of sight and the reach to desk items.' },
+    { id: 'large', name: 'Largest user key points', user: 'large', show: ['ann.dims.seat', 'ann.dims.eye', 'ann.dims.desk', 'ann.checks.thigh', 'ann.checks.knee', 'ann.checks.hip',
+      'ann.checks.neck', 'ann.checks.top', 'ann.checks.los', 'ann.checks.view', 'ann.checks.feet', 'ann.clear', 'ann.sight', 'meas'],
+      note: 'Clearances for the largest user: seat for the legs, thigh and knee clearance, eye height, screen top, line of sight, neck and clearance lines.' }
+  ];
+  const isAnn = id => id === 'ann' || id.startsWith('ann.') || id === 'meas' || id.startsWith('meas.');
+  let saved = [];
+  try { const v = JSON.parse(localStorage.getItem('hfe-annsets') || '[]'); if (Array.isArray(v)) saved = v.filter(x => x && x.name && Array.isArray(x.hidden)); } catch { /* storage blocked */ }
+  const store = () => { try { localStorage.setItem('hfe-annsets', JSON.stringify(saved)); } catch { /* storage blocked */ } };
+  const all = () => [...BUILTIN, ...saved.map((x, i) => ({ id: 'u' + i, name: x.name, hidden: x.hidden, mine: true }))];
+  // the annotation leaves drawn now: a node with no drawn child
+  const leaves = () => {
+    const ids = new Set(); groups.ann.children.forEach(o => o.userData.node && ids.add(o.userData.node));
+    if (MEAS) MEAS.items.forEach(it => ids.add('meas.' + it.id));
+    return [...ids];
+  };
+  const covered = (id, show) => show.some(k => id === k || id.startsWith(k + '.') || id.startsWith(k + '-'));
+  const hiddenNow = () => [...VIS.hidden].filter(isAnn).sort();
+  // the hidden list a set gives with the annotations drawn now
+  function hiddenFor(set) { return set.show ? leaves().filter(id => !covered(id, set.show)).sort() : [...set.hidden].sort(); }
+  let active = 'all', follow = false;
+  const put = set => { for (const k of [...VIS.hidden]) if (isAnn(k)) VIS.hidden.delete(k); for (const k of hiddenFor(set)) VIS.hidden.add(k); };
+  function apply(id) {
+    const set = all().find(x => x.id === id); if (!set) return;
+    put(set); active = id; follow = !!set.show;
+    saveVis(); applyVisibility(); renderTree(); requestRender(); sync();
+  }
+  // after a rebuild: a built-in set chosen and not since edited by hand keeps applying to annotations that appear later
+  function refresh() { if (!S.ann) return; const set = follow && BUILTIN.find(x => x.id === active); if (set) { put(set); saveVis(); } }
+  const touched = () => { follow = false; };
+  // the set the view matches now, if any (the last one chosen first)
+  function current() {
+    if (!S.ann) return (all().find(x => x.id === active) || {}).name || '';   // nothing is drawn to compare with
+    const h = JSON.stringify(hiddenNow()), list = all(), first = list.find(x => x.id === active);
+    const hit = [first, ...list].find(x => x && JSON.stringify(hiddenFor(x)) === h);
+    return hit ? hit.name : '';
+  }
+  let syncSig = '';
+  function sync() {
+    const sel = $('#ann-set'); if (!sel) return;
+    const list = all(), cur = current(), at = list.find(x => x.name === cur), sig = list.map(x => x.name).join('|') + '#' + cur;
+    if (sig === syncSig) return; syncSig = sig;
+    const opts = list.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('');
+    sel.innerHTML = (at ? '' : '<option value="" selected>Custom (as set in the browser)</option>') + opts;
+    if (at) sel.value = at.id;
+    $('#ann-del').hidden = !(at && at.mine);
+    const u = at && at.user; $('#ann-load').hidden = !u;
+    if (u) $('#ann-load').textContent = u === 'small' ? 'Load smallest user' : 'Load largest user';
+    $('#ann-note').textContent = at && at.note ? at.note : '';
+    $('#ann-note').hidden = !(at && at.note);
+  }
+  function save(name) {
+    name = String(name || '').trim().slice(0, 60); if (!name) return;
+    const i = saved.findIndex(x => x.name === name), rec = { name, hidden: hiddenNow() };
+    if (i >= 0) saved[i] = rec; else saved.push(rec);
+    store(); active = 'u' + (i >= 0 ? i : saved.length - 1); sync(); renderTree();
+  }
+  function remove(id) { const i = +String(id).slice(1); if (!(i >= 0) || !saved[i]) return; saved.splice(i, 1); store(); active = 'all'; sync(); renderTree(); }
+  // for project files: what is hidden now and the saved sets (measurements are not saved, so neither is their visibility)
+  const state = () => ({ hidden: hiddenNow().filter(k => k.startsWith('ann')), sets: saved.map(x => ({ name: x.name, hidden: [...x.hidden] })) });
+  function load(a) {
+    if (!a || typeof a !== 'object') return;
+    for (const x of a.sets || []) if (x && x.name && Array.isArray(x.hidden)) { const i = saved.findIndex(y => y.name === x.name); if (i >= 0) saved[i] = x; else saved.push(x); }
+    store();
+    if (Array.isArray(a.hidden)) { for (const k of [...VIS.hidden]) if (isAnn(k) && !k.startsWith('meas')) VIS.hidden.delete(k); a.hidden.forEach(k => typeof k === 'string' && k.startsWith('ann') && VIS.hidden.add(k)); saveVis(); }
+    active = ''; follow = false; sync();
+  }
+  return { BUILTIN, all, apply, refresh, touched, current, sync, save, remove, state, load, hiddenFor, leaves, builtin: id => BUILTIN.find(x => x.id === id) };
+})();
+// Load smallest / largest user: the manikin and chair as the Setup guide sets them (same people, same Quick fit rules)
+function loadSetupUser(kind) {
+  sgDefaults();
+  const P = SG.pol, key = kind === 'small' ? P.popS : P.popL, pct = kind === 'small' ? P.pctS : P.pctL;
+  if (!POPS[key]) return;
+  S.pop = key; S.pct = clamp(Math.round(+pct), 1, 99); S.custom = null; $('#pop').value = S.pop;
+  const W = S.ws, M = currentManikin().vals; let fitTxt = '';
+  if (!offSeat(W)) {
+    const want = kind === 'small' ? fitSeatToKeyboard(M, W, true) : fitSeatToLegs(M, W, true);
+    fitTxt = `, seat ${W.seatH} mm${want !== W.seatH ? ' (chair range)' : ''}${W.footrest ? `, footrest ${W.footrest} mm` : ''} (${kind === 'small' ? 'chair to keyboard' : 'chair to legs'})`;
+  }
+  update(); ANNSET.apply(kind);
+  toast(`${kind === 'small' ? 'Smallest' : 'Largest'} user: ${POPS[key].label}, ${ord(S.pct)} percentile${fitTxt}.`);
 }
 const TREE_ICON = { person: 'person', part: 'part', folder: 'folder', chair: 'chair', desk: 'desk2', screen: 'screen', item: 'item', zone: 'zone', dim: 'dim', grid: 'grid' };
 function treeNodes() {
@@ -11639,8 +11777,15 @@ function treeNodes() {
   W.objects.forEach(o => add('ws.obj.' + o.id, objName(o, W.objects), 'item'));
   add('zones', 'Reach zones', 'zone'); add('zones.normal', 'Normal zone', 'zone'); add('zones.max', 'Maximum zone', 'zone');
   if (PMAP.last && PMAP.show) add('zones.map', 'Placement map', 'zone', `screen ${PMAP.last.screen + 1}`);
-  add('ann', 'Annotations', 'dim'); add('ann.dims', 'Dimensions', 'dim'); add('ann.checks', 'Angles and check labels', 'dim'); add('ann.sight', 'Sight lines', 'dim');
+  add('ann', 'Annotations', 'dim');   // the set in use is named in the Annotations shown list above the tree
+  // one row per annotation drawn now (OUT-07), under its group, so each can be shown or hidden on its own
+  const drawn = new Set(); groups.ann.children.forEach(o => o.userData.node && drawn.add(o.userData.node));
+  for (const [grp, label] of [['ann.dims', 'Dimensions'], ['ann.checks', 'Angles and check labels'], ['ann.sight', 'Sight lines']]) {
+    add(grp, label, 'dim');
+    for (const id of [...drawn].filter(d => d.startsWith(grp + '.')).sort(annOrder)) add(id, annLabel(id), 'dim');
+  }
   if (XC && XC.on) add('ann.clear', 'Clearance lines', 'dim');
+  if (MEAS && MEAS.items.length) { add('meas', 'Measurements', 'dim', String(MEAS.items.length)); MEAS.items.forEach((it, i) => add('meas.' + it.id, `${it.kind === 'dist' ? 'Distance' : 'Angle'} ${i + 1}`, 'dim', MEAS.value(it).txt)); }
   if (XC && XC.cad.length) { add('cad', 'Imported geometry', 'folder', String(XC.cad.length)); XC.cad.forEach(c => add('cad.' + c.id, c.name, 'part', c.include ? '' : 'not assessed')); }
   const E = envNow();
   if (E.shell) {
@@ -11681,7 +11826,8 @@ function renderTree() {
 function toggleNode(id) {
   if (FLAG_EL[id]) { $(FLAG_EL[id]).click(); return; }
   if (VIS.hidden.has(id)) VIS.hidden.delete(id); else VIS.hidden.add(id);
-  saveVis(); applyVisibility(); renderTree(); highlight(null); requestRender();
+  if (/^(ann|meas)(\.|$)/.test(id)) ANNSET.touched();
+  saveVis(); applyVisibility(); renderTree(); ANNSET.sync(); highlight(null); requestRender();
 }
 let hlBox = null;
 function highlight(id) {
@@ -11818,7 +11964,16 @@ function bindShell() {
   });
   tree.addEventListener('mouseover', e => { const row = e.target.closest('.tn'); if (row && row.dataset.id !== hlBox?.userData?.id) { highlight(row.dataset.id); if (hlBox) hlBox.userData.id = row.dataset.id; } });
   tree.addEventListener('mouseleave', () => highlight(null));
-  $('#br-min').onclick = () => { const b = $('#browser'), min = !b.classList.contains('min'); b.classList.toggle('min', min); $('#br-tree').hidden = min; $('#br-min').textContent = min ? '+' : '–'; $('#br-min').setAttribute('aria-expanded', String(!min)); };
+  // annotation sets (OUT-08)
+  $('#ann-set').addEventListener('change', e => { if (e.target.value) ANNSET.apply(e.target.value); });
+  $('#ann-load').onclick = () => { const v = $('#ann-set').value, b = ANNSET.builtin(v); if (b && b.user) loadSetupUser(b.user); };
+  $('#ann-save').onclick = () => { const r = $('#ann-name-row'); r.hidden = !r.hidden; if (!r.hidden) { $('#ann-name').value = ''; $('#ann-name').focus(); } };
+  const saveSet = () => { const n = $('#ann-name').value.trim(); if (!n) { $('#ann-name').focus(); return; } ANNSET.save(n); $('#ann-name-row').hidden = true; toast(`Annotation set \u201c${n}\u201d saved.`); };
+  $('#ann-name-ok').onclick = saveSet;
+  $('#ann-name').addEventListener('keydown', e => { if (e.key === 'Enter') saveSet(); else if (e.key === 'Escape') { e.stopPropagation(); $('#ann-name-row').hidden = true; } });
+  $('#ann-del').onclick = () => ANNSET.remove($('#ann-set').value);
+  ANNSET.sync();
+  $('#br-min').onclick = () => { const b = $('#browser'), min = !b.classList.contains('min'); b.classList.toggle('min', min); $('#br-tree').hidden = min; $('#br-sets').hidden = min; $('#br-min').textContent = min ? '+' : '–'; $('#br-min').setAttribute('aria-expanded', String(!min)); };
   // splitter between the viewport and the properties editor
   splitter($('#split-v'), 'v');
   try { const v = JSON.parse(localStorage.getItem('swf-split') || 'null'); if (v && v.w) document.documentElement.style.setProperty('--props-w', v.w); } catch { /* storage blocked */ }
