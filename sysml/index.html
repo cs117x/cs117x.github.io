@@ -234,7 +234,7 @@ th{color:var(--muted);font-weight:600;position:sticky;top:-10px;background:var(-
     <div class="tp" id="p-tr" role="tabpanel" hidden></div>
     <div class="tp probs" id="p-pr" role="tabpanel" hidden></div>
   </section>
-  <footer class="status"><span id="sb-pos">Ln 1, Col 1</span><span id="sb-n"></span><span id="sb-d"></span><span class="sp"></span><span id="sb-build">Build 937d52ac1768</span></footer>
+  <footer class="status"><span id="sb-pos">Ln 1, Col 1</span><span id="sb-n"></span><span id="sb-d"></span><span class="sp"></span><span id="sb-build">Build 8242ac85b15e</span></footer>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
@@ -1339,7 +1339,12 @@ if (typeof module !== 'undefined' && module.exports) module.exports = HFE_DIAGRA
                     { k: 'box', x, y, z, d (along X), h, w (along Z), mat, yaw }    centre position
                     { k: 'disp', x, y, z, w, h, yaw, tilt } or { k: 'disp', size, aspect, ... }   a display, facing -X at yaw 0
                     { k: 'cyl', x, z, y0, y1, r, mat }  { k: 'dome', x, y, z, rx, ry, rz, mat }   mat: console | rack | dark | metal | glass | wall
+     shell.glass  optional list of glazed walls drawn see-through: 'front' (a windscreen), 'sides' (the two end walls)
      stations     'mirror': every other role gets a copy of the active console, screens and seat
+     ws.deskStyle 'none' for a workspace with no desk (a rugged laptop on a mount, vehicle displays on arms): the desk
+                  height is then only the reference height for the screens and items, and the desk checks do not apply.
+                  A screen's mount ('laptop', 'arm' or 'flush') draws it as a rugged laptop, a display on a vehicle
+                  mount or one set into a panel; laptop() below gives a laptop's lid and its keyboard together.
      params       user-adjustable geometry: [{ key, label, path, min, max, step }] (path into the template)
      ws           partial workstation settings merged over the tool's defaults when the template loads
      checks       { now: [check groups that apply], planned: [plain-language checks still to come] }
@@ -1350,6 +1355,18 @@ const HFE_ENV = (() => {
   // a display given by diagonal (inches) and aspect ratio
   const disp = (size, aspect, o) => { const [a, b] = aspect.split(':').map(Number), k = size * 25.4 / Math.hypot(a, b); return { k: 'disp', w: a * k, h: b * k, ...o }; };
   const scr = (size, aspect, x, z, yaw, dy, tilt = null) => ({ size, aspect, orient: 'landscape', curve: 0, tilt, dy, x, z, yaw });
+  // A generic 14 inch rugged laptop (lid and keyboard): hinge at (x, deckY, z) in the role frame, turned by yaw (+ faces
+  // right), lid opened tilt degrees back from vertical. ref = the desk height plus the screens' bottom setting, which the
+  // screen's height is given from. Returns { scr, kb } for the screens list and the objects. The workspace draws the base
+  // from the lid (LAPTOP in the tool), so the two stay together: the keys sit just in front of the hinge.
+  const laptop = ({ x, z = 0, yaw = 0, deckY, tilt = 15, ref, id = 'lt' }) => {
+    const h = 14 * 25.4 * 9 / Math.hypot(16, 9), t = tilt * Math.PI / 180, p = yaw * Math.PI / 180, L = 14 + h / 2, kd = 60.5;
+    return {
+      scr: { size: 14, aspect: '16:9', orient: 'landscape', curve: 0, tilt, mount: 'laptop', yaw,
+        x: Math.round(x + L * Math.sin(t) * Math.cos(p)), z: Math.round(z - L * Math.sin(t) * Math.sin(p)), dy: Math.round(deckY + 14 * Math.cos(t) - ref) },
+      kb: { id, type: 'keyboard', kb: 'laptop', model: 'kb-laptop', x: Math.round(x - kd * Math.cos(p)), z: Math.round(z + kd * Math.sin(p)), yaw, base: deckY, homeRowH: 4, tilt: 0, use: 'frequent' }
+    };
+  };
   const room = (L, W, H, extra) => ({ length: { key: 'length', label: L, path: ['shell', 'internal', 'length'], min: 2000, max: 30000, step: 10 },
     width: { key: 'width', label: W, path: ['shell', 'internal', 'width'], min: 1200, max: 20000, step: 10 },
     height: { key: 'height', label: H, path: ['shell', 'internal', 'height'], min: 1500, max: 6000, step: 10 }, ...extra });
@@ -1552,16 +1569,177 @@ const HFE_ENV = (() => {
       sources: ['Illustrative only: not any class of ship', 'Def Stan 00-250 and BS EN ISO 11064 for the planned checks'],
       reqs: ['ENV-07', 'ENV-08', 'ENV-10']
     },
+
+    // ---------------- vehicles and small craft (no desk: rugged laptops, vehicle displays, wheels) ----------------
+    (() => {
+      const lt = laptop({ x: 300, z: -500, yaw: 30, deckY: 760, tilt: 18, ref: 760 });
+      return {
+        id: 'lorry-cab', name: 'Lorry driver’s cab', family: 'Land: logistics vehicle', domain: 'land', status: 'preview',
+        summary: 'A right-hand-drive military lorry cab: suspension seat, steering wheel, a vehicle display on an arm above the dashboard and a rugged laptop on a pedestal mount by the centre console. No desk. For reach to the wheel, the laptop and display, and head clearance.',
+        roles: [{ id: 'driver', name: 'Driver (right seat)', z: 560 }],
+        shell: { kind: 'box', internal: { length: 2300, width: 1950, height: 1650 }, frontGap: 60, glass: ['front'] },
+        params: Object.values(room('Cab internal width (side to side)', 'Cab internal depth (windscreen to back wall)', 'Floor to roof lining')),
+        ws: {
+          chair: 'crew', armrests: false, seatH: 460, seatMin: 380, seatMax: 560, seatDepth: 480, seatWidth: 500, recline: 14, footFwd: 22, headH: 760,
+          deskStyle: 'none', deskSize: 'custom', deskWidth: 700, deskDepth: 1000, deskH: 760, deskT: 25, legroom: 900,
+          screens: {
+            count: 2, layout: 'custom', bottom: 0, tilt: 12,
+            // vehicle display on an arm above the dashboard, then the laptop on its mount to the driver's left
+            list: [{ ...scr(10.4, '4:3', 640, -250, 18, 330, 12), mount: 'arm' }, lt.scr]
+          },
+          objects: [{ id: 'w', type: 'wheel', model: 'wheel-lorry', x: 200, z: 0, base: 830, tilt: 60, use: 'frequent' }, lt.kb],
+          hands: { L: 'w', R: 'w' }
+        },
+        roleFixtures: [
+          // dashboard, steering column shroud and pedals
+          { k: 'box', x: 1000 - 140, y: 900, z: -300, d: 380, h: 260, w: 1500, mat: 'console' },
+          { k: 'box', x: 600, y: 90, z: 100, d: 50, h: 160, w: 70, mat: 'dark', tilt: 30 },
+          { k: 'box', x: 600, y: 110, z: -80, d: 50, h: 160, w: 110, mat: 'dark', tilt: 30 }
+        ],
+        fixtures: [
+          // passenger (commander) seat and the roof hatch above it, centre console
+          { k: 'box', front: 1300, y: 230, z: -560, d: 480, h: 460, w: 500, mat: 'console' },
+          { k: 'box', front: 1560, y: 820, z: -560, d: 90, h: 700, w: 480, mat: 'console', tilt: 12 },
+          { k: 'cyl', front: 1250, z: -560, y0: 1630, y1: 1650, r: 330, mat: 'dark' },
+          { k: 'box', front: 1150, y: 200, z: 0, d: 600, h: 400, w: 300, mat: 'console' }
+        ],
+        checks: { now: ALL_NOW.filter(g => g !== 'Furniture'), planned: ['Direct vision through the windscreen and mirrors (driver’s field of view)', 'Pedal reach and travel, knee clearance to the wheel and column', 'Head clearance with a helmet, and ingress and egress over the step', 'Seat suspension travel and vibration (later)'] },
+        sources: ['Layout after public photographs of military and commercial lorry cabs; indicative dimensions only', 'Steering wheels of 450 to 550 mm on heavy goods vehicles (typical)', 'Rugged laptop of the size of current 14 inch semi-rugged models, about 345 × 235 × 33 mm; generic, no product geometry', 'Def Stan 00-250 and MIL-STD-1472 for the planned checks'],
+        reqs: ['ENV-07', 'ENV-08', 'ENV-14']
+      };
+    })(),
+    {
+      id: 'afv-turret', name: 'Armoured vehicle turret (two-person)', family: 'Land: armoured fighting vehicle', domain: 'land', status: 'preview',
+      summary: 'Commander and gunner side by side in a two-person turret, as in infantry fighting vehicles: fixed crew seats, a sight eyepiece, hand controllers on a shelf, a crew display on a vehicle mount, the gun between them and a roof hatch over each. No desk. For head clearance, reach in a cramped space and display placement.',
+      roles: [{ id: 'gunner', name: 'Gunner (left seat)', z: -470 }, { id: 'commander', name: 'Commander (right seat)', z: 470, mirror: true }],
+      shell: { kind: 'box', internal: { length: 2000, width: 1800, height: 1580 }, frontGap: 40 },
+      stations: 'mirror',
+      params: Object.values(room('Turret internal width (side to side)', 'Turret internal depth', 'Basket floor to roof')),
+      ws: {
+        chair: 'crew', armrests: false, seatH: 430, seatMin: 350, seatMax: 520, seatDepth: 420, seatWidth: 440, recline: 10, footFwd: 14, headH: 720,
+        deskStyle: 'none', deskSize: 'custom', deskWidth: 600, deskDepth: 760, deskH: 700, deskT: 25, legroom: 700,
+        screens: { count: 1, layout: 'custom', bottom: 0, tilt: 10, list: [{ ...scr(10.4, '4:3', 470, -250, 28, 260, 10), mount: 'arm' }] },
+        objects: [
+          { id: 'hL', type: 'stick', model: 'stick-side', x: 290, z: -150, yaw: 0, base: 690, use: 'frequent' },
+          { id: 'hR', type: 'stick', model: 'stick-side', x: 290, z: 150, yaw: 0, base: 690, use: 'frequent' }
+        ],
+        hands: { L: 'hL', R: 'hR' }
+      },
+      roleFixtures: [
+        // shelf for the hand controllers, sight eyepiece, roof hatch ring and vision blocks
+        { k: 'box', x: 370, y: 640, z: 0, d: 240, h: 100, w: 440, mat: 'console' },
+        { k: 'box', x: 260, y: 1210, z: 0, d: 160, h: 110, w: 120, mat: 'dark' },
+        { k: 'box', x: 560, y: 1290, z: 0, d: 300, h: 260, w: 260, mat: 'rack' },
+        { k: 'cyl', x: -120, z: 0, y0: 1560, y1: 1580, r: 300, mat: 'dark' },
+        { k: 'box', x: 780, y: 1440, z: 0, d: 20, h: 90, w: 220, mat: 'glass' }
+      ],
+      fixtures: [
+        // the gun's breech and cradle between the crew, ammunition and radio racks at the rear
+        { k: 'box', front: 750, y: 1050, z: 0, d: 1300, h: 260, w: 300, mat: 'metal' },
+        { k: 'box', front: 1650, y: 900, z: 0, d: 260, h: 700, w: 1500, mat: 'rack' }
+      ],
+      checks: { now: ALL_NOW.filter(g => g !== 'Furniture'), planned: ['Head and helmet clearance to the roof, sight and hatch ring (KIT tier 2)', 'Hatch transit, head-out posture and commander standing on the seat', 'Sight eyepiece alignment with the design eye point across the population', 'Gun recoil and breech guard clearance', 'Vibration and shock (later)'] },
+      sources: ['Two-person medium-calibre turret layout after public imagery of infantry fighting vehicles; not any vehicle', 'Turret ring diameters of about 1.8 to 2.0 m for such turrets (public manufacturer brochures); all internal dimensions indicative', 'MIL-STD-1472 and Def Stan 00-250 for the planned checks'],
+      reqs: ['ENV-07', 'ENV-08', 'ENV-14']
+    },
+    {
+      id: 'raiding-craft-helm', name: 'Fast boat helm (raiding craft class)', family: 'Maritime: small craft', domain: 'maritime', status: 'preview',
+      summary: 'The coxswain on a jockey seat at the helm console of an open fast boat of about 9 m, as in rigid raiding craft: helm wheel, throttle, a chart plotter set in the console and a windscreen, with a second jockey seat beside. For reach to the controls and display placement; ship motion and shock are planned.',
+      roles: [{ id: 'cox', name: 'Coxswain', z: -330 }],
+      // open boat: the walls are the tubes and fairings, about 650 mm above the deck; no deckhead
+      shell: { kind: 'box', internal: { length: 2300, width: 5000, height: 650 }, ceiling: false, frontGap: 2300 },
+      params: [
+        { key: 'length', label: 'Beam inside the tubes', path: ['shell', 'internal', 'length'], min: 1500, max: 4000, step: 10 },
+        { key: 'width', label: 'Deck length shown', path: ['shell', 'internal', 'width'], min: 3000, max: 12000, step: 10 },
+        { key: 'height', label: 'Tube and fairing height above the deck', path: ['shell', 'internal', 'height'], min: 300, max: 1200, step: 10 }
+      ],
+      ws: {
+        chair: 'jockey', armrests: false, seatH: 720, footrest: 280, seatMin: 600, seatMax: 850, seatDepth: 420, seatWidth: 300, recline: 2, footFwd: 8,
+        deskStyle: 'console', deskSize: 'custom', deskWidth: 700, deskDepth: 700, deskH: 1000, deskT: 40, legroom: 420,
+        screens: { count: 1, layout: 'custom', bottom: 0, tilt: 35, list: [{ ...scr(12.1, '4:3', 600, 0, 0, 200, 25), mount: 'flush' }] },
+        objects: [
+          { id: 'w', type: 'wheel', model: 'wheel-helm', x: 260, z: -40, base: 1080, tilt: 35, use: 'frequent' },
+          { id: 't', type: 'throttle', model: 'throttle-generic', x: 220, z: 260, yaw: 0, use: 'frequent' }
+        ],
+        hands: { L: 'w', R: 't' }
+      },
+      roleFixtures: [
+        // the plotter's pod, windscreen, compass and grab rail on the console
+        { k: 'box', x: 610, y: 1100, z: 0, d: 120, h: 200, w: 300, mat: 'console' },
+        { k: 'box', x: 740, y: 1250, z: 0, d: 12, h: 480, w: 760, mat: 'glass', tilt: 25 },
+        { k: 'cyl', x: 470, z: -250, y0: 1000, y1: 1070, r: 65, mat: 'dark' },
+        { k: 'cyl', axis: 'z', x: 660, y: 1060, z: 0, len: 700, r: 16, mat: 'metal' }
+      ],
+      fixtures: [
+        // the second jockey seat beside the coxswain, and the forward troop seats
+        { k: 'box', front: 2300 + 700 + 210, y: 380, z: 330, d: 420, h: 760, w: 300, mat: 'console' },
+        { k: 'box', front: 1500, y: 380, z: -330, d: 420, h: 760, w: 300, mat: 'console' },
+        { k: 'box', front: 1500, y: 380, z: 330, d: 420, h: 760, w: 300, mat: 'console' }
+      ],
+      checks: { now: ALL_NOW.filter(g => g !== 'Furniture'), planned: ['Shock and slamming at speed: posture on the jockey seat, knee flexion and grab handle reach (ENV-10)', 'Sightline over the bow and the windscreen frame at planing trim', 'Display legibility in sunlight and spray', 'Standing (sit-stand) helm posture'] },
+      sources: ['Offshore raiding craft class: length about 9.1 m, beam about 2.9 m over the tubes (Holyhead Marine ORC data sheet, public)', 'Console, seat and control positions indicative, after public photographs; not any craft', 'Def Stan 00-250 and MIL-STD-1472 for the planned checks'],
+      reqs: ['ENV-07', 'ENV-08', 'ENV-10', 'ENV-14']
+    },
+    {
+      id: 'landing-craft', name: 'Landing craft wheelhouse', family: 'Maritime: amphibious', domain: 'maritime', status: 'preview',
+      summary: 'The coxswain standing at the console of a small enclosed wheelhouse on a landing craft (vehicle and personnel class): helm wheel, throttle, a radar display on an arm and a chart display in the console, with windows all round. For standing reach, sightlines over the console and head clearance.',
+      roles: [{ id: 'cox', name: 'Coxswain (standing)', z: 0 }],
+      shell: { kind: 'box', internal: { length: 1500, width: 1500, height: 2000 }, frontGap: 40, glass: ['front', 'sides'], door: { side: 'rear', z: 0, width: 600, height: 1800 } },
+      params: Object.values(room('Wheelhouse internal width (side to side)', 'Wheelhouse internal depth', 'Deck to deckhead')),
+      ws: {
+        solver: 'body', stance: 'standing', chair: 'crew', seatH: 450,
+        deskStyle: 'console', deskSize: 'custom', deskWidth: 1200, deskDepth: 520, deskH: 1000, deskT: 40, legroom: 120,
+        screens: { count: 2, layout: 'custom', bottom: 0, tilt: 30, list: [{ ...scr(10.4, '4:3', 400, -330, 15, 160, 8), mount: 'arm' }, { ...scr(12.1, '4:3', 330, 260, -10, 0, 35), mount: 'flush' }] },
+        objects: [
+          { id: 'w', type: 'wheel', model: 'wheel-helm', x: 170, z: -20, base: 1130, tilt: 28, use: 'frequent' },
+          { id: 't', type: 'throttle', model: 'throttle-generic', x: 160, z: 330, yaw: 0, use: 'frequent' }
+        ],
+        hands: { L: 'w', R: 't' }
+      },
+      roleFixtures: [{ k: 'box', x: 560, y: 1700, z: 0, d: 250, h: 200, w: 1400, mat: 'rack' }],
+      checks: { now: ALL_NOW.filter(g => g !== 'Furniture' && g !== 'Trunk and seat'), planned: ['Sightline from the standing eye point over the console and the bow ramp', 'Head clearance to the deckhead and fittings with a helmet', 'Standing posture in a seaway: grab handles and bracing (ENV-10)', 'Door transit with kit'] },
+      sources: ['Landing craft vehicle and personnel class, as operated by the Royal Marines (public descriptions); all wheelhouse dimensions indicative, not any craft', 'Def Stan 00-250 and MIL-STD-1472 for the planned checks'],
+      reqs: ['ENV-07', 'ENV-08', 'ENV-09', 'ENV-10', 'ENV-14']
+    },
+    (() => {
+      const lt = laptop({ x: 320, z: 0, yaw: 0, deckY: 700, tilt: 15, ref: 700 });
+      return {
+        id: 'helicopter-cabin', name: 'Helicopter cabin (heavy-lift class)', family: 'Air: rotary wing', domain: 'air', status: 'preview',
+        summary: 'Mission operators on crew seats facing the cabin wall of a heavy-lift helicopter, each with a rugged laptop on a mounting tray and a display on a wall mount, and troop seats along the opposite wall. No desk. For reach and display placement in a cabin with low headroom.',
+        roles: [{ id: 'op1', name: 'Mission operator 1', z: -700 }, { id: 'op2', name: 'Mission operator 2', z: 700 }],
+        // CH-47 class cabin: about 9.3 m long, 2.29 m wide and 1.98 m high (public type data); consoles face the side wall
+        shell: { kind: 'box', internal: { length: 9300, width: 2290, height: 1980 }, frontGap: 60, door: { side: 'rear', z: -3800, width: 900, height: 1650 } },
+        stations: 'mirror',
+        params: Object.values(room('Cabin length', 'Cabin width (wall to wall)', 'Cabin floor to roof')),
+        ws: {
+          chair: 'crew', armrests: false, seatH: 440, seatMin: 380, seatMax: 500, seatDepth: 440, seatWidth: 460, recline: 10, footFwd: 10, headH: 740,
+          deskStyle: 'none', deskSize: 'custom', deskWidth: 600, deskDepth: 760, deskH: 700, deskT: 25, legroom: 700,
+          screens: { count: 2, layout: 'custom', bottom: 0, tilt: 10, list: [lt.scr, { ...scr(10.4, '4:3', 640, 0, 0, 420, 8), mount: 'arm' }] },
+          objects: [lt.kb],
+          hands: { L: 'lt', R: 'lt' }
+        },
+        roleFixtures: [{ k: 'box', x: 810, y: 1280, z: 0, d: 10, h: 320, w: 380, mat: 'glass' }],
+        fixtures: [
+          // troop seats along the opposite wall, and the floor rails
+          { k: 'box', front: 2290 - 230, y: 420, z: 0, d: 420, h: 50, w: 8000, mat: 'console' },
+          { k: 'box', front: 2290 - 25, y: 800, z: 0, d: 30, h: 650, w: 8000, mat: 'wall' },
+          ...[-500, 500].map(dz => ({ k: 'cyl', axis: 'z', front: 1145 + dz, y: 8, z: 0, len: 9000, r: 10, mat: 'metal' }))
+        ],
+        checks: { now: ALL_NOW.filter(g => g !== 'Furniture'), planned: ['Head clearance to the roof and fittings when standing to move along the cabin (ENV-09)', 'Crash-attenuating seat stroke clearance below the seat', 'Laptop and tray restraint and the strike envelope in a crash (later)', 'Vibration and display legibility in flight (later)'] },
+        sources: ['CH-47 class cabin, about 9.3 × 2.29 × 1.98 m (public type data)', 'Operator stations, trays and display mounts indicative; not any aircraft fit', 'Rugged laptop of the size of current 14 inch semi-rugged models, about 345 × 235 × 33 mm; generic', 'Def Stan 00-970 and MIL-STD-1472 for the planned checks'],
+        reqs: ['ENV-07', 'ENV-08', 'ENV-14']
+      };
+    })(),
     // planned templates (ENV-08): listed so users can see the roadmap; they cannot be loaded yet
-    { id: 'vehicle-commander', name: 'Vehicle commander station with roof hatch', family: 'Land: vehicle', domain: 'land', status: 'planned',
-      summary: 'Commander and gunner stations under a roof hatch: head and helmet clearance, hatch transit with kit, vision blocks and sights. Needs the kit model and standing postures.',
+    { id: 'vehicle-commander', name: 'Vehicle commander head out of the hatch', family: 'Land: vehicle', domain: 'land', status: 'planned',
+      summary: 'The commander standing head-out of a roof hatch: head and helmet clearance, hatch transit with kit, the view over the hull. The seated turret crew are in the Armoured vehicle turret template.',
       checks: { planned: ['Head and helmet clearance', 'Hatch transit with kit', 'Vision block and periscope sightlines', 'Reach to controls'] } },
     { id: 'vehicle-driver', name: 'Vehicle driver station', family: 'Land: vehicle', domain: 'land', status: 'planned',
       summary: 'Driver seat, pedals, steering and vision blocks, head-out and closed-down.', checks: { planned: ['Pedal and control reach', 'Knee clearance', 'Vision blocks'] } },
     { id: 'dismounted', name: 'Doorways, steps and firing positions', family: 'Land: dismounted', domain: 'land', status: 'planned',
       summary: 'Apertures, step heights, trench and firing-step profiles, kneeling and prone positions.', checks: { planned: ['Aperture transit', 'Step heights', 'Weapon sight alignment'] } },
-    { id: 'rotary-cabin', name: 'Rotary-wing cockpit and cabin', family: 'Air: rotary', domain: 'air', status: 'planned',
-      summary: 'Pilot stations with cyclic and collective, troop seats, door and ramp, with cabin headroom.', checks: { planned: ['Cyclic and collective reach', 'Cabin headroom', 'Door transit with kit'] } },
+    { id: 'rotary-cabin', name: 'Rotary-wing cockpit', family: 'Air: rotary wing', domain: 'air', status: 'planned',
+      summary: 'Pilot stations with cyclic and collective, pedals and the instrument panel. The cabin is in the Helicopter cabin template.', checks: { planned: ['Cyclic and collective reach', 'Pedal reach', 'Door transit with kit'] } },
     { id: 'ship-bridge', name: 'Ship’s bridge', family: 'Maritime: surface', domain: 'maritime', status: 'planned',
       summary: 'Standing and seated bridge consoles, bridge windows and sightlines over the bow, bridge wings.', checks: { planned: ['Sightlines over the console to the horizon', 'Standing console reach', 'Window and mullion obscuration'] } },
     { id: 'atc-tower', name: 'Air traffic control tower cab', family: 'Air: ground', domain: 'air', status: 'planned',
@@ -1597,7 +1775,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = HFE_ENV;
 
 const HFE_CHECKS = [{"id": "viewDist", "group": "Vision", "name": "Viewing distance, eye to screen centre", "unit": "mm"}, {"id": "losCentre", "group": "Vision", "name": "Line of sight to screen centre, below horizontal", "unit": "°"}, {"id": "gazeH", "group": "Vision", "name": "Horizontal gaze angle to screen centre (+ right)", "unit": "°"}, {"id": "topVsEye", "group": "Vision", "name": "Top of screen relative to eye height", "unit": "mm"}, {"id": "losNormal", "group": "Vision", "name": "Line of sight off the screen normal", "unit": "°"}, {"id": "arrayEdge", "group": "Vision", "name": "Outermost screen edge, horizontal angle", "unit": "°"}, {"id": "headIncl", "group": "Head and neck", "name": "Head inclination, forward of upright", "unit": "°"}, {"id": "neckFlex", "group": "Head and neck", "name": "Neck flexion relative to trunk", "unit": "°"}, {"id": "elbow", "group": "Upper limb", "name": "Elbow angle, included", "unit": "°"}, {"id": "shFlex", "group": "Upper limb", "name": "Shoulder flexion", "unit": "°"}, {"id": "shAbd", "group": "Upper limb", "name": "Shoulder abduction", "unit": "°"}, {"id": "wrist", "group": "Upper limb", "name": "Wrist extension, implied (− is flexion)", "unit": "°"}, {"id": "homeVsElbow", "group": "Upper limb", "name": "Home row relative to seated elbow height", "unit": "mm"}, {"id": "reach", "group": "Upper limb", "name": "Reach shortfall to the hand’s device", "unit": "mm"}, {"id": "recline", "group": "Trunk and seat", "name": "Trunk recline, hip–shoulder line from vertical", "unit": "°"}, {"id": "hip", "group": "Trunk and seat", "name": "Trunk–thigh angle", "unit": "°"}, {"id": "seatDepth", "group": "Trunk and seat", "name": "Clearance between seat front and back of knee", "unit": "mm"}, {"id": "seatWidth", "group": "Trunk and seat", "name": "Seat width minus hip breadth", "unit": "mm"}, {"id": "abdomen", "group": "Trunk and seat", "name": "Abdomen to desk edge", "unit": "mm"}, {"id": "armrest", "group": "Trunk and seat", "name": "Armrest height relative to elbow rest height", "unit": "mm"}, {"id": "knee", "group": "Lower limb", "name": "Knee angle, included", "unit": "°"}, {"id": "seatPop", "group": "Lower limb", "name": "Seat height relative to popliteal height + shoe + footrest", "unit": "mm"}, {"id": "thigh", "group": "Lower limb", "name": "Thigh clearance under desk", "unit": "mm"}, {"id": "legroom", "group": "Lower limb", "name": "Knee clearance to legroom limit", "unit": "mm"}, {"id": "seatRange", "group": "Furniture", "name": "Seat height outside the chair’s adjustment range", "unit": "mm"}, {"id": "deskRange", "group": "Furniture", "name": "Desk height outside its adjustment range", "unit": "mm"}, {"id": "headrest", "group": "Furniture", "name": "Headrest centre relative to the back of the head", "unit": "mm"}, {"id": "depthRange", "group": "Furniture", "name": "Seat depth outside the chair’s adjustment range", "unit": "mm"}, {"id": "lumbarRange", "group": "Furniture", "name": "Backrest lumbar support height outside the chair’s range", "unit": "mm"}, {"id": "armRange", "group": "Furniture", "name": "Armrest height outside the chair’s adjustment range", "unit": "mm"}, {"id": "rom", "group": "Joint range of motion", "name": "Smallest margin to a joint’s range-of-motion limit", "unit": "°"}, {"id": "rula", "group": "Posture scores", "name": "RULA grand score (action level 1 at 1–2, 2 at 3–4)", "unit": ""}, {"id": "reba", "group": "Posture scores", "name": "REBA score (negligible or low risk at 1–3, medium at 4–7)", "unit": ""}, {"id": "clearDesk", "group": "Clearance", "name": "Clearance, body to desk", "unit": "mm"}, {"id": "clearScreens", "group": "Clearance", "name": "Clearance, body to screens", "unit": "mm"}, {"id": "clearObjects", "group": "Clearance", "name": "Clearance, body to desk objects", "unit": "mm"}, {"id": "clearChair", "group": "Clearance", "name": "Clearance, body to armrests", "unit": "mm"}, {"id": "clearEnv", "group": "Clearance", "name": "Clearance, body to environment", "unit": "mm"}, {"id": "clearSelf", "group": "Clearance", "name": "Self-contact, body to body", "unit": "mm"}, {"id": "clearExact", "group": "Clearance", "name": "Clearance, body surface to geometry (exact)", "unit": "mm"}];
 const EXAMPLE = "/* Example: an RPAS ground control station operator workstation (indicative, public information only).\n   Parts carry @HFE::WorkspaceLink metadata that ties them to objects in Workspace Visualisation, and\n   verification cases carry @HFE::Evidence metadata that ties them to its checks. */\npackage GcsOperatorStation {\n    private import ScalarValues::*;\n    private import ISQ::*;\n\n    package Definitions {\n        item def Video;\n        item def Command;\n        enum def DisplayRole { enum tactical; enum payload; enum status; enum systems; }\n\n        port def VideoPort { out item frames : Video; }\n        port def HidPort { out item cmd : Command; }\n\n        part def Display {\n            attribute diagonal : LengthValue;\n            attribute role : DisplayRole;\n            port videoIn : ~VideoPort;\n        }\n        part def ConsoleScreen :> Display;\n        part def Keyboard { port usb : HidPort; }\n        part def FlightStick { port usb : HidPort; }\n        part def Throttle { port usb : HidPort; }\n        part def Seat {\n            attribute recline : PlaneAngleValue;\n            attribute armrestHeight : LengthValue;\n        }\n        part def MissionComputer {\n            port videoOut1 : VideoPort;\n            port videoOut2 : VideoPort;\n            port videoOut3 : VideoPort;\n            port videoOut4 : VideoPort;\n            port hidIn : ~HidPort;\n        }\n        part def OperatorConsole {\n            part seat : Seat;\n            part tactical : Display;\n            part upper : Display;\n            part statusLeft : ConsoleScreen;\n            part statusRight : ConsoleScreen;\n            part keyboard : Keyboard;\n            part stick : FlightStick;\n            part throttle : Throttle;\n            part computer : MissionComputer;\n            connect computer.videoOut1 to tactical.videoIn;\n            connect computer.videoOut2 to upper.videoIn;\n            connect computer.videoOut3 to statusLeft.videoIn;\n            connect computer.videoOut4 to statusRight.videoIn;\n            connect stick.usb to computer.hidIn;\n            connect throttle.usb to computer.hidIn;\n            connect keyboard.usb to computer.hidIn;\n        }\n        part def Operator { attribute stature : LengthValue; }\n    }\n\n    package Requirements {\n        private import Definitions::*;\n\n        requirement def <'HF-1'> DisplayViewing {\n            doc /* The operator shall be able to view each primary display from the design eye position without moving the head or trunk. */\n            subject display : Display;\n            attribute minViewingDistance : LengthValue = 500 [mm];\n            attribute maxViewingDistance : LengthValue = 800 [mm];\n            require constraint { viewingDistance >= minViewingDistance and viewingDistance <= maxViewingDistance }\n        }\n\n        requirement <'HF-1.1'> tacticalViewing : DisplayViewing {\n            doc /* The tactical display shall be between 500 mm and 800 mm from the eye of a 5th to 95th percentile operator. */\n        }\n        requirement <'HF-1.2'> displayBelowEye : DisplayViewing {\n            doc /* The top of each primary display shall be at or below horizontal eye height. */\n        }\n        requirement <'HF-2'> controlReach {\n            doc /* The flight stick and throttle shall be within the operator's normal reach with the back against the seat. */\n            subject console : OperatorConsole;\n        }\n        requirement <'HF-3'> postureRisk {\n            doc /* Working posture at the console shall score RULA action level 1 or 2 (grand score 4 or less). */\n        }\n        requirement <'HF-4'> legroom {\n            doc /* The console shall give knee and thigh clearance for the 95th percentile operator. */\n        }\n    }\n\n    part gcs {\n        doc /* Two-seat ground control station in a 20 ft container shelter. */\n        part pilotConsole : Definitions::OperatorConsole {\n            @HFE::WorkspaceLink { env = \"gcs-container\"; role = \"pilot\"; node = \"ws\"; }\n            part :>> tactical {\n                @HFE::WorkspaceLink { env = \"gcs-container\"; role = \"pilot\"; node = \"ws.scr.0\"; }\n                :>> role = Definitions::DisplayRole::tactical;\n            }\n            part :>> upper { @HFE::WorkspaceLink { env = \"gcs-container\"; role = \"pilot\"; node = \"ws.scr.1\"; } }\n            part :>> statusLeft { @HFE::WorkspaceLink { env = \"gcs-container\"; role = \"pilot\"; node = \"ws.scr.2\"; } }\n            part :>> statusRight { @HFE::WorkspaceLink { env = \"gcs-container\"; role = \"pilot\"; node = \"ws.scr.3\"; } }\n            part :>> stick { @HFE::WorkspaceLink { env = \"gcs-container\"; role = \"pilot\"; node = \"ws.obj.o2\"; } }\n            part :>> throttle { @HFE::WorkspaceLink { env = \"gcs-container\"; role = \"pilot\"; node = \"ws.obj.o3\"; } }\n            part :>> keyboard { @HFE::WorkspaceLink { env = \"gcs-container\"; role = \"pilot\"; node = \"ws.obj.o1\"; } }\n            part :>> seat { @HFE::WorkspaceLink { env = \"gcs-container\"; role = \"pilot\"; node = \"ws.chair\"; } }\n        }\n        part sensorConsole : Definitions::OperatorConsole {\n            @HFE::WorkspaceLink { env = \"gcs-container\"; role = \"sensor\"; node = \"ws\"; }\n        }\n        part pilot : Definitions::Operator {\n            @HFE::WorkspaceLink { env = \"gcs-container\"; role = \"pilot\"; node = \"man\"; }\n        }\n\n        satisfy Requirements::tacticalViewing by pilotConsole.tactical;\n        satisfy Requirements::displayBelowEye by pilotConsole.upper;\n        satisfy Requirements::controlReach by pilotConsole;\n        satisfy Requirements::postureRisk by pilotConsole;\n        satisfy Requirements::legroom by pilotConsole;\n    }\n\n    package Verification {\n        private import Requirements::*;\n\n        verification def WorkspaceAssessment {\n            doc /* Assessment in HFE-Lab Workspace Visualisation with the ANSUR II population. */\n        }\n        verification viewingCheck : WorkspaceAssessment {\n            @HFE::Evidence { check = \"viewDist#0\"; env = \"gcs-container\"; role = \"pilot\"; }\n            objective { verify tacticalViewing; }\n        }\n        verification eyeHeightCheck : WorkspaceAssessment {\n            @HFE::Evidence { check = \"topVsEye\"; env = \"gcs-container\"; role = \"pilot\"; }\n            objective { verify displayBelowEye; }\n        }\n        verification reachCheck : WorkspaceAssessment {\n            @HFE::Evidence { check = \"reach\"; env = \"gcs-container\"; role = \"pilot\"; }\n            objective { verify controlReach; }\n        }\n        verification postureCheck : WorkspaceAssessment {\n            @HFE::Evidence { check = \"rula\"; env = \"gcs-container\"; role = \"pilot\"; }\n            objective { verify postureRisk; }\n        }\n        verification legroomCheck : WorkspaceAssessment {\n            @HFE::Evidence { check = \"legroom\"; env = \"gcs-container\"; role = \"pilot\"; }\n            @HFE::Evidence { check = \"thigh\"; env = \"gcs-container\"; role = \"pilot\"; }\n            objective { verify legroom; }\n        }\n    }\n\n    package Behaviour {\n        attribute def PowerOn; attribute def LinkUp; attribute def LinkLost; attribute def Land;\n        state def ConsoleStates {\n            entry; then off;\n            state off;\n            accept PowerOn then standby;\n            state standby;\n            accept LinkUp then mission;\n            state mission;\n            accept LinkLost then lostLink;\n            accept Land then standby;\n            state lostLink;\n            accept LinkUp then mission;\n        }\n    }\n}\n";
-const BUILD = '937d52ac1768';
+const BUILD = '8242ac85b15e';
 const ELK_URL = 'https://cdn.jsdelivr.net/npm/elkjs@0.11.1/lib/elk.bundled.js';
 
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];

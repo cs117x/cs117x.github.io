@@ -1014,7 +1014,7 @@ POPS['ansur-m'] = { label: 'ANSUR II · Male', ...RAW.pop.male, src: 'ANSUR II',
    so a setup without models gives the same numbers as before.
    build(g, H, o, dims): adds meshes to g, in the object's frame (origin at the centre of its footprint on the desk). */
 const HFE_PROPS = (() => {
-  const CATS = [['keyboards', 'Keyboards'], ['pointing', 'Pointing devices'], ['flight', 'Flight controls'], ['comms', 'Phones, headsets and microphones'], ['docs', 'Documents and stationery'], ['furniture', 'Desk furniture and lighting']];
+  const CATS = [['keyboards', 'Keyboards'], ['pointing', 'Pointing devices'], ['flight', 'Flight controls'], ['vehicle', 'Vehicle and boat controls'], ['comms', 'Phones, headsets and microphones'], ['docs', 'Documents and stationery'], ['furniture', 'Desk furniture and lighting']];
 
   // ---- shared pieces ----
   // keycaps on a sloping deck: rows of caps 18 mm square at 19.05 mm pitch, lifted `cap` mm above the deck
@@ -1063,6 +1063,11 @@ const HFE_PROPS = (() => {
       build: (g, H, o, kb) => {
         keyboard(g, H, kb, o, { cap: 3, body: '#3b4136', caps: '#2c3129' });
         const ball = new H.THREE.Mesh(new H.THREE.SphereGeometry(19, 24, 16), H.M.ball); ball.position.set(kb.d / 2 - 30, o.homeRowH - 4, kb.w / 2 - 24); g.add(ball);
+      } },
+    'kb-laptop': { type: 'keyboard', cat: 'keyboards', label: 'Laptop keyboard', note: 'Flat, short-travel keys set into a laptop\u2019s deck; put the item on the laptop with its height', homeRowH: 4, src: 'Typical 14 inch rugged laptop',
+      build: (g, H, o, kb) => {
+        g.add(H.box(kb.d, 1, kb.w, H.mat('#1d2024'), 0, 0.5, 0));
+        keycaps(g, H, -kb.d / 2 + 4, -kb.w / 2 + 4, 5, Math.floor((kb.w - 8) / 19.05), () => 1, 2, H.mat('#2b3036'));
       } },
     'kb-split': { type: 'keyboard', cat: 'keyboards', label: 'Split ergonomic keyboard', note: 'Two halves, splayed and tented', src: 'Typical split ergonomic keyboard',
       build: (g, H, o, kb) => {
@@ -1128,6 +1133,14 @@ const HFE_PROPS = (() => {
         g.add(H.limb(new H.V3(0, 10, 0), new H.V3(0, d.h - 14, 0), 6, 6, H.M.metal));
         const knob = new H.THREE.Mesh(new H.THREE.SphereGeometry(12, 20, 14), H.M.kb); knob.position.set(0, d.h - 12, 0); g.add(knob);
       } },
+    // ---------------- vehicle and boat controls ----------------
+    // a wheel's origin is its hub centre (the item's base is the hub height); dia = rim outside diameter, rim = rim radius
+    'wheel-lorry': { type: 'wheel', cat: 'vehicle', label: 'Lorry steering wheel (500 mm)', d: 120, w: 500, h: 500, dia: 500, rim: 15, tilt: 55, src: 'Typical heavy goods vehicle steering wheel, 450 to 550 mm',
+      build: (g, H, o, d) => wheel(g, H, o, d, 3) },
+    'wheel-car': { type: 'wheel', cat: 'vehicle', label: 'Car or light vehicle steering wheel (380 mm)', d: 100, w: 380, h: 380, dia: 380, rim: 15, tilt: 25, src: 'Typical car steering wheel, 360 to 390 mm',
+      build: (g, H, o, d) => wheel(g, H, o, d, 3) },
+    'wheel-helm': { type: 'wheel', cat: 'vehicle', label: 'Boat helm wheel (350 mm)', d: 120, w: 350, h: 350, dia: 350, rim: 14, tilt: 30, src: 'Typical small-craft destroyer-style helm wheel, 330 to 400 mm',
+      build: (g, H, o, d) => wheel(g, H, o, d, 5) },
     'throttle-generic': { type: 'throttle', cat: 'flight', label: 'Throttle', d: 150, w: 90, h: 140, grip: 90, src: 'Generic desktop throttle',
       build: (g, H, o, d) => stick(g, H, d, false) },
     'throttle-hotas': { type: 'throttle', cat: 'flight', label: 'HOTAS twin throttle', d: 230, w: 170, h: 200, grip: 140, src: 'Typical desktop twin-lever HOTAS throttle',
@@ -1243,6 +1256,20 @@ const HFE_PROPS = (() => {
     g.add(H.limb(new H.V3(0, 20, 0), new H.V3(isStick ? 6 : -10, d.grip - 40, 0), 9, 9, H.M.metal));
     g.add(H.limb(new H.V3(isStick ? 6 : -10, d.grip - 50, 0), new H.V3(isStick ? 14 : -4, d.h - 10, 0), isStick ? 17 : 22, isStick ? 15 : 20, H.M.kb));
   }
+  // a wheel in the item's frame: hub at the origin, plane tilted back by o.tilt from vertical, column down and forward
+  function wheel(g, H, o, d, spokes) {
+    const T3 = H.THREE, t = H.rad(o.tilt != null ? o.tilt : 30), R = d.dia / 2, n = new H.V3(Math.cos(t), -Math.sin(t), 0);
+    const up = new H.V3(Math.sin(t), Math.cos(t), 0), side = new H.V3(0, 0, 1), q = new T3.Quaternion().setFromUnitVectors(new H.V3(0, 0, 1), n);
+    const rim = new T3.Mesh(new T3.TorusGeometry(R, d.rim, 12, 64), H.M.kb); rim.quaternion.copy(q); g.add(rim);
+    const hub = new T3.Mesh(new T3.CylinderGeometry(45, 45, 40, 24), H.M.device); hub.quaternion.setFromUnitVectors(new H.V3(0, 1, 0), n); g.add(hub);
+    for (let k = 0; k < spokes; k++) {
+      const th = spokes === 3 ? [Math.PI / 2, -Math.PI / 2, Math.PI][k] : k / spokes * Math.PI * 2;
+      const e = up.clone().multiplyScalar(Math.cos(th) * (R - d.rim)).addScaledVector(side, Math.sin(th) * (R - d.rim));
+      g.add(H.limb(new H.V3(0, 0, 0), e, 9, 9, H.M.metal));
+      if (spokes > 3) g.add(H.limb(e, up.clone().multiplyScalar(Math.cos(th) * (R + 60)).addScaledVector(side, Math.sin(th) * (R + 60)), 12, 10, H.M.device));
+    }
+    g.add(H.limb(new H.V3(0, 0, 0), n.clone().multiplyScalar(380), 30, 30, H.M.metal));
+  }
   function phone(g, H, d, screen) {
     const shp = new H.THREE.Shape(); shp.moveTo(0, 0); shp.lineTo(d.d, 0); shp.lineTo(d.d, 88); shp.lineTo(0, 34); shp.closePath();
     const pm = new H.THREE.Mesh(new H.THREE.ExtrudeGeometry(shp, { depth: d.w, bevelEnabled: true, bevelThickness: 3, bevelSize: 3, bevelSegments: 2 }), H.M.device);
@@ -1272,7 +1299,7 @@ const HFE_PROPS = (() => {
 
 
 /* ---------------- equipment ---------------- */
-const KB = { full: { w: 440, d: 135, off: 84, label: 'Full size with numpad' }, tkl: { w: 360, d: 135, off: 38, label: 'Tenkeyless (TKL)' }, compact: { w: 295, d: 102, off: 6, label: 'Compact 60%' } };
+const KB = { full: { w: 440, d: 135, off: 84, label: 'Full size with numpad' }, tkl: { w: 360, d: 135, off: 38, label: 'Tenkeyless (TKL)' }, compact: { w: 295, d: 102, off: 6, label: 'Compact 60%' }, laptop: { w: 290, d: 105, off: 0, label: 'Laptop keyboard' } };
 const OBJ = {
   keyboard: { label: 'Keyboard' },
   mouse: { label: 'Mouse', d: 118, w: 64, h: 38 },
@@ -1287,9 +1314,12 @@ const OBJ = {
   // types added with the model library (core/props.js); their dimensions come from the model
   trackpad: { label: 'Trackpad' }, confphone: { label: 'Conference phone' }, headset: { label: 'Headset' }, mic: { label: 'Desk microphone' },
   files: { label: 'Files' }, tray: { label: 'Letter tray' }, penpot: { label: 'Pen pot' }, stationery: { label: 'Desk item' },
-  lamp: { label: 'Desk lamp' }, pedestal: { label: 'Pedestal' }
+  lamp: { label: 'Desk lamp' }, pedestal: { label: 'Pedestal' },
+  // a steering wheel or boat helm wheel: base = height of the hub centre, tilt = the wheel's plane back from vertical (top
+  // away from the user); both hands grip the rim at 9 and 3 o'clock
+  wheel: { label: 'Steering wheel' }
 };
-const INPUT_TYPES = new Set(['keyboard', 'mouse', 'tbThumb', 'tbFinger', 'trackpad', 'stick', 'throttle']);
+const INPUT_TYPES = new Set(['keyboard', 'mouse', 'tbThumb', 'tbFinger', 'trackpad', 'stick', 'throttle', 'wheel']);
 const CHAIRS = {
   task: { label: 'Task chair', back: 640, head: false, range: [410, 540] },
   taskHead: { label: 'Task chair with headrest', back: 640, head: true, range: [410, 540] },
@@ -1299,6 +1329,9 @@ const CHAIRS = {
   // operator seats for the environment library: indicative, not products
   operator: { label: 'Operator seat, reclining, with headrest', group: 'Operator and aircrew seats', back: 820, head: true, range: [420, 540], src: 'Indicative operator seat (environment library)' },
   ejection: { label: 'Ejection seat (indicative)', group: 'Operator and aircrew seats', back: 900, head: true, range: [300, 450], noArms: true, src: 'Indicative ejection seat (environment library)' },
+  // vehicle seats: fixed to the floor on a pedestal or frame (no castors), indicative, not products
+  crew: { label: 'Vehicle crew seat, fixed, with headrest', group: 'Operator and aircrew seats', back: 640, head: true, range: [350, 560], fixed: true, src: 'Indicative vehicle crew seat (environment library)' },
+  jockey: { label: 'Jockey (straddle) seat, boat helm', group: 'Operator and aircrew seats', back: 0, head: false, range: [600, 850], saddle: true, fixed: true, noArms: true, src: 'Indicative boat jockey seat (environment library)' },
   // BS EN 1335-1:2020 Table 2 envelopes for a three-lever typist chair (gas lift, back height, back angle; fixed seat depth, no armrests).
   // Fixed seat depth is only permitted for Types B and C. A seat depth max of 9999 means "no maximum".
   typistB: { label: 'Typist chair, Type B', group: 'BS EN 1335-1', std: 'BS EN 1335-1 Type B', typist: true, noArms: true, back: 460, head: false, range: [420, 510], depth: [425, 485], lumbar: [170, 300], src: 'BS EN 1335-1:2020, Table 2, Type B' },
@@ -1318,11 +1351,19 @@ const ASPECTS = { '16:9': [16, 9], '16:10': [16, 10], '21:9': [21, 9], '32:9': [
 const SIZES = [6, 8.4, 10.4, 12.1, 15, 19, 20.1, 21.3, 21.5, 23.8, 24, 27, 31.5, 32, 34, 38, 43, 49, 55];
 const CURVES = [[0, 'Flat'], [3800, '3800R'], [3000, '3000R'], [2300, '2300R'], [1800, '1800R'], [1500, '1500R'], [1000, '1000R']];
 function screenDims(sc) { const [a, b] = ASPECTS[sc.aspect] || [16, 9]; const k = sc.size * 25.4 / Math.hypot(a, b); let w = a * k, h = b * k; if (sc.orient === 'portrait') [w, h] = [h, w]; return { w, h }; }
+// Screen mounts (screen.mount): none = a desk stand (the default); 'laptop' = the lid of a rugged laptop, hinged at its
+// bottom edge to a base that sits on the desk or, with no desk, on a mounting tray on a post; 'arm' = a rugged display on a
+// short arm to a bracket (on a bulkhead, roof or console behind it); 'flush' = a rugged display set into a panel or
+// console face (no stand). Rugged displays have a deeper, wider bezel.
+const MOUNTS = [['', 'Desk stand'], ['laptop', 'Rugged laptop'], ['arm', 'Arm to a bracket (vehicle mount)'], ['flush', 'Flush in a panel']];
+// a typical 14 inch rugged laptop, about 345 × 235 × 33 mm closed (indicative; published sizes of current semi-rugged models)
+const MOUNT_NOTE = { laptop: ' (rugged laptop)', arm: ' (vehicle mount)', flush: ' (panel)' };
+const LAPTOP = { d: 235, t: 26, side: 18, hinge: 14 };
 // a desk object's footprint: the keyboard's layout, else its model's (core/props.js; a type's default model has the type's
 // original dimensions), else the type's
 function objDims(o) {
   if (o.type === 'keyboard') return { d: KB[o.kb].d, w: KB[o.kb].w, h: 30 };
-  const m = HFE_PROPS.of(o); return m ? { d: m.d, w: m.w, h: m.h, grip: m.grip } : OBJ[o.type];
+  const m = HFE_PROPS.of(o); return m ? { d: m.d, w: m.w, h: m.h, grip: m.grip, dia: m.dia, rim: m.rim } : OBJ[o.type];
 }
 // the object's own label: its model's, unless it is the type's default model (so existing setups keep their names)
 const objLabel = o => (o.model && o.model !== HFE_PROPS.DEFAULT[o.type] && HFE_PROPS.MODELS[o.model] ? HFE_PROPS.MODELS[o.model].label : OBJ[o.type].label);
@@ -1360,7 +1401,12 @@ const objLabel = o => (o.model && o.model !== HFE_PROPS.DEFAULT[o.type] && HFE_P
                     { k: 'box', x, y, z, d (along X), h, w (along Z), mat, yaw }    centre position
                     { k: 'disp', x, y, z, w, h, yaw, tilt } or { k: 'disp', size, aspect, ... }   a display, facing -X at yaw 0
                     { k: 'cyl', x, z, y0, y1, r, mat }  { k: 'dome', x, y, z, rx, ry, rz, mat }   mat: console | rack | dark | metal | glass | wall
+     shell.glass  optional list of glazed walls drawn see-through: 'front' (a windscreen), 'sides' (the two end walls)
      stations     'mirror': every other role gets a copy of the active console, screens and seat
+     ws.deskStyle 'none' for a workspace with no desk (a rugged laptop on a mount, vehicle displays on arms): the desk
+                  height is then only the reference height for the screens and items, and the desk checks do not apply.
+                  A screen's mount ('laptop', 'arm' or 'flush') draws it as a rugged laptop, a display on a vehicle
+                  mount or one set into a panel; laptop() below gives a laptop's lid and its keyboard together.
      params       user-adjustable geometry: [{ key, label, path, min, max, step }] (path into the template)
      ws           partial workstation settings merged over the tool's defaults when the template loads
      checks       { now: [check groups that apply], planned: [plain-language checks still to come] }
@@ -1371,6 +1417,18 @@ const HFE_ENV = (() => {
   // a display given by diagonal (inches) and aspect ratio
   const disp = (size, aspect, o) => { const [a, b] = aspect.split(':').map(Number), k = size * 25.4 / Math.hypot(a, b); return { k: 'disp', w: a * k, h: b * k, ...o }; };
   const scr = (size, aspect, x, z, yaw, dy, tilt = null) => ({ size, aspect, orient: 'landscape', curve: 0, tilt, dy, x, z, yaw });
+  // A generic 14 inch rugged laptop (lid and keyboard): hinge at (x, deckY, z) in the role frame, turned by yaw (+ faces
+  // right), lid opened tilt degrees back from vertical. ref = the desk height plus the screens' bottom setting, which the
+  // screen's height is given from. Returns { scr, kb } for the screens list and the objects. The workspace draws the base
+  // from the lid (LAPTOP in the tool), so the two stay together: the keys sit just in front of the hinge.
+  const laptop = ({ x, z = 0, yaw = 0, deckY, tilt = 15, ref, id = 'lt' }) => {
+    const h = 14 * 25.4 * 9 / Math.hypot(16, 9), t = tilt * Math.PI / 180, p = yaw * Math.PI / 180, L = 14 + h / 2, kd = 60.5;
+    return {
+      scr: { size: 14, aspect: '16:9', orient: 'landscape', curve: 0, tilt, mount: 'laptop', yaw,
+        x: Math.round(x + L * Math.sin(t) * Math.cos(p)), z: Math.round(z - L * Math.sin(t) * Math.sin(p)), dy: Math.round(deckY + 14 * Math.cos(t) - ref) },
+      kb: { id, type: 'keyboard', kb: 'laptop', model: 'kb-laptop', x: Math.round(x - kd * Math.cos(p)), z: Math.round(z + kd * Math.sin(p)), yaw, base: deckY, homeRowH: 4, tilt: 0, use: 'frequent' }
+    };
+  };
   const room = (L, W, H, extra) => ({ length: { key: 'length', label: L, path: ['shell', 'internal', 'length'], min: 2000, max: 30000, step: 10 },
     width: { key: 'width', label: W, path: ['shell', 'internal', 'width'], min: 1200, max: 20000, step: 10 },
     height: { key: 'height', label: H, path: ['shell', 'internal', 'height'], min: 1500, max: 6000, step: 10 }, ...extra });
@@ -1573,16 +1631,177 @@ const HFE_ENV = (() => {
       sources: ['Illustrative only: not any class of ship', 'Def Stan 00-250 and BS EN ISO 11064 for the planned checks'],
       reqs: ['ENV-07', 'ENV-08', 'ENV-10']
     },
+
+    // ---------------- vehicles and small craft (no desk: rugged laptops, vehicle displays, wheels) ----------------
+    (() => {
+      const lt = laptop({ x: 300, z: -500, yaw: 30, deckY: 760, tilt: 18, ref: 760 });
+      return {
+        id: 'lorry-cab', name: 'Lorry driver’s cab', family: 'Land: logistics vehicle', domain: 'land', status: 'preview',
+        summary: 'A right-hand-drive military lorry cab: suspension seat, steering wheel, a vehicle display on an arm above the dashboard and a rugged laptop on a pedestal mount by the centre console. No desk. For reach to the wheel, the laptop and display, and head clearance.',
+        roles: [{ id: 'driver', name: 'Driver (right seat)', z: 560 }],
+        shell: { kind: 'box', internal: { length: 2300, width: 1950, height: 1650 }, frontGap: 60, glass: ['front'] },
+        params: Object.values(room('Cab internal width (side to side)', 'Cab internal depth (windscreen to back wall)', 'Floor to roof lining')),
+        ws: {
+          chair: 'crew', armrests: false, seatH: 460, seatMin: 380, seatMax: 560, seatDepth: 480, seatWidth: 500, recline: 14, footFwd: 22, headH: 760,
+          deskStyle: 'none', deskSize: 'custom', deskWidth: 700, deskDepth: 1000, deskH: 760, deskT: 25, legroom: 900,
+          screens: {
+            count: 2, layout: 'custom', bottom: 0, tilt: 12,
+            // vehicle display on an arm above the dashboard, then the laptop on its mount to the driver's left
+            list: [{ ...scr(10.4, '4:3', 640, -250, 18, 330, 12), mount: 'arm' }, lt.scr]
+          },
+          objects: [{ id: 'w', type: 'wheel', model: 'wheel-lorry', x: 200, z: 0, base: 830, tilt: 60, use: 'frequent' }, lt.kb],
+          hands: { L: 'w', R: 'w' }
+        },
+        roleFixtures: [
+          // dashboard, steering column shroud and pedals
+          { k: 'box', x: 1000 - 140, y: 900, z: -300, d: 380, h: 260, w: 1500, mat: 'console' },
+          { k: 'box', x: 600, y: 90, z: 100, d: 50, h: 160, w: 70, mat: 'dark', tilt: 30 },
+          { k: 'box', x: 600, y: 110, z: -80, d: 50, h: 160, w: 110, mat: 'dark', tilt: 30 }
+        ],
+        fixtures: [
+          // passenger (commander) seat and the roof hatch above it, centre console
+          { k: 'box', front: 1300, y: 230, z: -560, d: 480, h: 460, w: 500, mat: 'console' },
+          { k: 'box', front: 1560, y: 820, z: -560, d: 90, h: 700, w: 480, mat: 'console', tilt: 12 },
+          { k: 'cyl', front: 1250, z: -560, y0: 1630, y1: 1650, r: 330, mat: 'dark' },
+          { k: 'box', front: 1150, y: 200, z: 0, d: 600, h: 400, w: 300, mat: 'console' }
+        ],
+        checks: { now: ALL_NOW.filter(g => g !== 'Furniture'), planned: ['Direct vision through the windscreen and mirrors (driver’s field of view)', 'Pedal reach and travel, knee clearance to the wheel and column', 'Head clearance with a helmet, and ingress and egress over the step', 'Seat suspension travel and vibration (later)'] },
+        sources: ['Layout after public photographs of military and commercial lorry cabs; indicative dimensions only', 'Steering wheels of 450 to 550 mm on heavy goods vehicles (typical)', 'Rugged laptop of the size of current 14 inch semi-rugged models, about 345 × 235 × 33 mm; generic, no product geometry', 'Def Stan 00-250 and MIL-STD-1472 for the planned checks'],
+        reqs: ['ENV-07', 'ENV-08', 'ENV-14']
+      };
+    })(),
+    {
+      id: 'afv-turret', name: 'Armoured vehicle turret (two-person)', family: 'Land: armoured fighting vehicle', domain: 'land', status: 'preview',
+      summary: 'Commander and gunner side by side in a two-person turret, as in infantry fighting vehicles: fixed crew seats, a sight eyepiece, hand controllers on a shelf, a crew display on a vehicle mount, the gun between them and a roof hatch over each. No desk. For head clearance, reach in a cramped space and display placement.',
+      roles: [{ id: 'gunner', name: 'Gunner (left seat)', z: -470 }, { id: 'commander', name: 'Commander (right seat)', z: 470, mirror: true }],
+      shell: { kind: 'box', internal: { length: 2000, width: 1800, height: 1580 }, frontGap: 40 },
+      stations: 'mirror',
+      params: Object.values(room('Turret internal width (side to side)', 'Turret internal depth', 'Basket floor to roof')),
+      ws: {
+        chair: 'crew', armrests: false, seatH: 430, seatMin: 350, seatMax: 520, seatDepth: 420, seatWidth: 440, recline: 10, footFwd: 14, headH: 720,
+        deskStyle: 'none', deskSize: 'custom', deskWidth: 600, deskDepth: 760, deskH: 700, deskT: 25, legroom: 700,
+        screens: { count: 1, layout: 'custom', bottom: 0, tilt: 10, list: [{ ...scr(10.4, '4:3', 470, -250, 28, 260, 10), mount: 'arm' }] },
+        objects: [
+          { id: 'hL', type: 'stick', model: 'stick-side', x: 290, z: -150, yaw: 0, base: 690, use: 'frequent' },
+          { id: 'hR', type: 'stick', model: 'stick-side', x: 290, z: 150, yaw: 0, base: 690, use: 'frequent' }
+        ],
+        hands: { L: 'hL', R: 'hR' }
+      },
+      roleFixtures: [
+        // shelf for the hand controllers, sight eyepiece, roof hatch ring and vision blocks
+        { k: 'box', x: 370, y: 640, z: 0, d: 240, h: 100, w: 440, mat: 'console' },
+        { k: 'box', x: 260, y: 1210, z: 0, d: 160, h: 110, w: 120, mat: 'dark' },
+        { k: 'box', x: 560, y: 1290, z: 0, d: 300, h: 260, w: 260, mat: 'rack' },
+        { k: 'cyl', x: -120, z: 0, y0: 1560, y1: 1580, r: 300, mat: 'dark' },
+        { k: 'box', x: 780, y: 1440, z: 0, d: 20, h: 90, w: 220, mat: 'glass' }
+      ],
+      fixtures: [
+        // the gun's breech and cradle between the crew, ammunition and radio racks at the rear
+        { k: 'box', front: 750, y: 1050, z: 0, d: 1300, h: 260, w: 300, mat: 'metal' },
+        { k: 'box', front: 1650, y: 900, z: 0, d: 260, h: 700, w: 1500, mat: 'rack' }
+      ],
+      checks: { now: ALL_NOW.filter(g => g !== 'Furniture'), planned: ['Head and helmet clearance to the roof, sight and hatch ring (KIT tier 2)', 'Hatch transit, head-out posture and commander standing on the seat', 'Sight eyepiece alignment with the design eye point across the population', 'Gun recoil and breech guard clearance', 'Vibration and shock (later)'] },
+      sources: ['Two-person medium-calibre turret layout after public imagery of infantry fighting vehicles; not any vehicle', 'Turret ring diameters of about 1.8 to 2.0 m for such turrets (public manufacturer brochures); all internal dimensions indicative', 'MIL-STD-1472 and Def Stan 00-250 for the planned checks'],
+      reqs: ['ENV-07', 'ENV-08', 'ENV-14']
+    },
+    {
+      id: 'raiding-craft-helm', name: 'Fast boat helm (raiding craft class)', family: 'Maritime: small craft', domain: 'maritime', status: 'preview',
+      summary: 'The coxswain on a jockey seat at the helm console of an open fast boat of about 9 m, as in rigid raiding craft: helm wheel, throttle, a chart plotter set in the console and a windscreen, with a second jockey seat beside. For reach to the controls and display placement; ship motion and shock are planned.',
+      roles: [{ id: 'cox', name: 'Coxswain', z: -330 }],
+      // open boat: the walls are the tubes and fairings, about 650 mm above the deck; no deckhead
+      shell: { kind: 'box', internal: { length: 2300, width: 5000, height: 650 }, ceiling: false, frontGap: 2300 },
+      params: [
+        { key: 'length', label: 'Beam inside the tubes', path: ['shell', 'internal', 'length'], min: 1500, max: 4000, step: 10 },
+        { key: 'width', label: 'Deck length shown', path: ['shell', 'internal', 'width'], min: 3000, max: 12000, step: 10 },
+        { key: 'height', label: 'Tube and fairing height above the deck', path: ['shell', 'internal', 'height'], min: 300, max: 1200, step: 10 }
+      ],
+      ws: {
+        chair: 'jockey', armrests: false, seatH: 720, footrest: 280, seatMin: 600, seatMax: 850, seatDepth: 420, seatWidth: 300, recline: 2, footFwd: 8,
+        deskStyle: 'console', deskSize: 'custom', deskWidth: 700, deskDepth: 700, deskH: 1000, deskT: 40, legroom: 420,
+        screens: { count: 1, layout: 'custom', bottom: 0, tilt: 35, list: [{ ...scr(12.1, '4:3', 600, 0, 0, 200, 25), mount: 'flush' }] },
+        objects: [
+          { id: 'w', type: 'wheel', model: 'wheel-helm', x: 260, z: -40, base: 1080, tilt: 35, use: 'frequent' },
+          { id: 't', type: 'throttle', model: 'throttle-generic', x: 220, z: 260, yaw: 0, use: 'frequent' }
+        ],
+        hands: { L: 'w', R: 't' }
+      },
+      roleFixtures: [
+        // the plotter's pod, windscreen, compass and grab rail on the console
+        { k: 'box', x: 610, y: 1100, z: 0, d: 120, h: 200, w: 300, mat: 'console' },
+        { k: 'box', x: 740, y: 1250, z: 0, d: 12, h: 480, w: 760, mat: 'glass', tilt: 25 },
+        { k: 'cyl', x: 470, z: -250, y0: 1000, y1: 1070, r: 65, mat: 'dark' },
+        { k: 'cyl', axis: 'z', x: 660, y: 1060, z: 0, len: 700, r: 16, mat: 'metal' }
+      ],
+      fixtures: [
+        // the second jockey seat beside the coxswain, and the forward troop seats
+        { k: 'box', front: 2300 + 700 + 210, y: 380, z: 330, d: 420, h: 760, w: 300, mat: 'console' },
+        { k: 'box', front: 1500, y: 380, z: -330, d: 420, h: 760, w: 300, mat: 'console' },
+        { k: 'box', front: 1500, y: 380, z: 330, d: 420, h: 760, w: 300, mat: 'console' }
+      ],
+      checks: { now: ALL_NOW.filter(g => g !== 'Furniture'), planned: ['Shock and slamming at speed: posture on the jockey seat, knee flexion and grab handle reach (ENV-10)', 'Sightline over the bow and the windscreen frame at planing trim', 'Display legibility in sunlight and spray', 'Standing (sit-stand) helm posture'] },
+      sources: ['Offshore raiding craft class: length about 9.1 m, beam about 2.9 m over the tubes (Holyhead Marine ORC data sheet, public)', 'Console, seat and control positions indicative, after public photographs; not any craft', 'Def Stan 00-250 and MIL-STD-1472 for the planned checks'],
+      reqs: ['ENV-07', 'ENV-08', 'ENV-10', 'ENV-14']
+    },
+    {
+      id: 'landing-craft', name: 'Landing craft wheelhouse', family: 'Maritime: amphibious', domain: 'maritime', status: 'preview',
+      summary: 'The coxswain standing at the console of a small enclosed wheelhouse on a landing craft (vehicle and personnel class): helm wheel, throttle, a radar display on an arm and a chart display in the console, with windows all round. For standing reach, sightlines over the console and head clearance.',
+      roles: [{ id: 'cox', name: 'Coxswain (standing)', z: 0 }],
+      shell: { kind: 'box', internal: { length: 1500, width: 1500, height: 2000 }, frontGap: 40, glass: ['front', 'sides'], door: { side: 'rear', z: 0, width: 600, height: 1800 } },
+      params: Object.values(room('Wheelhouse internal width (side to side)', 'Wheelhouse internal depth', 'Deck to deckhead')),
+      ws: {
+        solver: 'body', stance: 'standing', chair: 'crew', seatH: 450,
+        deskStyle: 'console', deskSize: 'custom', deskWidth: 1200, deskDepth: 520, deskH: 1000, deskT: 40, legroom: 120,
+        screens: { count: 2, layout: 'custom', bottom: 0, tilt: 30, list: [{ ...scr(10.4, '4:3', 400, -330, 15, 160, 8), mount: 'arm' }, { ...scr(12.1, '4:3', 330, 260, -10, 0, 35), mount: 'flush' }] },
+        objects: [
+          { id: 'w', type: 'wheel', model: 'wheel-helm', x: 170, z: -20, base: 1130, tilt: 28, use: 'frequent' },
+          { id: 't', type: 'throttle', model: 'throttle-generic', x: 160, z: 330, yaw: 0, use: 'frequent' }
+        ],
+        hands: { L: 'w', R: 't' }
+      },
+      roleFixtures: [{ k: 'box', x: 560, y: 1700, z: 0, d: 250, h: 200, w: 1400, mat: 'rack' }],
+      checks: { now: ALL_NOW.filter(g => g !== 'Furniture' && g !== 'Trunk and seat'), planned: ['Sightline from the standing eye point over the console and the bow ramp', 'Head clearance to the deckhead and fittings with a helmet', 'Standing posture in a seaway: grab handles and bracing (ENV-10)', 'Door transit with kit'] },
+      sources: ['Landing craft vehicle and personnel class, as operated by the Royal Marines (public descriptions); all wheelhouse dimensions indicative, not any craft', 'Def Stan 00-250 and MIL-STD-1472 for the planned checks'],
+      reqs: ['ENV-07', 'ENV-08', 'ENV-09', 'ENV-10', 'ENV-14']
+    },
+    (() => {
+      const lt = laptop({ x: 320, z: 0, yaw: 0, deckY: 700, tilt: 15, ref: 700 });
+      return {
+        id: 'helicopter-cabin', name: 'Helicopter cabin (heavy-lift class)', family: 'Air: rotary wing', domain: 'air', status: 'preview',
+        summary: 'Mission operators on crew seats facing the cabin wall of a heavy-lift helicopter, each with a rugged laptop on a mounting tray and a display on a wall mount, and troop seats along the opposite wall. No desk. For reach and display placement in a cabin with low headroom.',
+        roles: [{ id: 'op1', name: 'Mission operator 1', z: -700 }, { id: 'op2', name: 'Mission operator 2', z: 700 }],
+        // CH-47 class cabin: about 9.3 m long, 2.29 m wide and 1.98 m high (public type data); consoles face the side wall
+        shell: { kind: 'box', internal: { length: 9300, width: 2290, height: 1980 }, frontGap: 60, door: { side: 'rear', z: -3800, width: 900, height: 1650 } },
+        stations: 'mirror',
+        params: Object.values(room('Cabin length', 'Cabin width (wall to wall)', 'Cabin floor to roof')),
+        ws: {
+          chair: 'crew', armrests: false, seatH: 440, seatMin: 380, seatMax: 500, seatDepth: 440, seatWidth: 460, recline: 10, footFwd: 10, headH: 740,
+          deskStyle: 'none', deskSize: 'custom', deskWidth: 600, deskDepth: 760, deskH: 700, deskT: 25, legroom: 700,
+          screens: { count: 2, layout: 'custom', bottom: 0, tilt: 10, list: [lt.scr, { ...scr(10.4, '4:3', 640, 0, 0, 420, 8), mount: 'arm' }] },
+          objects: [lt.kb],
+          hands: { L: 'lt', R: 'lt' }
+        },
+        roleFixtures: [{ k: 'box', x: 810, y: 1280, z: 0, d: 10, h: 320, w: 380, mat: 'glass' }],
+        fixtures: [
+          // troop seats along the opposite wall, and the floor rails
+          { k: 'box', front: 2290 - 230, y: 420, z: 0, d: 420, h: 50, w: 8000, mat: 'console' },
+          { k: 'box', front: 2290 - 25, y: 800, z: 0, d: 30, h: 650, w: 8000, mat: 'wall' },
+          ...[-500, 500].map(dz => ({ k: 'cyl', axis: 'z', front: 1145 + dz, y: 8, z: 0, len: 9000, r: 10, mat: 'metal' }))
+        ],
+        checks: { now: ALL_NOW.filter(g => g !== 'Furniture'), planned: ['Head clearance to the roof and fittings when standing to move along the cabin (ENV-09)', 'Crash-attenuating seat stroke clearance below the seat', 'Laptop and tray restraint and the strike envelope in a crash (later)', 'Vibration and display legibility in flight (later)'] },
+        sources: ['CH-47 class cabin, about 9.3 × 2.29 × 1.98 m (public type data)', 'Operator stations, trays and display mounts indicative; not any aircraft fit', 'Rugged laptop of the size of current 14 inch semi-rugged models, about 345 × 235 × 33 mm; generic', 'Def Stan 00-970 and MIL-STD-1472 for the planned checks'],
+        reqs: ['ENV-07', 'ENV-08', 'ENV-14']
+      };
+    })(),
     // planned templates (ENV-08): listed so users can see the roadmap; they cannot be loaded yet
-    { id: 'vehicle-commander', name: 'Vehicle commander station with roof hatch', family: 'Land: vehicle', domain: 'land', status: 'planned',
-      summary: 'Commander and gunner stations under a roof hatch: head and helmet clearance, hatch transit with kit, vision blocks and sights. Needs the kit model and standing postures.',
+    { id: 'vehicle-commander', name: 'Vehicle commander head out of the hatch', family: 'Land: vehicle', domain: 'land', status: 'planned',
+      summary: 'The commander standing head-out of a roof hatch: head and helmet clearance, hatch transit with kit, the view over the hull. The seated turret crew are in the Armoured vehicle turret template.',
       checks: { planned: ['Head and helmet clearance', 'Hatch transit with kit', 'Vision block and periscope sightlines', 'Reach to controls'] } },
     { id: 'vehicle-driver', name: 'Vehicle driver station', family: 'Land: vehicle', domain: 'land', status: 'planned',
       summary: 'Driver seat, pedals, steering and vision blocks, head-out and closed-down.', checks: { planned: ['Pedal and control reach', 'Knee clearance', 'Vision blocks'] } },
     { id: 'dismounted', name: 'Doorways, steps and firing positions', family: 'Land: dismounted', domain: 'land', status: 'planned',
       summary: 'Apertures, step heights, trench and firing-step profiles, kneeling and prone positions.', checks: { planned: ['Aperture transit', 'Step heights', 'Weapon sight alignment'] } },
-    { id: 'rotary-cabin', name: 'Rotary-wing cockpit and cabin', family: 'Air: rotary', domain: 'air', status: 'planned',
-      summary: 'Pilot stations with cyclic and collective, troop seats, door and ramp, with cabin headroom.', checks: { planned: ['Cyclic and collective reach', 'Cabin headroom', 'Door transit with kit'] } },
+    { id: 'rotary-cabin', name: 'Rotary-wing cockpit', family: 'Air: rotary wing', domain: 'air', status: 'planned',
+      summary: 'Pilot stations with cyclic and collective, pedals and the instrument panel. The cabin is in the Helicopter cabin template.', checks: { planned: ['Cyclic and collective reach', 'Pedal reach', 'Door transit with kit'] } },
     { id: 'ship-bridge', name: 'Ship’s bridge', family: 'Maritime: surface', domain: 'maritime', status: 'planned',
       summary: 'Standing and seated bridge consoles, bridge windows and sightlines over the bow, bridge wings.', checks: { planned: ['Sightlines over the console to the horizon', 'Standing console reach', 'Window and mullion obscuration'] } },
     { id: 'atc-tower', name: 'Air traffic control tower cab', family: 'Air: ground', domain: 'air', status: 'planned',
@@ -2717,7 +2936,7 @@ const HFE_HMI = (() => {
         L('mode', 60, 700, 300, 40, '{apMode}', 22, '#46ff7a'), L('mach', 860, 700, 140, 40, 'M {mach:2}', 22, '#46ff7a', { align: 'right' })] }] }) },
     radar: { name: 'Surveillance radar scope', group: 'Sensors', screens: 1,
       summary: 'A plan position (PPI) scope with a rotating sweep and fading contacts, range rings and bearings, range and mode selection, transmit control with a silent warning, and a selectable track table.',
-      suggest: [{ env: 'ship-ops-room', role: null, node: 'ws.scr.0', screen: 'radar' }],
+      suggest: [{ env: 'ship-ops-room', role: null, node: 'ws.scr.0', screen: 'radar' }, { env: 'landing-craft', role: 'cox', node: 'ws.scr.0', screen: 'radar' }],
       build: () => ({ vars: [{ name: 'rng', type: 'number', init: 80, unit: 'NM' }, { name: 'rmode', type: 'text', init: 'SEARCH' }, { name: 'tx', type: 'bool', init: true },
         { name: 'trk', type: 'number', init: 0 }, { name: 'hdg', type: 'number', init: 45, unit: '°' }], screens: [{ id: 'radar', name: 'Radar', w: 1024, h: 768, bg: '#020604', widgets: [
         { id: 'ppi', type: 'radar', x: 8, y: 8, w: 752, h: 752, range: 80, rangeVar: 'rng', unit: 'NM', rings: 4, rpm: 12, heading: 'hdg', size: 15, visibleWhen: 'tx',
@@ -2735,7 +2954,8 @@ const HFE_HMI = (() => {
         L('sel', 776, 690, 236, 30, 'Selected track: {trk}', 15, 'grey')] }] }) },
     c2: { name: 'Command and control: operating picture and tasking', group: 'C2', screens: 2,
       summary: 'Two large 1920 × 1080 screens for a command and control exercise. The common operating picture has an area map (procedural terrain, grid, areas, routes and units with NATO-style frames) with layer toggles, an alert to acknowledge, unit and event tables; the tasking board has a task list with status, asset readiness and controls.',
-      suggest: [{ env: 'control-centre', role: null, node: 'ws.scr.0', screen: 'cop' }, { env: 'control-centre', role: null, node: 'ws.scr.1', screen: 'tasking' }],
+      suggest: [{ env: 'control-centre', role: null, node: 'ws.scr.0', screen: 'cop' }, { env: 'control-centre', role: null, node: 'ws.scr.1', screen: 'tasking' },
+        { env: 'helicopter-cabin', role: null, node: 'ws.scr.0', screen: 'cop' }, { env: 'lorry-cab', role: 'driver', node: 'ws.scr.1', screen: 'cop' }],
       build: () => {
         const top = t => [{ id: 'bar', type: 'panel', x: 0, y: 0, w: 1920, h: 64, title: '', fill: '#0d151d', stroke: '#0d151d' },
           L('title', 24, 14, 900, 36, t, 26, 'white', { bold: true }), L('ex', 940, 14, 560, 36, 'EXERCISE {exName} · NOT FOR OPERATIONAL USE', 18, 'amber', { align: 'centre' }),
@@ -3078,6 +3298,8 @@ function gripHand(side, S, gr, HL, E) {
   const Wt = C.clone().addScaledVector(x, -gx).addScaledVector(Fd, -gy);
   return { Wt, tip: Wt.clone().addScaledVector(Fd, HL), tilt: 0, basis: { x, y, z }, grasp: { c: C, a: A, r: gr.r } };
 }
+// a wheel's rim radius, rim (tube) radius and plane angle from its model and the item's tilt
+function wheelOf(o) { const m = HFE_PROPS.of(o) || {}; return { R: (m.dia || 450) / 2, r: m.rim || 14, t: rad(o.tilt != null ? o.tilt : 30) }; }
 function objName(o, all) {
   const same = all.filter(x => objLabel(x) === objLabel(o));
   return objLabel(o) + (same.length > 1 ? ' ' + (same.indexOf(o) + 1) : '');
@@ -3138,6 +3360,12 @@ function objWorld(o, deskY, HL, reachH) {
     // fingertip control (panel mini-joystick): hand palm down behind the knob
     const gy = dims.grip; r.reachPt = T(0, gy, 0);
     r.hand = () => ({ Wt: T(-0.42 * HL, gy - 0.12 * HL, 0), tip: T(0.12 * HL, gy + 0.05 * HL, 0), tilt: rad(20) });
+  } else if (o.type === 'wheel') {
+    // power grip round the rim at 9 and 3 o'clock: each hand holds a 36° arc of the rim, taken as a straight handle
+    const w = wheelOf(o), rim = th => T(w.R * Math.cos(th) * Math.sin(w.t), w.R * Math.cos(th) * Math.cos(w.t), w.R * Math.sin(th));
+    const gr = side => { const c = side * Math.PI / 2, dl = rad(18), a = rim(c + side * dl), b = rim(c - side * dl); return { a, b, r: w.r, y: (a.y + b.y) / 2 }; };
+    r.reachPt = T(0, 0, 0); r.reachPts = { [-1]: rim(-Math.PI / 2), [1]: rim(Math.PI / 2) }; r.wheel = w;
+    r.hand = (side, S, E) => gripHand(side, S, gr(side), HL, E);
   } else if (o.type === 'phone') {
     const hs = T(-10, 70, -0.32 * dims.w); r.reachPt = T(-10, 30, -0.32 * dims.w);
     r.hand = () => ({ Wt: T(-10 - 0.42 * HL, 98, -0.32 * dims.w), tip: T(-10 + 0.3 * HL, 88, -0.32 * dims.w), tilt: 0 });
@@ -4720,12 +4948,12 @@ function solve(M, W, ov) {
     if (x >= 0 && (maxTop == null || top > maxTop)) { maxTop = top; maxTopX = x; }
   }
   if (KF.x >= 0 && (maxTop == null || K.y + dk > maxTop)) { maxTop = K.y + dk; maxTopX = Math.max(K.x, 0); }
-  R.thigh = maxTop == null ? null : deskUnder - maxTop - (kitFx().segs.thigh || 0);   // less the thickness of clothing over the thigh
-  R.legroom = W.legroom - KF.x;
+  R.thigh = maxTop == null || W.deskStyle === 'none' ? null : deskUnder - maxTop - (kitFx().segs.thigh || 0);   // less the thickness of clothing over the thigh
+  R.legroom = W.deskStyle === 'none' ? null : W.legroom - KF.x;
   R.seatDepth = M.buttockpopliteallength - W.seatDepth;
   R.seatWidth = W.seatWidth - M.hipbreadthsitting;
   const A0 = { x: M.abdominalextensiondepthsitting, y: hipU + 0.3 * (S0.y - hipU) };
-  const Ab = T(A0); R.abdomen = 0 - Ab.x;
+  const Ab = T(A0); R.abdomen = W.deskStyle === 'none' ? null : 0 - Ab.x;
   R.armrest = W.armrests ? W.armH - M.elbowrestheight : null;
   R.seatRange = Math.max(0, W.seatMin - seatY, seatY - W.seatMax);
   R.depthRange = W.depthMin != null ? Math.max(0, W.depthMin - W.seatDepth, W.seatDepth - W.depthMax) : null;
@@ -4761,7 +4989,7 @@ function solve(M, W, ov) {
     const wrist = t.basis ? deg(Math.atan2(fa.dot(t.basis.x), -fa.dot(t.basis.y))) : deg(t.tilt) - slope;
     arms[side] = { S: Sa, E: El, W: Wr, hand: t, elbow, shFlex, shAbd, wrist, reach: ik.short, obj: ob ? ob.o.id : null, pose: ob ? ob.o.type : 'rest' };
   }
-  R.homeVsElbow = kbFirst ? (deskY + kbFirst.o.homeRowH) - (seatY + M.elbowrestheight) : null;
+  R.homeVsElbow = kbFirst ? ((kbFirst.o.base != null ? kbFirst.o.base : deskY) + kbFirst.o.homeRowH) - (seatY + M.elbowrestheight) : null;
   for (const k of ['elbow', 'shFlex', 'shAbd', 'wrist', 'reach']) R[k] = { L: arms[-1][k], R: arms[1][k] };
 
   // reach zones on the desk, 30 mm above it (to the centre of grip, 40% of hand length beyond the wrist).
@@ -4875,6 +5103,7 @@ const bodySkeleton = M => { if (skCache.M !== M) skCache = { M, sk: HFE_SOLVER.s
 // The desk as drawn (buildWorkstation): the top, then a console's closed cabinet behind the legroom line, or a desk's
 // four legs and modesty panel. Hands and forearms rest on the top, so they are left out against it.
 const deskBoxes = (W, G) => {
+  if (W.deskStyle === 'none') return [];
   const SV = HFE_SOLVER, panelH = Math.min(380, W.deskH - W.deskT - 80), hw = W.deskWidth / 2, under = W.deskH - W.deskT;
   const out = [SV.boxFromMinMax('desk.top', [0, under, -hw], [W.deskDepth, W.deskH, hw], { group: 'desk', skip: ['hand', 'forearm'] })];
   if (W.deskStyle === 'console') {
@@ -4955,6 +5184,13 @@ function objectBoxes(W, G) {
   for (const ob of G.objs || []) {
     const d = ob.dims; if (!d) continue;
     const held = ['L', 'R'].filter(k => W.hands[k] === ob.o.id || (W.hands[k] !== '' && ob.o.type === 'keyboard' && !W.objects.some(o => o.id === W.hands[k])));
+    if (ob.wheel) {
+      // the rim as a torus round the wheel's axis (the spokes and hub are left out)
+      const wl = ob.wheel, n = new V3(Math.cos(wl.t), -Math.sin(wl.t), 0), q = new THREE.Quaternion().setFromUnitVectors(new V3(0, 0, 1), n);
+      const Mx = new THREE.Matrix4().makeTranslation(ob.o.x, ob.o.base != null ? ob.o.base : G.deskY, ob.o.z).multiply(new THREE.Matrix4().makeRotationY(ob.yaw)).multiply(new THREE.Matrix4().makeRotationFromQuaternion(q));
+      out.push(shapeOf(Mx, p => Math.hypot(Math.hypot(p.x, p.y) - wl.R, p.z) - wl.r, wl.R + wl.r, 'obj.' + ob.o.id, { group: 'objects', skip: held.flatMap(k => ['hand' + k, 'forearm' + k]) }));
+      continue;
+    }
     const c = ob.T(0, d.h / 2, 0), u = ob.T(1, 0, 0).sub(ob.T(0, 0, 0)), w = ob.T(0, 0, 1).sub(ob.T(0, 0, 0));
     out.push(HFE_SOLVER.box('obj.' + ob.o.id, [c.x, c.y, c.z], [d.d / 2, d.h / 2, d.w / 2], [[u.x, u.y, u.z], [0, 1, 0], [w.x, w.y, w.z]], { group: 'objects', skip: held.flatMap(k => ['hand' + k, 'forearm' + k]) }));
   }
@@ -4977,8 +5213,14 @@ function sceneObstacles(W, G) { return [...deskBoxes(W, G), ...screenBoxes(G), .
 const screenBoxes = G => G.scr.list.map(s => {
   const P = s.P, n = [P.normal.x, P.normal.y, P.normal.z], ux = new V3().subVectors(P.right, P.left).normalize(), uy = new V3().subVectors(P.top, P.bottom).normalize();
   const depth = 40 + s.s, c = [P.centre.x - n[0] * (depth / 2 - s.s), P.centre.y - n[1] * (depth / 2 - s.s), P.centre.z - n[2] * (depth / 2 - s.s)];
-  return HFE_SOLVER.box('screen.' + s.i, c, [s.c, s.h / 2, depth / 2], [[ux.x, ux.y, ux.z], [uy.x, uy.y, uy.z], n], { group: 'screens' });
-});
+  const out = [HFE_SOLVER.box('screen.' + s.i, c, [s.c, s.h / 2, depth / 2], [[ux.x, ux.y, ux.z], [uy.x, uy.y, uy.z], n], { group: 'screens' })];
+  if (s.src && s.src.mount === 'laptop') {
+    // the laptop's base: the hands and forearms rest on it
+    const B = laptopBase(s);
+    out.push(HFE_SOLVER.box('screen.' + s.i + '.base', [B.c.x, B.c.y, B.c.z], [LAPTOP.d / 2, LAPTOP.t / 2, B.w / 2], [[B.fx.x, 0, B.fx.z], [0, 1, 0], [B.fz.x, 0, B.fz.z]], { group: 'screens', skip: ['hand', 'forearm'] }));
+  }
+  return out;
+}).flat();
 function bodyPose(M, W, G0) {
   const SV = HFE_SOLVER, sk = bodySkeleton(M), Rf = sk.ref, ix = sk.dofIndex;
   const dRback = rad(W.recline) - Rf.rho0, chair = CHAIRS[W.chair] || {};
@@ -5170,6 +5412,7 @@ const unitTxt = (v, u) => fmt(v) + (u === '°' ? '°' : u ? ` ${u}` : '');
 // apply when the stance takes the person off the seat (the joint range-of-motion check still covers every joint); prone,
 // the hands are not on the controls, so the arm and reach checks do not apply either
 const OFF_SEAT_NA = new Set(['homeVsElbow', 'seatDepth', 'seatWidth', 'armrest', 'seatPop', 'thigh', 'legroom', 'seatRange', 'headrest', 'depthRange', 'lumbarRange', 'armRange', 'recline', 'hip', 'knee']);
+const NO_DESK_NA = new Set(['abdomen', 'thigh', 'legroom', 'deskRange', 'clearDesk']);
 const PRONE_NA = new Set(['elbow', 'shFlex', 'shAbd', 'wrist', 'reach', 'rula', 'reba']);
 function evaluate(R, W, G) {
   const rows = [], nS = G.scr.list.length;
@@ -5194,6 +5437,8 @@ function evaluate(R, W, G) {
     if (c.id === 'headrest' && R.headrest == null) continue;
     if ((c.id === 'depthRange' || c.id === 'armRange' || c.id === 'lumbarRange') && R[c.id] == null) continue;
     if (c.id === 'homeVsElbow' && R.homeVsElbow == null) continue;
+    // with no desk (a laptop on a mount, a vehicle display) the desk checks do not apply
+    if (W.deskStyle === 'none' && NO_DESK_NA.has(c.id)) continue;
     if ((c.id === 'rom' || c.group === 'Clearance') && R[c.id] == null) continue;
     if (offSeat(W) && (OFF_SEAT_NA.has(c.id) || offSeat(W) === 'prone' && PRONE_NA.has(c.id))) continue;
     push(c, c.id, c.name, R[c.id]);
@@ -6568,8 +6813,15 @@ function buildBody(M, G) {
   g.add(BODY.build(M, G, S.mk, MATS, { sex: manikinSex(), kit: S.kit, look: S.look }));
 }
 
+function laptopBase(s) {
+  const up = new V3().subVectors(s.P.centre, s.P.bottom).normalize(), hinge = s.P.bottom.clone().addScaledVector(up, -LAPTOP.hinge);
+  const fx = new V3(Math.cos(s.psi), 0, -Math.sin(s.psi)), fz = new V3(Math.sin(s.psi), 0, Math.cos(s.psi));
+  const c = hinge.clone().addScaledVector(fx, -LAPTOP.d / 2).add(new V3(0, -LAPTOP.t / 2, 0));
+  return { hinge, c, fx, fz, w: s.w + 2 * LAPTOP.side };
+}
 function buildScreen(g, s, deskY, node) {
-  const bez = 9, chin = 18, dep = 22;
+  const mt = s.src && s.src.mount, rug = mt === 'arm' || mt === 'flush';
+  const bez = mt === 'laptop' ? 12 : rug ? 24 : 9, chin = mt === 'laptop' ? 2 : rug ? 0 : 18, dep = mt === 'laptop' ? 14 : rug ? 48 : 22;
   const grp = new THREE.Group(); grp.rotation.order = 'YXZ';
   grp.position.set(s.cx, s.cy, s.cz); grp.rotation.set(-s.tiltR, -Math.PI / 2 + s.psi, 0);
   const segs = s.R > 0 ? 48 : 1;
@@ -6578,7 +6830,32 @@ function buildScreen(g, s, deskY, node) {
   const shell = new THREE.BoxGeometry(s.w + 2 * bez, s.h + 2 * bez + chin, dep, segs, 1, 1);
   shell.translate(0, -chin / 2, -dep / 2);
   grp.add(new THREE.Mesh(bend(shell, s.R), MATS.frame));
+  if (mt === 'laptop' || rug) {
+    // rubber corner bumpers
+    const bw = s.w / 2 + bez, bh = s.h / 2 + bez, cb = mt === 'laptop' ? 22 : 34;
+    for (const sx of [-1, 1]) for (const sy of [-1, 1]) grp.add(rbox(cb, cb, dep + 8, 6, MATS.kb, sx * (bw - cb / 2 + 3), sy * (bh - cb / 2 + 3) - (mt === 'laptop' ? 0 : chin / 2), -dep / 2));
+  }
+  if (mt === 'arm') {
+    // a short arm back from the display to its bracket
+    grp.add(limb(new V3(0, 0, -dep), new V3(0, 0, -dep - 150), 18, 18, MATS.metal));
+    grp.add(box(130, 130, 12, MATS.metal, 0, 0, -dep - 156));
+  }
   g.add(grp);
+  if (mt === 'laptop') {
+    // the base: hinged at the lid's bottom edge, keyboard deck and touchpad; the keys are the keyboard item on it
+    const B = laptopBase(s), bg = new THREE.Group(); bg.position.copy(B.hinge); bg.rotation.y = s.psi;
+    bg.add(rbox(LAPTOP.d, LAPTOP.t, B.w, 5, MATS.frame, -LAPTOP.d / 2, -LAPTOP.t / 2, 0));
+    bg.add(box(62, 1, 96, MATS.kb, -LAPTOP.d + 48, 0.6, 0));
+    for (const sz of [-1, 1]) bg.add(rbox(30, LAPTOP.t + 6, 30, 6, MATS.kb, -LAPTOP.d + 12, -LAPTOP.t / 2, sz * (B.w / 2 - 12)));
+    // with no desk under it (more than 15 mm above the desk height, or no desk), a mounting tray on a post to the floor
+    const y0 = B.hinge.y - LAPTOP.t;
+    if (S.ws.deskStyle === 'none' || y0 - deskY > 15) {
+      bg.add(box(LAPTOP.d + 30, 8, B.w + 20, MATS.metal, -LAPTOP.d / 2, -LAPTOP.t - 4, 0));
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(22, 22, Math.max(y0 - 8, 10), 16), MATS.metal); post.position.set(-LAPTOP.d / 2 + 40, -LAPTOP.t - 8 - Math.max(y0 - 8, 10) / 2, 0); bg.add(post);
+      bg.add(box(200, 10, 200, MATS.metal, -LAPTOP.d / 2 + 40, -y0 + 5, 0));
+    }
+    g.add(bg);
+  }
   return grp;
 }
 function buildStand(g, s, deskY, x0) {
@@ -6623,8 +6900,9 @@ function propThumb(id) {
 function buildWorkstation(M, G, W) {
   const g = groups.ws; clearGroup(g); if (!S.showWs) return;
   let i0 = 0; const mark = () => { i0 = g.children.length; }, node = id => { for (let i = i0; i < g.children.length; i++) if (!g.children[i].userData.node) g.children[i].userData.node = id; i0 = g.children.length; };
-  g.add(box(W.deskDepth, W.deskT, W.deskWidth, MATS.desk, W.deskDepth / 2, W.deskH - W.deskT / 2, 0)); node('ws.desk.top');
-  if (W.deskStyle === 'console') {
+  // no desk (deskStyle 'none'): nothing is drawn; the desk height stays as the reference height for screens and items
+  if (W.deskStyle !== 'none') { g.add(box(W.deskDepth, W.deskT, W.deskWidth, MATS.desk, W.deskDepth / 2, W.deskH - W.deskT / 2, 0)); node('ws.desk.top'); }
+  if (W.deskStyle === 'none') { /* no desk */ } else if (W.deskStyle === 'console') {
     // operator console: the space behind the legroom line is a closed cabinet down to the floor
     const cd = W.deskDepth - W.legroom;
     if (cd > 20) g.add(box(cd, W.deskH - W.deskT, W.deskWidth, MATS.envConsole, W.legroom + cd / 2, (W.deskH - W.deskT) / 2, 0));
@@ -6644,7 +6922,7 @@ function buildWorkstation(M, G, W) {
     g.add(box(40, top.cy - W.deskH, 60, MATS.metal, px, (top.cy + W.deskH) / 2, 0));
     g.add(box(230, 10, 260, MATS.metal, px + 20, W.deskH + 5, 0));
     list.forEach(s => g.add(box(Math.max(px - s.cx, 20), 30, 40, MATS.metal, (px + s.cx) / 2, s.cy, 0)));
-  } else list.forEach(s => buildStand(g, s, W.deskH));
+  } else list.forEach(s => { if (!(s.src && s.src.mount)) buildStand(g, s, W.deskH); });
   node('ws.scr.stands');
   tagNew(g, 'SCREENS');
   // objects
@@ -6666,9 +6944,13 @@ function buildWorkstation(M, G, W) {
     const sm = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 16), MATS.chair); sm.scale.set(W.seatDepth / 2, 45, W.seatWidth / 2); sm.position.set(sx, W.seatH - 40, 0); g.add(sm);
   } else { g.add(rbox(W.seatDepth, 62, W.seatWidth, 26, MATS.chair, sx, W.seatH - 31, 0)); g.add(box(W.seatDepth * 0.7, 16, W.seatWidth * 0.6, MATS.metal, sx, W.seatH - 68, 0)); }
   node('ws.chair.seat');
-  g.add(limb(new V3(sx + 10, 95, 0), new V3(sx + 10, W.seatH - 60, 0), 26, 26, MATS.metal)); node('ws.chair.base');
+  if (CH.fixed) {
+    // fixed seat: a pedestal (or frame) bolted to the floor, no castors
+    g.add(box(W.seatDepth * 0.55, Math.max(W.seatH - 80, 10), W.seatWidth * 0.5, MATS.metal, sx, Math.max(W.seatH - 80, 10) / 2, 0));
+    g.add(box(W.seatDepth * 0.8, 14, W.seatWidth * 0.8, MATS.metal, sx, 7, 0)); node('ws.chair.base');
+  } else g.add(limb(new V3(sx + 10, 95, 0), new V3(sx + 10, W.seatH - 60, 0), 26, 26, MATS.metal)); node('ws.chair.base');
   if (CH.ring && W.footrest > 0) { const ring = new THREE.Mesh(new THREE.TorusGeometry(235, 13, 10, 48), MATS.metal); ring.rotation.x = Math.PI / 2; ring.position.set(sx + 10, W.footrest - 13, 0); g.add(ring); for (let i = 0; i < 3; i++) { const a = i / 3 * Math.PI * 2 + 0.5; g.add(limb(new V3(sx + 10, W.footrest - 13, 0), new V3(sx + 10 + 235 * Math.cos(a), W.footrest - 13, 235 * Math.sin(a)), 9, 9, MATS.metal)); } node('ws.chair.ring'); }
-  for (let i = 0; i < 5; i++) { const a = i / 5 * Math.PI * 2 + 0.3; g.add(limb(new V3(sx + 10, 75, 0), new V3(sx + 10 + 320 * Math.cos(a), 55, 320 * Math.sin(a)), 18, 14, MATS.metal)); const c = new THREE.Mesh(new THREE.SphereGeometry(26, 14, 10), MATS.chair); c.position.set(sx + 10 + 320 * Math.cos(a), 26, 320 * Math.sin(a)); g.add(c); }
+  if (!CH.fixed) for (let i = 0; i < 5; i++) { const a = i / 5 * Math.PI * 2 + 0.3; g.add(limb(new V3(sx + 10, 75, 0), new V3(sx + 10 + 320 * Math.cos(a), 55, 320 * Math.sin(a)), 18, 14, MATS.metal)); const c = new THREE.Mesh(new THREE.SphereGeometry(26, 14, 10), MATS.chair); c.position.set(sx + 10 + 320 * Math.cos(a), 26, 320 * Math.sin(a)); g.add(c); }
   node('ws.chair.base');
   const dB = Math.max(G.dR, 0);
   const Tb = q => add2(G.H, rot(sub2(q, G.H0), dB));
@@ -6705,7 +6987,7 @@ function buildWorkstation(M, G, W) {
 }
 function tagNew(g, layer) { g.traverse(o => { if (o !== g && !o.userData.layer) o.userData.layer = layer; }); }
 function buildZones(G, W) {
-  const g = groups.zones; clearGroup(g); drawPmap(g); if (!S.zones) return;
+  const g = groups.zones; clearGroup(g); drawPmap(g); if (!S.zones || W.deskStyle === 'none') return;
   const planes = [new THREE.Plane(new V3(1, 0, 0), 0), new THREE.Plane(new V3(-1, 0, 0), W.deskDepth), new THREE.Plane(new V3(0, 0, -1), W.deskWidth / 2), new THREE.Plane(new V3(0, 0, 1), W.deskWidth / 2)];
   const add = (polys, token, op, y, id) => {
     const i0 = g.children.length;
@@ -6758,7 +7040,7 @@ function buildAnnotations(M, G, R, W, rows) {
   const seated = !offSeat(W);   // off the seat, the seat, hip, knee and thigh annotations do not apply
   annNode = 'ann.dims.seat'; if (seated) dimV(backX, 0, W.seatH, 0, `${fmt(W.seatH)} mm`, 'Seat', 'info', -10);
   annNode = 'ann.dims.eye'; dimV(backX - 120, 0, G.E.y, 0, `${fmt(G.E.y)} mm`, 'Eye', 'info', -10);
-  annNode = 'ann.dims.desk'; dimV(W.deskDepth + 90, 0, W.deskH, 0, `${fmt(W.deskH)} mm`, 'Desk', 'info');
+  annNode = 'ann.dims.desk'; if (W.deskStyle !== 'none') dimV(W.deskDepth + 90, 0, W.deskH, 0, `${fmt(W.deskH)} mm`, 'Desk', 'info');
   annNode = 'ann.dims.foot'; if (W.footrest > 0) dimV(G.A.x + 260, 0, W.footrest, 0, `${fmt(W.footrest)} mm`, 'Footrest');
   const E = v3(G.E), pi = G.scr.primary, nS = G.scr.list.length;
   G.scr.list.forEach((s, i) => {
@@ -6987,6 +7269,7 @@ const WS_SPEC = [
   { sec: 'Desk' },
   { id: 'deskSize', label: 'Desk size (width × depth)', type: 'select', opts: DESK_SIZES },
   { id: 'deskType', label: 'Desk type', type: 'select', opts: [['fixed', 'Fixed height'], ['sitstand', 'Sit-stand']] },
+  { id: 'deskStyle', label: 'Desk style', type: 'select', opts: [['desk', 'Desk on legs'], ['console', 'Console (closed cabinet)'], ['panel', 'Panel (cockpit)'], ['none', 'No desk (laptop on a mount, vehicle displays)']] },
   { id: 'deskH', label: 'Desk height', min: 600, max: 1300, step: 5, u: 'mm' },
   { id: 'deskMin', label: 'Desk height range, lowest', min: 550, max: 1300, step: 5, u: 'mm' },
   { id: 'deskMax', label: 'Desk height range, highest', min: 550, max: 1350, step: 5, u: 'mm' },
@@ -7104,6 +7387,7 @@ function renderCfg() {
       h += fSel('Curvature', `data-si="${i}" data-sf="curve"`, CURVES, s.curve, `sc${i}-curve`);
       h += fNum('Tilt (blank = array)', `data-si="${i}" data-sf="tilt" min="-40" max="40" step="1"`, s.tilt, '°', `sc${i}-tilt`);
       h += fNum('Height offset', `data-si="${i}" data-sf="dy" min="-300" max="600" step="5"`, s.dy, 'mm', `sc${i}-dy`);
+      h += fSel('Mount', `data-si="${i}" data-sf="mount"`, MOUNTS, s.mount || '', `sc${i}-mount`);
       if (SC.layout === 'custom' && n > 1) {
         h += fNum('Face from desk edge', `data-si="${i}" data-sf="x" min="100" max="1200" step="5"`, s.x, 'mm', `sc${i}-x`);
         h += fNum('Lateral (+ right)', `data-si="${i}" data-sf="z" min="-1200" max="1200" step="5"`, s.z, 'mm', `sc${i}-z`);
@@ -7314,6 +7598,7 @@ function addObject(type, model) {
   if (model && model !== HFE_PROPS.DEFAULT[type]) o.model = model;
   if (md && md.base === 'floor') o.base = 0;
   if (type === 'keyboard') Object.assign(o, { kb: 'full', homeRowH: (md && md.homeRowH) || 30, tilt: 4 });
+  if (type === 'wheel') Object.assign(o, { x: 330, z: 0, base: W.deskH + 150, tilt: (md && md.tilt) || 30 });
   W.objects.push(o);
   if (!W.objects.some(x => x.id === W.hands.L)) W.hands.L = id;
   if (!W.objects.some(x => x.id === W.hands.R)) W.hands.R = id;
@@ -7419,6 +7704,7 @@ function bind() {
     else if (t.dataset.si) {
       const s = SC.list[+t.dataset.si], k = t.dataset.sf;
       if (k === 'aspect' || k === 'orient') { s[k] = v; rerender = true; }
+      else if (k === 'mount') { if (v) s.mount = v; else delete s.mount; rerender = true; }
       else if (k === 'size' || k === 'curve') { s[k] = +v; rerender = true; }
       else if (k === 'tilt') s.tilt = v.trim() === '' ? null : num(v);
       else { const n = num(v); if (n == null) return; s[k] = n; }
@@ -7492,7 +7778,7 @@ let toastT; function toast(m) { $('#toast').textContent = m; clearTimeout(toastT
 /* ---------------- evidence: project files and output stamps (PRJ-01, PRJ-03, VAL-02, VAL-03, VAL-07) ----------------
    core/evidence.js does the hashing, migration and comparison; this gathers the tool's state for it. Every output
    (checks CSV, population CSVs, placement map CSV, image, drawing) carries the same stamp. */
-const TOOL = { name: 'HFE Lab Workspace Visualisation', build: 'c7b3809da477' };
+const TOOL = { name: 'HFE Lab Workspace Visualisation', build: '2bf5f4e091be' };
 const VALIDATION = 'Not validated (posture from geometric rules, not a validated posture-prediction model; limits as stated under Checked against)';
 const solverName = W => bodySeated(W) ? 'Whole body with joint limits (beta)' : 'Classic seated';
 function subjectText() {
@@ -11791,10 +12077,12 @@ function buildEnv(G, W) {
     for (const z of [-L / 2, L / 2]) g.add(tag(new THREE.Line(new THREE.BufferGeometry().setFromPoints(ring(z)), MATS.envEdge), 'env.shell.walls'));
   } else {
     const xF = I.width / 2, xR = -I.width / 2, z0 = -I.length / 2, z1 = I.length / 2;
-    plane(I.length, I.height, MATS.envWall, xF, I.height / 2, 0, -Math.PI / 2, 0, 'env.shell.walls');
+    // glass: walls that are glazed (a windscreen, wheelhouse windows), drawn see-through
+    const gl = side => (sh.glass || []).includes(side) ? MATS.envGlass : MATS.envWall;
+    plane(I.length, I.height, gl('front'), xF, I.height / 2, 0, -Math.PI / 2, 0, 'env.shell.walls');
     plane(I.length, I.height, MATS.envWall, xR, I.height / 2, 0, Math.PI / 2, 0, 'env.shell.walls');
-    plane(I.width, I.height, MATS.envWall, 0, I.height / 2, z0, 0, 0, 'env.shell.walls');
-    plane(I.width, I.height, MATS.envWall, 0, I.height / 2, z1, Math.PI, 0, 'env.shell.walls');
+    plane(I.width, I.height, gl('sides'), 0, I.height / 2, z0, 0, 0, 'env.shell.walls');
+    plane(I.width, I.height, gl('sides'), 0, I.height / 2, z1, Math.PI, 0, 'env.shell.walls');
     if (sh.ceiling !== false) plane(I.width, I.length, MATS.envWall, 0, I.height, 0, 0, Math.PI / 2, 'env.shell.walls');
     plane(I.width, I.length, MATS.envFloor, 0, -1, 0, 0, -Math.PI / 2, 'env.shell.floor');
     const edges = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(I.width, I.height, I.length)), MATS.envEdge);
@@ -12001,12 +12289,11 @@ function treeNodes() {
     if (CH.ring && W.footrest > 0) add('ws.chair.ring', 'Foot ring', 'part');
   }
   if (W.footrest > 0 && (mdl || !CH.ring)) add('ws.foot', 'Footrest', 'part', `${W.footrest} mm`);
-  add('ws.desk', 'Desk', 'desk', `${W.deskWidth} × ${W.deskDepth}`);
-  add('ws.desk.top', W.deskStyle === 'panel' ? 'Panel' : 'Top', 'part');
-  if (W.deskStyle === 'console') add('ws.desk.legs', 'Cabinet', 'part'); else if (W.deskStyle !== 'panel') { add('ws.desk.legs', 'Legs', 'part'); add('ws.desk.panel', 'Modesty panel', 'part'); }
+  if (W.deskStyle !== 'none') { add('ws.desk', 'Desk', 'desk', `${W.deskWidth} × ${W.deskDepth}`); add('ws.desk.top', W.deskStyle === 'panel' ? 'Panel' : 'Top', 'part'); }
+  if (W.deskStyle === 'none') { /* no desk */ } else if (W.deskStyle === 'console') add('ws.desk.legs', 'Cabinet', 'part'); else if (W.deskStyle !== 'panel') { add('ws.desk.legs', 'Legs', 'part'); add('ws.desk.panel', 'Modesty panel', 'part'); }
   add('ws.scr', 'Screens', 'folder', String(W.screens.count));
-  W.screens.list.slice(0, W.screens.count).forEach((sc, i) => add('ws.scr.' + i, `Screen ${i + 1}`, 'screen', `${sc.size}″ ${sc.aspect}${sc.orient === 'portrait' ? ' portrait' : ''}${HMI3D.labelFor('ws.scr.' + i)}`));
-  add('ws.scr.stands', 'Stands', 'part');
+  W.screens.list.slice(0, W.screens.count).forEach((sc, i) => add('ws.scr.' + i, sc.mount === 'laptop' ? `Screen ${i + 1} (rugged laptop)` : `Screen ${i + 1}`, 'screen', `${sc.size}″ ${sc.aspect}${sc.orient === 'portrait' ? ' portrait' : ''}${HMI3D.labelFor('ws.scr.' + i)}`));
+  if (W.screens.list.slice(0, W.screens.count).some(sc => !sc.mount)) add('ws.scr.stands', 'Stands', 'part');
   add('ws.obj', 'Desk items', 'folder', String(W.objects.length));
   W.objects.forEach(o => add('ws.obj.' + o.id, objName(o, W.objects), 'item'));
   add('zones', 'Reach zones', 'zone'); add('zones.normal', 'Normal zone', 'zone'); add('zones.max', 'Maximum zone', 'zone');
@@ -12355,7 +12642,7 @@ const HMI3D = (() => {
   // the displays of this scene, for the Builder: physical size and viewing distance of each screen
   function displays() {
     const L = window.__last; if (!L || !L.G || !L.G.scr) return [];
-    return L.G.scr.list.map((s, i) => ({ node: 'ws.scr.' + i, label: `Screen ${i + 1}, ${S.ws.screens.list[i].size}″ ${S.ws.screens.list[i].aspect}`, wMm: s.w, hMm: s.h,
+    return L.G.scr.list.map((s, i) => ({ node: 'ws.scr.' + i, label: `Screen ${i + 1}, ${S.ws.screens.list[i].size}″ ${S.ws.screens.list[i].aspect}${MOUNT_NOTE[S.ws.screens.list[i].mount] || ''}`, wMm: s.w, hMm: s.h,
       distMm: L.R && L.R.screens && L.R.screens[i] ? L.R.screens[i].viewDist : null }));
   }
   function publish() {
