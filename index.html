@@ -20,7 +20,7 @@
 <meta property="og:image:alt" content="HFE Lab, with a wireframe manikin seated on a stool">
 <meta name="twitter:card" content="summary_large_image">
 <style>
-/* Layout: two-column holding page. Tool names, status and links left, slowly turning wireframe manikin right. */
+/* Layout: two-column holding page. Tool names, status and links left, slowly turning wireframe manikin in a fast-jet cockpit right. */
 :root{
   --bg:#ffffff; --ink:#1c2530; --muted:#5b6672; --faint:#8a949e; --rule:#e1e5ea; --accent:#1f5a8a; --card:#f6f8fa; --wire:#5a7691; --floor:#dfe4e9; --mk:#b7c1ca;
   --f:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Roboto,Arial,sans-serif;
@@ -90,7 +90,7 @@ figcaption{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 16p
     <p class="alt"><a href="/workspace/workspace-visualisation-offline.html" download="workspace-visualisation-offline.html">Download Workspace Visualisation for offline use</a></p>
   </section>
   <figure class="figure">
-    <canvas id="c" role="img" aria-label="Slowly turning model of a seated person in combat clothing"></canvas>
+    <canvas id="c" role="img" aria-label="Slowly turning model of a pilot seated in a fast-jet cockpit, with the hands on the stick and throttle"></canvas>
     <div class="ctrls">
       <label>Wearing <span class="seg" id="kit-seg" role="group" aria-label="Clothing"><button data-kit="mtp" aria-pressed="true">MTP</button><button data-kit="raf-blues" aria-pressed="false">RAF blues</button><button data-kit="none" aria-pressed="false">None</button></span></label>
       <label>Drawn as <span class="seg" id="mode-seg" role="group" aria-label="Drawing style"><button data-mode="wire" aria-pressed="true">Wire</button><button data-mode="solid" aria-pressed="false">Surface</button></span></label>
@@ -1240,6 +1240,645 @@ const BODY = (() => {
   return { build, surface, hands, kit: KIT, looks, set onTexture(f) { onTexture = f; } };
 })();
 
+/* ---------------- environment library (ENV-07, ENV-08) ----------------
+   Each environment is a template held as data: an enclosure (shell), seated roles, fixtures, defaults for the
+   workstation model, and the checks that apply now or are planned. The tool loads a template by id (?env=<id> in the
+   URL, the Environment tab, or the library shown before any model loads). New templates are added here, not in the
+   tool's code. See docs/ENVIRONMENTS_AND_KIT.md section 3.
+
+   Every dimension here is INDICATIVE: generic, illustrative geometry built from public, approximate figures, so that
+   layouts can be explored. None of it is the geometry of a real platform. Real platform geometry is project data and is
+   never added to this file (docs/ENVIRONMENTS_AND_KIT.md section 7).
+
+   Frames. All lengths in mm, angles in degrees.
+     Shell frame: origin on the floor at the centre of the enclosure; Y up; +X towards the front wall (the wall the
+       consoles face); Z along the enclosure's length.
+     Role frame: the tool's world frame for the role being assessed: origin at that seat's front edge on the floor, +X
+       forward, +Z to the operator's right. Roles marked mirror: true are left-right mirror images of the template's
+       console (its ws), for example the right-hand seat of a pair.
+
+   Fields
+     id, name, family (domain and sub-domain), domain (office | air | land | maritime | submarine)
+     status       available | preview | planned (planned templates are listed but cannot be loaded)
+     summary      one or two sentences for the library card
+     roles        [{ id, name, z, dx, mirror }]: z = the seat's centreline along the shell; each console's far edge sits
+                  frontGap from the front wall, then dx (negative = further back, for rows)
+     shell        optional enclosure:
+                    { kind: 'box', internal: { length, width, height }, ceiling, frontGap, door }
+                    { kind: 'tube', internal: { length, diameter, axis }, frontAt, frontGap, door }
+                  box: length along Z, width along X. tube: a fuselage or hull along Z, axis = height of its centreline
+                  above the floor, frontAt = height at which the curved wall is taken as the front.
+     fixtures     shared items in the shell frame; x may be given as front: distance back from the front wall
+     roleFixtures items repeated at every role, in that role's frame (mirrored with the role)
+                    { k: 'box', x, y, z, d (along X), h, w (along Z), mat, yaw }    centre position
+                    { k: 'disp', x, y, z, w, h, yaw, tilt } or { k: 'disp', size, aspect, ... }   a display, facing -X at yaw 0
+                    { k: 'cyl', x, z, y0, y1, r, mat }  { k: 'dome', x, y, z, rx, ry, rz, mat }   mat: console | rack | dark | metal | glass | wall
+     shell.glass  optional list of glazed walls drawn see-through: 'front' (a windscreen), 'sides' (the two end walls)
+     stations     'mirror': every other role gets a copy of the active console, screens and seat
+     ws.deskStyle 'none' for a workspace with no desk (a rugged laptop on a mount, vehicle displays on arms): the desk
+                  height is then only the reference height for the screens and items, and the desk checks do not apply.
+                  A screen's mount ('laptop', 'arm' or 'flush') draws it as a rugged laptop, a display on a vehicle
+                  mount or one set into a panel; laptop() below gives a laptop's lid and its keyboard together.
+     params       user-adjustable geometry: [{ key, label, path, min, max, step }] (path into the template)
+     ws           partial workstation settings merged over the tool's defaults when the template loads
+     checks       { now: [check groups that apply], planned: [plain-language checks still to come] }
+     sources      public references behind the indicative geometry
+     reqs         requirement IDs the template serves */
+const HFE_ENV = (() => {
+  const ALL_NOW = ['Vision', 'Head and neck', 'Upper limb', 'Trunk and seat', 'Lower limb', 'Furniture', 'Joint range of motion', 'Posture scores', 'Clearance'];
+  // a display given by diagonal (inches) and aspect ratio
+  const disp = (size, aspect, o) => { const [a, b] = aspect.split(':').map(Number), k = size * 25.4 / Math.hypot(a, b); return { k: 'disp', w: a * k, h: b * k, ...o }; };
+  const scr = (size, aspect, x, z, yaw, dy, tilt = null) => ({ size, aspect, orient: 'landscape', curve: 0, tilt, dy, x, z, yaw });
+  // A generic 14 inch rugged laptop (lid and keyboard): hinge at (x, deckY, z) in the role frame, turned by yaw (+ faces
+  // right), lid opened tilt degrees back from vertical. ref = the desk height plus the screens' bottom setting, which the
+  // screen's height is given from. Returns { scr, kb } for the screens list and the objects. The workspace draws the base
+  // from the lid (LAPTOP in the tool), so the two stay together: the keys sit just in front of the hinge.
+  const laptop = ({ x, z = 0, yaw = 0, deckY, tilt = 15, ref, id = 'lt' }) => {
+    const h = 14 * 25.4 * 9 / Math.hypot(16, 9), t = tilt * Math.PI / 180, p = yaw * Math.PI / 180, L = 14 + h / 2, kd = 60.5;
+    return {
+      scr: { size: 14, aspect: '16:9', orient: 'landscape', curve: 0, tilt, mount: 'laptop', yaw,
+        x: Math.round(x + L * Math.sin(t) * Math.cos(p)), z: Math.round(z - L * Math.sin(t) * Math.sin(p)), dy: Math.round(deckY + 14 * Math.cos(t) - ref) },
+      kb: { id, type: 'keyboard', kb: 'laptop', model: 'kb-laptop', x: Math.round(x - kd * Math.cos(p)), z: Math.round(z + kd * Math.sin(p)), yaw, base: deckY, homeRowH: 4, tilt: 0, use: 'frequent' }
+    };
+  };
+  const room = (L, W, H, extra) => ({ length: { key: 'length', label: L, path: ['shell', 'internal', 'length'], min: 2000, max: 30000, step: 10 },
+    width: { key: 'width', label: W, path: ['shell', 'internal', 'width'], min: 1200, max: 20000, step: 10 },
+    height: { key: 'height', label: H, path: ['shell', 'internal', 'height'], min: 1500, max: 6000, step: 10 }, ...extra });
+
+  /* ---------------- detailed fast-jet cockpit (generic, indicative) ----------------
+     A single-seat fast-jet cockpit drawn in some detail: tub walls and sills, side consoles with control panels, an
+     instrument panel with knee wells and a centre pedestal, a glareshield with the head-up display's body, the canopy
+     with its windscreen and aft bows and mirrors. It is an original, generic design: the proportions follow public
+     guidance on aircrew station geometry (MIL-STD-1333, MIL-STD-1472) and public photographs of the type in general,
+     and copy no particular aircraft. Lengths in mm in the role frame (the panel's near face at x = 0, the floor at y = 0,
+     +z to the pilot's right). The displays themselves are the workstation's screens (ws.screens), so the HMI Builder's
+     screens show on them; the ejection seat and rudder pedals follow the seat and feet (ejectionSeat, pedals below).
+     Extra fixture kinds used here (drawn by object(), solid unless deco):
+       { k: 'prism', axis: 'x' | 'y' | 'z', pts: [[u, v], ...], a0, a1 }  a polygon extruded along axis from a0 to a1;
+           axis z: (u, v) = (x, y); axis x: (u, v) = (z, y); axis y: (u, v) = (x, z)
+       { k: 'plate', axis: 'x' | 'z', at, face: 1 | -1, pts }   a one-sided wall facing +axis (face 1) or -axis; seen
+           from outside it drops out, so the cockpit reads as a cutaway. Solid as a 30 mm slab behind its face.
+       { k: 'tube', pts: [[x, y, z], ...], r }   a round tube through the points (solid as capsules between them)
+       { k: 'cyl', axis: 'x', x, y, z, len, r }  a cylinder along x (knobs and dials on the panel face)
+       deco: true   drawn only: small details that no check measures against (knobs, switches, bezels' buttons) */
+  const arcPts = (n, f) => Array.from({ length: n + 1 }, (_, i) => f(i / n));
+  const CK = { halfW: 525, sill: 885, sillF: 965, back: -1500, front: 300, conTop: 600, conIn: 295, panTop: 905, panLow: 668,
+    canopy: { x: -650, y: 885, rx: 1100, ry: 520, rz: 540 } };
+  // a point on the canopy (half ellipsoid) at fore-and-aft x and angle t round the section (0 = right sill, pi = left)
+  const canopyAt = (x, t, grow = 0) => { const c = CK.canopy, k = Math.sqrt(Math.max(0, 1 - ((x - c.x) / c.rx) ** 2)); return [x, c.y + (c.ry * k + grow) * Math.sin(t), (c.rz * k + grow) * Math.cos(t)]; };
+  function consolePanel(out, x0, x1, z0, z1, kinds) {
+    // a console control panel: a raised plate with knobs (k), toggle switches (t) and a small readout (d), laid out in
+    // rows across the panel
+    const y = CK.conTop, d = x1 - x0, w = z1 - z0, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+    out.push({ k: 'box', x: cx, y: y + 4, z: cz, d: d - 6, h: 8, w: w - 6, mat: 'cockpit2', deco: true });
+    kinds.forEach((row, i) => {
+      const xr = x1 - (i + 0.5) * d / kinds.length;
+      [...row].forEach((ch, j) => {
+        const zr = z0 + (j + 0.5) * w / row.length;
+        if (ch === 'k') out.push({ k: 'cyl', x: xr, z: zr, y0: y + 8, y1: y + 24, r: 11, mat: 'black', deco: true });
+        else if (ch === 't') out.push({ k: 'cyl', x: xr, z: zr, y0: y + 8, y1: y + 26, r: 3, mat: 'metal', deco: true });
+        else if (ch === 'd') out.push({ k: 'box', x: xr, y: y + 10, z: zr, d: d / kinds.length * 0.6, h: 4, w: w / row.length * 0.8, mat: 'lcd', deco: true });
+      });
+    });
+  }
+  function jetCockpit() {
+    const out = [], { halfW: Wz, sill, sillF, back, front } = CK;
+    // tub walls, the bulkhead behind the seat, and the sills (canopy longerons) along their tops
+    const side = [[back, 0], [front, 0], [front, sillF], [0, sillF], [-380, sill], [back, sill]];
+    out.push({ k: 'plate', axis: 'z', at: -Wz, face: 1, pts: side, mat: 'cockpit', deco: true }, { k: 'plate', axis: 'z', at: Wz, face: -1, pts: side, mat: 'cockpit', deco: true });
+    out.push({ k: 'plate', axis: 'x', at: back, face: 1, pts: [[-Wz, 0], [Wz, 0], [Wz, sill], [-Wz, sill]], mat: 'cockpit', deco: true });
+    for (const s of [-1, 1]) out.push({ k: 'tube', pts: [[back, sill + 10, s * (Wz + 6)], [-380, sill + 10, s * (Wz + 6)], [0, sillF + 10, s * (Wz + 6)], [front, sillF + 10, s * (Wz + 6)]], r: 17, mat: 'cockpit2', deco: true });
+    // side consoles: flat tops at console height, rising at the front into the instrument panel
+    const con = [[-1050, 0], [front, 0], [front, 705], [120, 705], [-110, CK.conTop], [-1050, CK.conTop]];
+    out.push({ k: 'prism', axis: 'z', pts: con, a0: CK.conIn, a1: Wz, mat: 'cockpit' }, { k: 'prism', axis: 'z', pts: con, a0: -Wz, a1: -CK.conIn, mat: 'cockpit' });
+    // console control panels round the side-stick (right) and the throttle (left)
+    consolePanel(out, -1000, -820, 310, 510, ['kdk', 'kk']); consolePanel(out, -810, -620, 310, 510, ['ttttt', 'k k']); consolePanel(out, -610, -430, 310, 510, ['kkk', 'tt t']);
+    consolePanel(out, -400, -130, 410, 510, ['k', 'k', 't']);
+    consolePanel(out, -1000, -820, -510, -310, ['tttt', 'kk']); consolePanel(out, -810, -620, -510, -310, ['kdk', 'kk']); consolePanel(out, -610, -430, -510, -310, ['ttt', 'k']);
+    consolePanel(out, -400, -130, -510, -440, ['k', 't', 'k']);
+    out.push({ k: 'box', x: -265, y: CK.conTop + 2, z: -330, d: 300, h: 4, w: 60, mat: 'black', deco: true });   // throttle quadrant slot
+    // instrument panel: full width above the knee wells, down to the consoles outboard; a narrow pedestal between the
+    // pilot's legs carries the lower panel
+    out.push({ k: 'prism', axis: 'x', a0: -2, a1: front, pts: [[-Wz, CK.panTop], [Wz, CK.panTop], [Wz, CK.conTop], [300, CK.conTop], [300, CK.panLow], [-300, CK.panLow], [-300, CK.conTop], [-Wz, CK.conTop]], mat: 'cockpit' });
+    out.push({ k: 'box', x: 240, y: CK.panLow / 2, z: 0, d: 120, h: CK.panLow, w: 120, mat: 'cockpit' });
+    // glareshield over the panel, and the head-up display's body in it
+    out.push({ k: 'prism', axis: 'z', a0: -420, a1: 420, pts: [[-70, 950], [-60, CK.panTop], [front, CK.panTop], [front, 985], [40, 985]], mat: 'black' });
+    out.push({ k: 'box', x: 130, y: 1000, z: 0, d: 190, h: 70, w: 170, mat: 'black', deco: true });
+    // up-front controls between the displays: a keypad with a scratchpad readout, and a standby instrument below
+    out.push({ k: 'box', x: -8, y: 845, z: 0, d: 12, h: 96, w: 118, mat: 'cockpit2', deco: true }, { k: 'box', x: -15, y: 880, z: 0, d: 4, h: 16, w: 96, mat: 'lcd', deco: true });
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) out.push({ k: 'box', x: -16, y: 856 - r * 22, z: (c - 1) * 30, d: 6, h: 15, w: 22, mat: 'black', deco: true });
+    out.push({ k: 'cyl', axis: 'x', x: -10, y: 742, z: 0, len: 16, r: 44, mat: 'cockpit2', deco: true }, { k: 'cyl', axis: 'x', x: -19, y: 742, z: 0, len: 4, r: 37, mat: 'lcd', deco: true });
+    // outboard of the displays: landing gear lever (left), caution lights and standby gauges (right)
+    out.push({ k: 'box', x: -8, y: 800, z: -430, d: 12, h: 170, w: 120, mat: 'cockpit2', deco: true }, { k: 'box', x: -45, y: 820, z: -430, d: 70, h: 14, w: 14, mat: 'metal', deco: true }, { k: 'cyl', axis: 'x', x: -85, y: 820, z: -430, len: 22, r: 22, mat: 'yellow', deco: true });
+    out.push({ k: 'box', x: -8, y: 830, z: 430, d: 12, h: 110, w: 130, mat: 'cockpit2', deco: true });
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) out.push({ k: 'box', x: -16, y: 862 - r * 30, z: 392 + c * 38, d: 5, h: 20, w: 30, mat: r === 0 && c === 1 ? 'yellow' : 'lcd', deco: true });
+    for (const z of [-470, -390, 390, 470]) out.push({ k: 'cyl', axis: 'x', x: -8, y: 720, z, len: 14, r: 30, mat: 'black', deco: true });
+    // canopy: the transparency, its frame along the sills, the windscreen bow and the aft bow, and three mirrors
+    const c = CK.canopy;
+    out.push({ k: 'dome', x: c.x, y: c.y, z: 0, rx: c.rx, ry: c.ry, rz: c.rz, mat: 'glass' });
+    for (const s of [-1, 1]) out.push({ k: 'tube', pts: arcPts(16, u => canopyAt(-1180 + u * 1370, s > 0 ? 0 : Math.PI, 6)), r: 15, mat: 'cockpit2', deco: true });
+    for (const x of [190, -1180]) out.push({ k: 'tube', pts: arcPts(24, u => canopyAt(x, u * Math.PI, 8)), r: x > 0 ? 20 : 26, mat: 'cockpit2', deco: true });
+    for (const t of [0.35, 0.5, 0.65]) { const p = canopyAt(175, t * Math.PI, -20); out.push({ k: 'box', x: p[0], y: p[1], z: p[2], d: 12, h: 42, w: t === 0.5 ? 150 : 90, yaw: 0, tilt: 0, mat: 'black', deco: true }); }
+    return out;
+  }
+  // the ejection seat, drawn for the seat as set (height, depth, width, back angle): bucket, cushions, headbox with its
+  // headrest, guide rails and catapult behind the back, and the firing handle between the thighs. p: { front (seat front
+  // edge x), depth, width, y (seat top), at(x, y) (a point in the seat's own frame, upright, to the world, turned with the
+  // back), ang (back angle, rad, back from vertical), top (back height above the seat), headH (headrest centre) }.
+  function ejectionSeat(p) {
+    const out = [], cx = p.front - p.depth / 2, deg = p.ang * 180 / Math.PI, A = (x, y) => p.at(x, y);
+    const bx = (x, y, d, h, w, mat, node, o) => { const q = A(x, y); out.push({ k: 'box', x: q[0], y: q[1], z: 0, d, h, w, tilt: deg, mat, node, ...o }); };
+    out.push({ k: 'box', x: cx, y: p.y - 30, z: 0, d: p.depth, h: 60, w: p.width, mat: 'seat', round: 18, node: 'ws.chair.seat' });
+    out.push({ k: 'box', x: cx - 10, y: p.y - 80, z: 0, d: p.depth + 20, h: 40, w: p.width + 36, mat: 'cockpit2', node: 'ws.chair.seat' });
+    for (const s of [-1, 1]) out.push({ k: 'box', x: cx - 10, y: p.y - 20, z: s * (p.width / 2 + 10), d: p.depth + 30, h: 140, w: 16, mat: 'cockpit2', node: 'ws.chair.seat' });
+    out.push({ k: 'box', x: cx - 20, y: (60 + p.y - 100) / 2, z: 0, d: p.depth - 60, h: Math.max(20, p.y - 160), w: p.width - 60, mat: 'cockpit', node: 'ws.chair.base' });
+    // firing handle: a loop at the front of the seat between the thighs, in yellow and black bands
+    const hy = p.y - 70, hx = p.front + 14, R = 40;
+    for (let i = 0; i < 6; i++) out.push({ k: 'tube', pts: arcPts(4, u => { const t = (i + u) / 6 * Math.PI; return [hx, hy + R * Math.sin(t), R * Math.cos(t)]; }), r: 8, mat: i % 2 ? 'black' : 'yellow', node: 'ws.chair.seat' });
+    // back cushion and the back shell, the headbox with its headrest pad and canopy breakers
+    bx(-30, (150 + p.top) / 2, 60, p.top - 150, 460, 'seat', 'ws.chair.back', { round: 18 });
+    bx(-80, (100 + p.top) / 2, 44, p.top - 100, 500, 'cockpit2', 'ws.chair.back');
+    bx(-160, p.top - 40, 200, 300, 380, 'cockpit2', 'ws.chair.head');
+    bx(-40, p.headH, 60, 150, 280, 'seat', 'ws.chair.head', { round: 18 });
+    for (const z of [-110, 110]) { const q = A(-150, p.top + 117); out.push({ k: 'box', x: q[0], y: q[1], z, d: 120, h: 14, w: 26, tilt: deg, mat: 'yellow', node: 'ws.chair.head' }); }
+    // guide rails and the catapult tube behind the back, down to the cockpit floor
+    const lo = A(-210, 40 - p.y), hi = A(-210, p.top + 90);
+    for (const z of [-180, 180]) out.push({ k: 'tube', pts: [[lo[0], lo[1], z], [hi[0], hi[1], z]], r: 20, mat: 'metal', node: 'ws.chair.base' });
+    const c0 = A(-200, 40 - p.y), c1 = A(-200, p.top - 60);
+    out.push({ k: 'tube', pts: [[c0[0], c0[1], 0], [c1[0], c1[1], 0]], r: 42, mat: 'metal', node: 'ws.chair.base' });
+    return out;
+  }
+  // rudder pedals ahead of each foot: a pedal face just beyond the toes, its arm into the footwell, and a heel rest.
+  // toe: the toe's fore-and-aft position; zs: each foot's centre across the cockpit
+  function pedals(toe, zs) {
+    const out = [];
+    for (const z of zs) out.push({ k: 'box', x: toe + 22, y: 110, z, d: 16, h: 170, w: 110, tilt: -18, mat: 'black', node: 'ws.foot' },
+      { k: 'box', x: toe + 100, y: 160, z, d: 150, h: 24, w: 34, mat: 'metal', node: 'ws.foot' });
+    out.push({ k: 'box', x: toe - 200, y: 5, z: 0, d: 220, h: 10, w: Math.abs(zs[1] - zs[0]) + 160, mat: 'cockpit2', node: 'ws.foot' });
+    return out;
+  }
+
+  const T = [
+    {
+      id: 'desk-workstation', name: 'Seated desk workstation', family: 'Office and general', domain: 'office', status: 'available',
+      summary: 'An office or control-room desk with a chair, one to four screens and desk items. The original Seated Workstation Fit model.',
+      roles: [{ id: 'user', name: 'Desk user', z: 0 }],
+      ws: {},
+      checks: { now: ALL_NOW, planned: [] },
+      sources: ['ISO 9241-5', 'BS EN 1335-1:2020', 'MIL-STD-1472', 'ANSUR II'],
+      reqs: ['ENV-02', 'ENV-03', 'ENV-05']
+    },
+    {
+      id: 'gcs-container', name: 'Ground control station (RPAS)', family: 'Air: remotely piloted', domain: 'air', status: 'preview',
+      summary: 'Two reclining operator seats side by side in a shipping-container shelter, a radio and phone pedestal between them, and each operator facing a keyboard, joystick, small console screens and a two-tier wall of large displays. Laid out after public photographs of MQ-9 class stations; indicative dimensions only.',
+      roles: [{ id: 'pilot', name: 'Pilot (left seat)', z: -720 }, { id: 'sensor', name: 'Sensor operator (right seat)', z: 720, mirror: true }],
+      // typical internal dimensions of an ISO 668 20 ft container; consoles against the front long wall
+      shell: { kind: 'box', internal: { length: 5898, width: 2352, height: 2393 }, frontGap: 260, door: { side: 'rear', z: 2300, width: 900, height: 2000 } },
+      stations: 'mirror',
+      params: Object.values(room('Shelter internal length', 'Shelter internal width', 'Shelter internal height')),
+      ws: {
+        chair: 'operator', armrests: true, armH: 230, recline: 12, footrest: 0,
+        deskSize: 'custom', deskWidth: 900, deskDepth: 620, deskH: 740, deskT: 40, legroom: 430, deskStyle: 'console',
+        screens: {
+          count: 4, layout: 'custom', bottom: 250, tilt: 0,
+          // main tactical display, the display above it, and two small console screens on the desk
+          list: [scr(20.1, '4:3', 560, 0, 0, 0), scr(20.1, '4:3', 580, 0, 0, 335, -10), scr(10.4, '4:3', 330, -125, 0, -235, 18), scr(10.4, '4:3', 330, 125, 0, -235, 18)]
+        },
+        objects: [
+          { id: 'o1', type: 'keyboard', kb: 'full', x: 150, z: -40, yaw: 0, homeRowH: 30, tilt: 4, use: 'frequent' },
+          { id: 'o2', type: 'stick', x: 170, z: 300, yaw: 0, use: 'frequent' },
+          { id: 'o3', type: 'throttle', x: 170, z: -340, yaw: 0, use: 'frequent' }
+        ],
+        hands: { L: 'o3', R: 'o2' }
+      },
+      roleFixtures: [
+        // outboard stack of large displays, turned towards the seat
+        disp(20.1, '4:3', { x: 470, y: 1180, z: -720, yaw: 38, tilt: 0 }),
+        disp(20.1, '4:3', { x: 520, y: 1530, z: -760, yaw: 38, tilt: -10 }),
+        // equipment rack behind the displays
+        { k: 'box', x: 760, y: 1100, z: -120, d: 240, h: 2200, w: 1500, mat: 'rack' }
+      ],
+      fixtures: [
+        // pedestal between the seats: radios, phone, papers
+        { k: 'box', front: 600, y: 520, z: 0, d: 560, h: 1040, w: 420, mat: 'console' },
+        { k: 'box', front: 640, y: 1080, z: 0, d: 200, h: 80, w: 210, mat: 'dark' },
+        // shared displays above the pedestal
+        disp(20.1, '4:3', { front: 300, y: 1230, z: 0, yaw: 0, tilt: 0 }),
+        disp(20.1, '4:3', { front: 300, y: 1580, z: 0, yaw: 0, tilt: -10 })
+      ],
+      checks: {
+        now: ALL_NOW,
+        planned: [
+          'Every display checked for every operator: viewing distance, legibility, gaze and head rotation, off-axis angle (ENV-11)',
+          'Display priority and frequency of use, so a high-priority display outside the primary zone fails (ENV-11)',
+          'The outboard and shared displays are drawn but not yet assessed; the four nearest displays are',
+          'Occlusion of one display by another, by the console or by the operator’s arms (ENV-11)',
+          'Seat recline and push-back clearance to the rear wall, shared passage, door ingress and egress',
+          'Baseline against “with new displays” comparison for display creep (PRJ-02)'
+        ]
+      },
+      sources: ['Typical internal dimensions of an ISO 668 20 ft container', 'Layout after public photographs of MQ-9 class ground control stations (US Air Force imagery); no measured dimensions',
+        'Def Stan 00-250, MIL-STD-1472 and BS EN ISO 9241 for the planned display checks'],
+      reqs: ['ENV-07', 'ENV-08', 'ENV-11']
+    },
+    {
+      id: 'control-centre', name: 'Busy control centre', family: 'Land and joint: operations centre', domain: 'land', status: 'preview',
+      summary: 'Two rows of four operator consoles facing a wall of large displays, with a supervisor desk behind. For sightlines to the video wall over the front row, console spacing and display layout.',
+      roles: [
+        { id: 'r1p2', name: 'Front row, seat 2', z: -950 }, { id: 'r1p1', name: 'Front row, seat 1', z: -2850 }, { id: 'r1p3', name: 'Front row, seat 3', z: 950 }, { id: 'r1p4', name: 'Front row, seat 4', z: 2850 },
+        { id: 'r2p2', name: 'Back row, seat 2', z: -950, dx: -2300 }, { id: 'r2p1', name: 'Back row, seat 1', z: -2850, dx: -2300 }, { id: 'r2p3', name: 'Back row, seat 3', z: 950, dx: -2300 }, { id: 'r2p4', name: 'Back row, seat 4', z: 2850, dx: -2300 }
+      ],
+      shell: { kind: 'box', internal: { length: 13000, width: 10000, height: 3300 }, frontGap: 3600, door: { side: 'rear', z: 5200, width: 1000, height: 2100 } },
+      stations: 'mirror',
+      params: Object.values(room('Room length (side to side)', 'Room depth (front to back)', 'Room height')),
+      ws: {
+        chair: 'taskHead', armrests: true,
+        deskSize: '1800x900', deskWidth: 1800, deskDepth: 900, deskH: 720, legroom: 650, deskStyle: 'console',
+        screens: { count: 3, layout: 'row', wrap: 25, gap: 10, dist: 620, bottom: 90, tilt: 5, list: [scr(27, '16:9', 450, 0, 0, 0), scr(27, '16:9', 450, 0, 0, 0), scr(27, '16:9', 450, 0, 0, 0), scr(27, '16:9', 450, 0, 0, 0)] }
+      },
+      fixtures: [
+        // video wall: 6 x 2 tiles of 55 inch 16:9, bottom edge 1000 mm above the floor
+        ...[0, 1].flatMap(r => [-2.5, -1.5, -0.5, 0.5, 1.5, 2.5].map(c => disp(55, '16:9', { front: 60, y: 1000 + 685 / 2 + r * 690, z: c * 1222, yaw: 0, tilt: 0 }))),
+        // supervisor desk at the back
+        { k: 'box', front: 8300, y: 370, z: 0, d: 900, h: 740, w: 3000, mat: 'console' }
+      ],
+      checks: { now: ALL_NOW, planned: ['Sightline from each seat to the video wall over the front row and its displays (ISO 11064-3)', 'Viewing distance and character size for the video wall', 'Console spacing and circulation routes', 'Supervisor sightlines to every operator'] },
+      sources: ['ISO 11064-3 (control room layout) and ISO 11064-4 (workstation layout) for the planned checks', 'Indicative dimensions; 55 inch tiles at their nominal size'],
+      reqs: ['ENV-07', 'ENV-08']
+    },
+    {
+      id: 'mission-crew', name: 'Airborne mission crew cabin', family: 'Air: airborne surveillance (E-3 class)', domain: 'air', status: 'preview',
+      summary: 'Mission consoles along the side of a narrow-body fuselage, as in E-3 class airborne early-warning aircraft: seated operators facing the cabin wall, each with two large displays, in a tube with a curved wall and low headroom.',
+      roles: [{ id: 'c2', name: 'Console 2', z: 0 }, { id: 'c1', name: 'Console 1', z: -1150 }, { id: 'c3', name: 'Console 3', z: 1150 }],
+      // narrow-body fuselage: Boeing 707 class, about 3.76 m outside diameter; floor below the centreline
+      shell: { kind: 'tube', internal: { length: 7000, diameter: 3550, axis: 620 }, frontAt: 1300, frontGap: 120 },
+      stations: 'mirror',
+      params: [
+        { key: 'diameter', label: 'Cabin internal diameter', path: ['shell', 'internal', 'diameter'], min: 2500, max: 6000, step: 10 },
+        { key: 'axis', label: 'Fuselage centreline above the floor', path: ['shell', 'internal', 'axis'], min: 0, max: 1500, step: 10 },
+        { key: 'length', label: 'Cabin length shown', path: ['shell', 'internal', 'length'], min: 3000, max: 30000, step: 10 }
+      ],
+      ws: {
+        chair: 'operator', armrests: true, recline: 8,
+        deskSize: 'custom', deskWidth: 1000, deskDepth: 520, deskH: 720, deskT: 40, legroom: 420, deskStyle: 'console',
+        // displays built into the console face, keyboard and trackball integrated into the shelf (fixed: they cannot be
+        // moved, turned or raised), as in public imagery of E-3 class mission consoles; sizes indicative
+        screens: { count: 2, layout: 'custom', bottom: 70, tilt: 8, fixed: true, list: [scr(21.3, '4:3', 470, -245, 8, 0), scr(21.3, '4:3', 470, 245, -8, 0), scr(24, '16:10', 450, 0, 0, 0), scr(24, '16:10', 450, 0, 0, 0)] },
+        objects: [
+          { id: 'o1', type: 'keyboard', kb: 'full', x: 150, z: 60, yaw: 0, homeRowH: 30, tilt: 4, use: 'frequent', fixed: true },
+          { id: 'o2', type: 'tbThumb', x: 170, z: 380, yaw: 0, use: 'frequent', fixed: true }
+        ],
+        hands: { L: 'o1', R: 'o2' }
+      },
+      fixtures: [
+        // overhead stowage along the far wall
+        { k: 'box', front: 640, y: 1850, z: 0, d: 300, h: 200, w: 6800, mat: 'wall' }
+      ],
+      checks: { now: ALL_NOW, planned: ['Head clearance to the curved cabin wall and overhead stowage', 'Aisle width behind the seats with seats rotated, and egress', 'Seat track and harness reach constraints', 'Restraint of loose equipment and turbulence (later)'] },
+      sources: ['Boeing 707-320 fuselage, about 3.76 m outside diameter (public type data); cabin diameter, floor height and console sizes are indicative', 'MIL-STD-1472 and Def Stan 00-250 for the planned checks'],
+      reqs: ['ENV-07', 'ENV-08']
+    },
+    {
+      id: 'submarine-control', name: 'Submarine control room', family: 'Maritime: submarine', domain: 'submarine', status: 'preview',
+      summary: 'A cramped control room: operator consoles along the side, low deckhead with pipe runs, and the periscope well in the middle. For head clearance, reach in restricted headroom and console layout.',
+      roles: [{ id: 'c2', name: 'Console 2', z: 0 }, { id: 'c1', name: 'Console 1', z: -1000 }, { id: 'c3', name: 'Console 3', z: 1000 }],
+      shell: { kind: 'box', internal: { length: 7000, width: 4200, height: 2150 }, frontGap: 80, door: { side: 'rear', z: -2900, width: 650, height: 1500 } },
+      stations: 'mirror',
+      params: Object.values(room('Compartment length', 'Compartment width', 'Deckhead height')),
+      ws: {
+        chair: 'operator', armrests: true, recline: 6,
+        deskSize: 'custom', deskWidth: 900, deskDepth: 520, deskH: 720, deskT: 40, legroom: 400, deskStyle: 'console',
+        screens: { count: 2, layout: 'custom', bottom: 60, tilt: 10, list: [scr(19, '4:3', 430, 0, 0, 0), scr(15, '4:3', 470, 0, 0, 330, -15), scr(24, '16:10', 450, 0, 0, 0), scr(24, '16:10', 450, 0, 0, 0)] },
+        objects: [
+          { id: 'o1', type: 'keyboard', kb: 'tkl', x: 150, z: 40, yaw: 0, homeRowH: 30, tilt: 4, use: 'frequent' },
+          { id: 'o2', type: 'tbThumb', x: 170, z: 330, yaw: 0, use: 'frequent' }
+        ],
+        hands: { L: 'o1', R: 'o2' }
+      },
+      fixtures: [
+        // periscope well and the pipe runs under the deckhead
+        { k: 'cyl', front: 2600, z: 600, y0: 0, y1: 2150, r: 260, mat: 'metal' },
+        { k: 'cyl', front: 2600, z: 600, y0: 1250, y1: 1700, r: 330, mat: 'dark' },
+        ...[-200, 400, 1000].map(x => ({ k: 'cyl', axis: 'z', x, y: 2060, z: 0, len: 7000, r: 40, mat: 'metal' })),
+        { k: 'box', front: 300, y: 1850, z: 0, d: 600, h: 300, w: 6800, mat: 'rack' }
+      ],
+      checks: { now: ALL_NOW, planned: ['Head clearance to the deckhead and pipe runs, with and without a helmet', 'Passage width between consoles and the periscope well', 'Watertight door and hatch transit', 'Reach in restricted headroom when standing'] },
+      sources: ['Illustrative only: not any class of submarine', 'Def Stan 00-250 and MIL-STD-1472 for the planned clearance checks'],
+      reqs: ['ENV-07', 'ENV-08']
+    },
+    {
+      id: 'fast-jet', name: 'Fast-jet cockpit', family: 'Air: fixed wing', domain: 'air', status: 'preview',
+      summary: 'A single-seat cockpit drawn in detail: an ejection seat, side-stick and throttle on side consoles with their control panels, an instrument panel with two multifunction displays, up-front controls and knee wells, a head-up display on the glareshield, rudder pedals, and the canopy with its bows. For panel reach, knee clearance, sightlines to the displays and over the nose.',
+      roles: [{ id: 'pilot', name: 'Pilot', z: 0 }],
+      // the shell is the tub between the sills: its walls are drawn by the cockpit's own plates (walls: false), and
+      // still bound the body for collision
+      shell: { kind: 'box', internal: { length: 1050, width: 2400, height: 1150 }, ceiling: false, walls: false, frontGap: 40 },
+      ws: {
+        chair: 'ejection', armrests: false, recline: 17, seatH: 380, seatMin: 300, seatMax: 450, seatDepth: 420, seatWidth: 460, seatGap: 330, footFwd: 34, footrest: 0, pedals: true,
+        deskSize: 'custom', deskWidth: 900, deskDepth: 260, deskH: 900, deskT: 230, legroom: 300, deskStyle: 'panel',
+        // two multifunction displays in the panel and the head-up display's combiner on the glareshield (screen 3); the
+        // HMI Builder's flight presets show on them (core/hmi.js)
+        screens: { count: 3, layout: 'custom', bottom: -180, tilt: 10, list: [
+          { ...scr(8.4, '4:3', -14, -200, 0, 0), bezel: 'mfd' }, { ...scr(8.4, '4:3', -14, 200, 0, 0), bezel: 'mfd' },
+          { ...scr(6, '4:3', 60, 0, 0, 312, -20), bezel: 'hud' }, scr(24, '16:10', 450, 0, 0, 0)] },
+        objects: [
+          { id: 'o1', type: 'stick', x: -230, z: 330, yaw: 0, base: 600, use: 'frequent' },
+          { id: 'o2', type: 'throttle', x: -260, z: -330, yaw: 0, base: 600, use: 'frequent' }
+        ],
+        hands: { L: 'o2', R: 'o1' }
+      },
+      roleFixtures: jetCockpit(),
+      checks: { now: ALL_NOW, planned: ['Design eye point and over-the-nose vision (MIL-STD-1333)', 'Ejection clearance lines for knees and helmet', 'Reach to panel controls with harness locked', 'Stick and throttle motion envelopes'] },
+      sources: ['Original generic design, not any aircraft type', 'MIL-STD-1333 (aircrew station geometry) and MIL-STD-1472 for proportions and the planned checks', 'Seat back angle, panel, console, glareshield and canopy positions are indicative'],
+      reqs: ['ENV-07', 'ENV-08']
+    },
+    {
+      id: 'ship-ops-room', name: 'Ship’s operations room', family: 'Maritime: surface', domain: 'maritime', status: 'preview',
+      summary: 'A low, dim operations room with a line of multi-display consoles against the bulkhead and a command position behind. For display layout and passage behind the seats in a tight space.',
+      roles: [{ id: 'c2', name: 'Console 2', z: -600 }, { id: 'c1', name: 'Console 1', z: -1800 }, { id: 'c3', name: 'Console 3', z: 600 }, { id: 'c4', name: 'Console 4', z: 1800 }],
+      shell: { kind: 'box', internal: { length: 8000, width: 5200, height: 2250 }, frontGap: 100, door: { side: 'rear', z: 3300, width: 750, height: 1800 } },
+      stations: 'mirror',
+      params: Object.values(room('Compartment length', 'Compartment width', 'Deckhead height')),
+      ws: {
+        chair: 'operator', armrests: true, recline: 6,
+        deskSize: 'custom', deskWidth: 1150, deskDepth: 600, deskH: 720, legroom: 450, deskStyle: 'console',
+        screens: { count: 3, layout: 'custom', bottom: 60, tilt: 8, list: [scr(24, '16:10', 480, 0, 0, 0), scr(24, '16:10', 520, 0, 0, 355, -12), scr(12.1, '4:3', 260, 360, -30, -40, 30), scr(24, '16:10', 450, 0, 0, 0)] },
+        objects: [
+          { id: 'o1', type: 'keyboard', kb: 'tkl', x: 150, z: 0, yaw: 0, homeRowH: 30, tilt: 4, use: 'frequent' },
+          { id: 'o2', type: 'tbThumb', x: 170, z: -300, yaw: 0, use: 'frequent' }
+        ],
+        hands: { L: 'o2', R: 'o1' }
+      },
+      fixtures: [{ k: 'box', front: 3900, y: 450, z: 0, d: 900, h: 900, w: 2200, mat: 'console' }],
+      checks: { now: ALL_NOW, planned: ['Passage width behind occupied seats', 'Head clearance to deckhead fittings', 'Static deck inclination (ENV-10)', 'Display legibility in low lighting'] },
+      sources: ['Illustrative only: not any class of ship', 'Def Stan 00-250 and BS EN ISO 11064 for the planned checks'],
+      reqs: ['ENV-07', 'ENV-08', 'ENV-10']
+    },
+
+    // ---------------- vehicles and small craft (no desk: rugged laptops, vehicle displays, wheels) ----------------
+    (() => {
+      const lt = laptop({ x: 300, z: -500, yaw: 30, deckY: 760, tilt: 18, ref: 760 });
+      return {
+        id: 'lorry-cab', name: 'Lorry driver’s cab', family: 'Land: logistics vehicle', domain: 'land', status: 'preview',
+        summary: 'A right-hand-drive military lorry cab: suspension seat, steering wheel, a vehicle display on an arm above the dashboard and a rugged laptop on a pedestal mount by the centre console. No desk. For reach to the wheel, the laptop and display, and head clearance.',
+        roles: [{ id: 'driver', name: 'Driver (right seat)', z: 560 }],
+        shell: { kind: 'box', internal: { length: 2300, width: 1950, height: 1650 }, frontGap: 60, glass: ['front'] },
+        params: Object.values(room('Cab internal width (side to side)', 'Cab internal depth (windscreen to back wall)', 'Floor to roof lining')),
+        ws: {
+          chair: 'crew', armrests: false, seatH: 460, seatMin: 380, seatMax: 560, seatDepth: 480, seatWidth: 500, recline: 14, footFwd: 22, headH: 760,
+          deskStyle: 'none', deskSize: 'custom', deskWidth: 700, deskDepth: 1000, deskH: 760, deskT: 25, legroom: 900,
+          screens: {
+            count: 2, layout: 'custom', bottom: 0, tilt: 12,
+            // vehicle display on an arm above the dashboard, then the laptop on its mount to the driver's left
+            list: [{ ...scr(10.4, '4:3', 640, -250, 18, 330, 12), mount: 'arm' }, lt.scr]
+          },
+          objects: [{ id: 'w', type: 'wheel', model: 'wheel-lorry', x: 200, z: 0, base: 830, tilt: 60, use: 'frequent' }, lt.kb],
+          hands: { L: 'w', R: 'w' }
+        },
+        roleFixtures: [
+          // dashboard, steering column shroud and pedals
+          { k: 'box', x: 1000 - 140, y: 900, z: -300, d: 380, h: 260, w: 1500, mat: 'console' },
+          { k: 'box', x: 600, y: 90, z: 100, d: 50, h: 160, w: 70, mat: 'dark', tilt: 30 },
+          { k: 'box', x: 600, y: 110, z: -80, d: 50, h: 160, w: 110, mat: 'dark', tilt: 30 }
+        ],
+        fixtures: [
+          // passenger (commander) seat and the roof hatch above it, centre console
+          { k: 'box', front: 1300, y: 230, z: -560, d: 480, h: 460, w: 500, mat: 'console' },
+          { k: 'box', front: 1560, y: 820, z: -560, d: 90, h: 700, w: 480, mat: 'console', tilt: 12 },
+          { k: 'cyl', front: 1250, z: -560, y0: 1630, y1: 1650, r: 330, mat: 'dark' },
+          { k: 'box', front: 1150, y: 200, z: 0, d: 600, h: 400, w: 300, mat: 'console' }
+        ],
+        checks: { now: ALL_NOW.filter(g => g !== 'Furniture'), planned: ['Direct vision through the windscreen and mirrors (driver’s field of view)', 'Pedal reach and travel, knee clearance to the wheel and column', 'Head clearance with a helmet, and ingress and egress over the step', 'Seat suspension travel and vibration (later)'] },
+        sources: ['Layout after public photographs of military and commercial lorry cabs; indicative dimensions only', 'Steering wheels of 450 to 550 mm on heavy goods vehicles (typical)', 'Rugged laptop of the size of current 14 inch semi-rugged models, about 345 × 235 × 33 mm; generic, no product geometry', 'Def Stan 00-250 and MIL-STD-1472 for the planned checks'],
+        reqs: ['ENV-07', 'ENV-08', 'ENV-14']
+      };
+    })(),
+    {
+      id: 'afv-turret', name: 'Armoured vehicle turret (two-person)', family: 'Land: armoured fighting vehicle', domain: 'land', status: 'preview',
+      summary: 'Commander and gunner side by side in a two-person turret, as in infantry fighting vehicles: fixed crew seats, a sight eyepiece, hand controllers on a shelf, a crew display on a vehicle mount, the gun between them and a roof hatch over each. No desk. For head clearance, reach in a cramped space and display placement.',
+      roles: [{ id: 'gunner', name: 'Gunner (left seat)', z: -470 }, { id: 'commander', name: 'Commander (right seat)', z: 470, mirror: true }],
+      shell: { kind: 'box', internal: { length: 2000, width: 1800, height: 1580 }, frontGap: 40 },
+      stations: 'mirror',
+      params: Object.values(room('Turret internal width (side to side)', 'Turret internal depth', 'Basket floor to roof')),
+      ws: {
+        chair: 'crew', armrests: false, seatH: 430, seatMin: 350, seatMax: 520, seatDepth: 420, seatWidth: 440, recline: 10, footFwd: 14, headH: 720,
+        deskStyle: 'none', deskSize: 'custom', deskWidth: 600, deskDepth: 760, deskH: 700, deskT: 25, legroom: 700,
+        screens: { count: 1, layout: 'custom', bottom: 0, tilt: 10, list: [{ ...scr(10.4, '4:3', 470, -250, 28, 260, 10), mount: 'arm' }] },
+        objects: [
+          { id: 'hL', type: 'stick', model: 'stick-side', x: 290, z: -150, yaw: 0, base: 690, use: 'frequent' },
+          { id: 'hR', type: 'stick', model: 'stick-side', x: 290, z: 150, yaw: 0, base: 690, use: 'frequent' }
+        ],
+        hands: { L: 'hL', R: 'hR' }
+      },
+      roleFixtures: [
+        // shelf for the hand controllers, sight eyepiece, roof hatch ring and vision blocks
+        { k: 'box', x: 370, y: 640, z: 0, d: 240, h: 100, w: 440, mat: 'console' },
+        { k: 'box', x: 260, y: 1210, z: 0, d: 160, h: 110, w: 120, mat: 'dark' },
+        { k: 'box', x: 560, y: 1290, z: 0, d: 300, h: 260, w: 260, mat: 'rack' },
+        { k: 'cyl', x: -120, z: 0, y0: 1560, y1: 1580, r: 300, mat: 'dark' },
+        { k: 'box', x: 780, y: 1440, z: 0, d: 20, h: 90, w: 220, mat: 'glass' }
+      ],
+      fixtures: [
+        // the gun's breech and cradle between the crew, ammunition and radio racks at the rear
+        { k: 'box', front: 750, y: 1050, z: 0, d: 1300, h: 260, w: 300, mat: 'metal' },
+        { k: 'box', front: 1650, y: 900, z: 0, d: 260, h: 700, w: 1500, mat: 'rack' }
+      ],
+      checks: { now: ALL_NOW.filter(g => g !== 'Furniture'), planned: ['Head and helmet clearance to the roof, sight and hatch ring (KIT tier 2)', 'Hatch transit, head-out posture and commander standing on the seat', 'Sight eyepiece alignment with the design eye point across the population', 'Gun recoil and breech guard clearance', 'Vibration and shock (later)'] },
+      sources: ['Two-person medium-calibre turret layout after public imagery of infantry fighting vehicles; not any vehicle', 'Turret ring diameters of about 1.8 to 2.0 m for such turrets (public manufacturer brochures); all internal dimensions indicative', 'MIL-STD-1472 and Def Stan 00-250 for the planned checks'],
+      reqs: ['ENV-07', 'ENV-08', 'ENV-14']
+    },
+    {
+      id: 'raiding-craft-helm', name: 'Fast boat helm (raiding craft class)', family: 'Maritime: small craft', domain: 'maritime', status: 'preview',
+      summary: 'The coxswain on a jockey seat at the helm console of an open fast boat of about 9 m, as in rigid raiding craft: helm wheel, throttle, a chart plotter set in the console and a windscreen, with a second jockey seat beside. For reach to the controls and display placement; ship motion and shock are planned.',
+      roles: [{ id: 'cox', name: 'Coxswain', z: -330 }],
+      // open boat: the walls are the tubes and fairings, about 650 mm above the deck; no deckhead
+      shell: { kind: 'box', internal: { length: 2300, width: 5000, height: 650 }, ceiling: false, frontGap: 2300 },
+      params: [
+        { key: 'length', label: 'Beam inside the tubes', path: ['shell', 'internal', 'length'], min: 1500, max: 4000, step: 10 },
+        { key: 'width', label: 'Deck length shown', path: ['shell', 'internal', 'width'], min: 3000, max: 12000, step: 10 },
+        { key: 'height', label: 'Tube and fairing height above the deck', path: ['shell', 'internal', 'height'], min: 300, max: 1200, step: 10 }
+      ],
+      ws: {
+        chair: 'jockey', armrests: false, seatH: 720, footrest: 280, seatMin: 600, seatMax: 850, seatDepth: 420, seatWidth: 300, recline: 2, footFwd: 8,
+        deskStyle: 'console', deskSize: 'custom', deskWidth: 700, deskDepth: 700, deskH: 1000, deskT: 40, legroom: 420,
+        screens: { count: 1, layout: 'custom', bottom: 0, tilt: 35, list: [{ ...scr(12.1, '4:3', 600, 0, 0, 200, 25), mount: 'flush' }] },
+        objects: [
+          { id: 'w', type: 'wheel', model: 'wheel-helm', x: 260, z: -40, base: 1080, tilt: 35, use: 'frequent' },
+          { id: 't', type: 'throttle', model: 'throttle-generic', x: 220, z: 260, yaw: 0, use: 'frequent' }
+        ],
+        hands: { L: 'w', R: 't' }
+      },
+      roleFixtures: [
+        // the plotter's pod, windscreen, compass and grab rail on the console
+        { k: 'box', x: 610, y: 1100, z: 0, d: 120, h: 200, w: 300, mat: 'console' },
+        { k: 'box', x: 740, y: 1250, z: 0, d: 12, h: 480, w: 760, mat: 'glass', tilt: 25 },
+        { k: 'cyl', x: 470, z: -250, y0: 1000, y1: 1070, r: 65, mat: 'dark' },
+        { k: 'cyl', axis: 'z', x: 660, y: 1060, z: 0, len: 700, r: 16, mat: 'metal' }
+      ],
+      fixtures: [
+        // the second jockey seat beside the coxswain, and the forward troop seats
+        { k: 'box', front: 2300 + 700 + 210, y: 380, z: 330, d: 420, h: 760, w: 300, mat: 'console' },
+        { k: 'box', front: 1500, y: 380, z: -330, d: 420, h: 760, w: 300, mat: 'console' },
+        { k: 'box', front: 1500, y: 380, z: 330, d: 420, h: 760, w: 300, mat: 'console' }
+      ],
+      checks: { now: ALL_NOW.filter(g => g !== 'Furniture'), planned: ['Shock and slamming at speed: posture on the jockey seat, knee flexion and grab handle reach (ENV-10)', 'Sightline over the bow and the windscreen frame at planing trim', 'Display legibility in sunlight and spray', 'Standing (sit-stand) helm posture'] },
+      sources: ['Offshore raiding craft class: length about 9.1 m, beam about 2.9 m over the tubes (Holyhead Marine ORC data sheet, public)', 'Console, seat and control positions indicative, after public photographs; not any craft', 'Def Stan 00-250 and MIL-STD-1472 for the planned checks'],
+      reqs: ['ENV-07', 'ENV-08', 'ENV-10', 'ENV-14']
+    },
+    {
+      id: 'landing-craft', name: 'Landing craft wheelhouse', family: 'Maritime: amphibious', domain: 'maritime', status: 'preview',
+      summary: 'The coxswain standing at the console of a small enclosed wheelhouse on a landing craft (vehicle and personnel class): helm wheel, throttle, a radar display on an arm and a chart display in the console, with windows all round. For standing reach, sightlines over the console and head clearance.',
+      roles: [{ id: 'cox', name: 'Coxswain (standing)', z: 0 }],
+      shell: { kind: 'box', internal: { length: 1500, width: 1500, height: 2000 }, frontGap: 40, glass: ['front', 'sides'], door: { side: 'rear', z: 0, width: 600, height: 1800 } },
+      params: Object.values(room('Wheelhouse internal width (side to side)', 'Wheelhouse internal depth', 'Deck to deckhead')),
+      ws: {
+        solver: 'body', stance: 'standing', chair: 'crew', seatH: 450,
+        deskStyle: 'console', deskSize: 'custom', deskWidth: 1200, deskDepth: 520, deskH: 1000, deskT: 40, legroom: 120,
+        screens: { count: 2, layout: 'custom', bottom: 0, tilt: 30, list: [{ ...scr(10.4, '4:3', 400, -330, 15, 160, 8), mount: 'arm' }, { ...scr(12.1, '4:3', 330, 260, -10, 0, 35), mount: 'flush' }] },
+        objects: [
+          { id: 'w', type: 'wheel', model: 'wheel-helm', x: 170, z: -20, base: 1130, tilt: 28, use: 'frequent' },
+          { id: 't', type: 'throttle', model: 'throttle-generic', x: 160, z: 330, yaw: 0, use: 'frequent' }
+        ],
+        hands: { L: 'w', R: 't' }
+      },
+      roleFixtures: [{ k: 'box', x: 560, y: 1700, z: 0, d: 250, h: 200, w: 1400, mat: 'rack' }],
+      checks: { now: ALL_NOW.filter(g => g !== 'Furniture' && g !== 'Trunk and seat'), planned: ['Sightline from the standing eye point over the console and the bow ramp', 'Head clearance to the deckhead and fittings with a helmet', 'Standing posture in a seaway: grab handles and bracing (ENV-10)', 'Door transit with kit'] },
+      sources: ['Landing craft vehicle and personnel class, as operated by the Royal Marines (public descriptions); all wheelhouse dimensions indicative, not any craft', 'Def Stan 00-250 and MIL-STD-1472 for the planned checks'],
+      reqs: ['ENV-07', 'ENV-08', 'ENV-09', 'ENV-10', 'ENV-14']
+    },
+    (() => {
+      const lt = laptop({ x: 320, z: 0, yaw: 0, deckY: 700, tilt: 15, ref: 700 });
+      return {
+        id: 'helicopter-cabin', name: 'Helicopter cabin (heavy-lift class)', family: 'Air: rotary wing', domain: 'air', status: 'preview',
+        summary: 'Mission operators on crew seats facing the cabin wall of a heavy-lift helicopter, each with a rugged laptop on a mounting tray and a display on a wall mount, and troop seats along the opposite wall. No desk. For reach and display placement in a cabin with low headroom.',
+        roles: [{ id: 'op1', name: 'Mission operator 1', z: -700 }, { id: 'op2', name: 'Mission operator 2', z: 700 }],
+        // CH-47 class cabin: about 9.3 m long, 2.29 m wide and 1.98 m high (public type data); consoles face the side wall
+        shell: { kind: 'box', internal: { length: 9300, width: 2290, height: 1980 }, frontGap: 60, door: { side: 'rear', z: -3800, width: 900, height: 1650 } },
+        stations: 'mirror',
+        params: Object.values(room('Cabin length', 'Cabin width (wall to wall)', 'Cabin floor to roof')),
+        ws: {
+          chair: 'crew', armrests: false, seatH: 440, seatMin: 380, seatMax: 500, seatDepth: 440, seatWidth: 460, recline: 10, footFwd: 10, headH: 740,
+          deskStyle: 'none', deskSize: 'custom', deskWidth: 600, deskDepth: 760, deskH: 700, deskT: 25, legroom: 700,
+          screens: { count: 2, layout: 'custom', bottom: 0, tilt: 10, list: [lt.scr, { ...scr(10.4, '4:3', 640, 0, 0, 420, 8), mount: 'arm' }] },
+          objects: [lt.kb],
+          hands: { L: 'lt', R: 'lt' }
+        },
+        roleFixtures: [{ k: 'box', x: 810, y: 1280, z: 0, d: 10, h: 320, w: 380, mat: 'glass' }],
+        fixtures: [
+          // troop seats along the opposite wall, and the floor rails
+          { k: 'box', front: 2290 - 230, y: 420, z: 0, d: 420, h: 50, w: 8000, mat: 'console' },
+          { k: 'box', front: 2290 - 25, y: 800, z: 0, d: 30, h: 650, w: 8000, mat: 'wall' },
+          ...[-500, 500].map(dz => ({ k: 'cyl', axis: 'z', front: 1145 + dz, y: 8, z: 0, len: 9000, r: 10, mat: 'metal' }))
+        ],
+        checks: { now: ALL_NOW.filter(g => g !== 'Furniture'), planned: ['Head clearance to the roof and fittings when standing to move along the cabin (ENV-09)', 'Crash-attenuating seat stroke clearance below the seat', 'Laptop and tray restraint and the strike envelope in a crash (later)', 'Vibration and display legibility in flight (later)'] },
+        sources: ['CH-47 class cabin, about 9.3 × 2.29 × 1.98 m (public type data)', 'Operator stations, trays and display mounts indicative; not any aircraft fit', 'Rugged laptop of the size of current 14 inch semi-rugged models, about 345 × 235 × 33 mm; generic', 'Def Stan 00-970 and MIL-STD-1472 for the planned checks'],
+        reqs: ['ENV-07', 'ENV-08', 'ENV-14']
+      };
+    })(),
+    // planned templates (ENV-08): listed so users can see the roadmap; they cannot be loaded yet
+    { id: 'vehicle-commander', name: 'Vehicle commander head out of the hatch', family: 'Land: vehicle', domain: 'land', status: 'planned',
+      summary: 'The commander standing head-out of a roof hatch: head and helmet clearance, hatch transit with kit, the view over the hull. The seated turret crew are in the Armoured vehicle turret template.',
+      checks: { planned: ['Head and helmet clearance', 'Hatch transit with kit', 'Vision block and periscope sightlines', 'Reach to controls'] } },
+    { id: 'vehicle-driver', name: 'Vehicle driver station', family: 'Land: vehicle', domain: 'land', status: 'planned',
+      summary: 'Driver seat, pedals, steering and vision blocks, head-out and closed-down.', checks: { planned: ['Pedal and control reach', 'Knee clearance', 'Vision blocks'] } },
+    { id: 'dismounted', name: 'Doorways, steps and firing positions', family: 'Land: dismounted', domain: 'land', status: 'planned',
+      summary: 'Apertures, step heights, trench and firing-step profiles, kneeling and prone positions.', checks: { planned: ['Aperture transit', 'Step heights', 'Weapon sight alignment'] } },
+    { id: 'rotary-cabin', name: 'Rotary-wing cockpit', family: 'Air: rotary wing', domain: 'air', status: 'planned',
+      summary: 'Pilot stations with cyclic and collective, pedals and the instrument panel. The cabin is in the Helicopter cabin template.', checks: { planned: ['Cyclic and collective reach', 'Pedal reach', 'Door transit with kit'] } },
+    { id: 'ship-bridge', name: 'Ship’s bridge', family: 'Maritime: surface', domain: 'maritime', status: 'planned',
+      summary: 'Standing and seated bridge consoles, bridge windows and sightlines over the bow, bridge wings.', checks: { planned: ['Sightlines over the console to the horizon', 'Standing console reach', 'Window and mullion obscuration'] } },
+    { id: 'atc-tower', name: 'Air traffic control tower cab', family: 'Air: ground', domain: 'air', status: 'planned',
+      summary: 'Controller positions in a glazed tower cab: sightlines to the runway thresholds over the consoles, and glare.', checks: { planned: ['Sightlines to the airfield over the consoles', 'Glazing mullion obscuration'] } }
+  ];
+  /* ---------------- drawing and solid shape of a fixture ----------------
+     object(THREE, f, mat, opts): a THREE object for fixture f in its parent's frame, using mat(name) for materials
+     (display faces ask for 'display' and their bezels for 'frame'). opts.RoundedBox: the RoundedBoxGeometry class, for
+     boxes with round set. Used by Workspace Visualisation and the landing page, so both draw the same geometry.
+     prismSdf(f): the signed distance (mm, negative inside) of a prism fixture in its own frame, for collision. */
+  const R_ = d => d * Math.PI / 180;
+  function shapeFrom(THREE, pts, flipU) { const s = new THREE.Shape(); pts.forEach(([u, v], i) => (i ? s.lineTo : s.moveTo).call(s, flipU ? -u : u, v)); return s; }
+  function object(THREE, f, mat, opts = {}) {
+    const x = f.x || 0, m0 = mat(f.mat);
+    let m;
+    if (f.k === 'disp') {
+      m = new THREE.Group(); m.position.set(x, f.y, f.z || 0); m.rotation.set(-R_(f.tilt || 0), -Math.PI / 2 + R_(f.yaw || 0), 0, 'YXZ');
+      const fr = new THREE.Mesh(new THREE.BoxGeometry(f.w + 24, f.h + 24, 40), mat('frame')); fr.position.z = -22; m.add(fr);
+      m.add(new THREE.Mesh(new THREE.BoxGeometry(f.w, f.h, 4), mat('display')));
+    } else if (f.k === 'cyl') {
+      if (f.axis === 'z' || f.axis === 'x') { m = new THREE.Mesh(new THREE.CylinderGeometry(f.r, f.r, f.len, 24), m0); if (f.axis === 'z') m.rotation.x = Math.PI / 2; else m.rotation.z = Math.PI / 2; m.position.set(x, f.y, f.z || 0); }
+      else { m = new THREE.Mesh(new THREE.CylinderGeometry(f.r, f.r, f.y1 - f.y0, f.r < 20 ? 16 : 32), m0); m.position.set(x, (f.y0 + f.y1) / 2, f.z || 0); }
+    } else if (f.k === 'dome') {
+      m = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 16, 0, Math.PI * 2, 0, Math.PI / 2), m0); m.scale.set(f.rx, f.ry, f.rz); m.position.set(x, f.y, f.z || 0);
+    } else if (f.k === 'prism') {
+      const ax = f.axis || 'z', g = new THREE.ExtrudeGeometry(shapeFrom(THREE, f.pts, ax === 'x'), { depth: f.a1 - f.a0, bevelEnabled: false });
+      m = new THREE.Mesh(g, m0);
+      if (ax === 'z') m.position.z = f.a0; else if (ax === 'x') { m.rotation.y = Math.PI / 2; m.position.x = f.a0; } else { m.rotation.x = Math.PI / 2; m.position.y = f.a1; }
+    } else if (f.k === 'plate') {
+      m = new THREE.Mesh(new THREE.ShapeGeometry(shapeFrom(THREE, f.pts, f.axis === 'x')), m0);
+      if (f.axis === 'x') { m.rotation.y = Math.PI / 2; m.position.x = f.at; m.scale.z = f.face < 0 ? -1 : 1; }
+      else { m.position.z = f.at; m.scale.z = f.face < 0 ? -1 : 1; }
+    } else if (f.k === 'tube') {
+      const P = f.pts.map(p => new THREE.Vector3(p[0], p[1], p[2]));
+      if (P.length === 2) {
+        const len = P[0].distanceTo(P[1]); m = new THREE.Mesh(new THREE.CylinderGeometry(f.r, f.r, len, 16), m0);
+        m.position.copy(P[0]).add(P[1]).multiplyScalar(0.5); m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), P[1].clone().sub(P[0]).normalize());
+      } else m = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(P, false, 'centripetal'), Math.max(8, 3 * P.length), f.r, 12, false), m0);
+    } else {
+      const geo = f.round && opts.RoundedBox ? new opts.RoundedBox(f.d, f.h, f.w, 3, Math.min(f.round, f.d / 2 - 0.5, f.h / 2 - 0.5, f.w / 2 - 0.5)) : new THREE.BoxGeometry(f.d, f.h, f.w);
+      m = new THREE.Mesh(geo, m0); m.position.set(x, f.y, f.z || 0); m.rotation.set(0, R_(f.yaw || 0), R_(f.tilt || 0), 'YXZ');
+    }
+    return m;
+  }
+  // signed distance to a polygon in 2D (any simple polygon; negative inside)
+  function polySd(P, u, v) {
+    let d = Infinity, s = 1;
+    for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
+      const [ax, ay] = P[j], [bx, by] = P[i], ex = bx - ax, ey = by - ay, wx = u - ax, wy = v - ay;
+      const t = Math.max(0, Math.min(1, (wx * ex + wy * ey) / (ex * ex + ey * ey || 1)));
+      d = Math.min(d, Math.hypot(wx - ex * t, wy - ey * t));
+      if ((ay <= v && v < by && ex * (v - ay) > (u - ax) * ey) || (by <= v && v < ay && ex * (v - ay) < (u - ax) * ey)) s = -s;
+    }
+    return s * d;
+  }
+  // a prism's signed distance at a point of its frame (the frame its fixture is given in)
+  function prismSdf(f) {
+    const ax = f.axis || 'z', h = (f.a1 - f.a0) / 2, c = (f.a0 + f.a1) / 2;
+    return (x, y, z) => {
+      const [u, v, w] = ax === 'z' ? [x, y, z] : ax === 'x' ? [z, y, x] : [x, z, y];
+      const a = polySd(f.pts, u, v), b = Math.abs(w - c) - h;
+      return Math.min(Math.max(a, b), 0) + Math.hypot(Math.max(a, 0), Math.max(b, 0));
+    };
+  }
+  // a plate's solid slab: a prism 30 mm thick behind its face
+  const plateSolid = f => ({ k: 'prism', axis: f.axis, pts: f.pts, a0: f.face < 0 ? f.at : f.at - 30, a1: f.face < 0 ? f.at + 30 : f.at });
+  const BY = Object.fromEntries(T.map(e => [e.id, e]));
+  const DEFAULT = 'desk-workstation';
+  const loadable = e => !!e && e.status !== 'planned';
+  const get = id => BY[id] || null;
+  const getPath = (o, p) => p.reduce((a, k) => (a == null ? a : a[k]), o);
+  // a working copy of a template with the user's parameter values applied
+  function resolve(id, params) {
+    const e = structuredClone(BY[id] || BY[DEFAULT]);
+    for (const p of e.params || []) {
+      const v = params && params[p.key];
+      if (v == null || !isFinite(v)) continue;
+      const parent = getPath(e, p.path.slice(0, -1)); if (parent) parent[p.path[p.path.length - 1]] = Math.min(p.max, Math.max(p.min, +v));
+    }
+    return e;
+  }
+  const paramValue = (e, p) => getPath(e, p.path);
+  // left-right mirror image of a workstation (for the right-hand seat of a mirrored pair)
+  function mirrorWs(ws) {
+    const w = structuredClone(ws);
+    if (w.screens && w.screens.list) w.screens.list.forEach(s => { s.z = -(+s.z || 0); s.yaw = -(+s.yaw || 0); });
+    if (w.objects) w.objects.forEach(o => { o.z = -o.z; o.yaw = -(o.yaw || 0); });
+    if (w.hands) w.hands = { L: w.hands.R, R: w.hands.L };
+    return w;
+  }
+  return { list: T, get, resolve, paramValue, loadable, mirrorWs, DEFAULT, object, prismSdf, plateSolid, polySd, ejectionSeat, pedals, jetCockpit, CK };
+})();
+if (typeof module !== 'undefined' && module.exports) module.exports = HFE_ENV;
+
 const V3 = THREE.Vector3, rad = d => d * Math.PI / 180;
 const rot = (v, a) => { const c = Math.cos(a), s = Math.sin(a); return { x: v.x * c - v.y * s, y: v.x * s + v.y * c }; };
 const add2 = (a, b) => ({ x: a.x + b.x, y: a.y + b.y }), sub2 = (a, b) => ({ x: a.x - b.x, y: a.y - b.y });
@@ -1250,6 +1889,13 @@ function ik2(S, T, L1, L2, pole) {
   const pp = pole.clone().sub(dir.clone().multiplyScalar(pole.dot(dir))).normalize();
   return { E: S.clone().addScaledVector(dir, a).addScaledVector(pp, h), W: S.clone().addScaledVector(dir, dist) };
 }
+// The seated pose in Workspace Visualisation's fast-jet cockpit (core/environments.js 'fast-jet'), in the tool's frame
+// (x = 0 at the instrument panel's face, floor at y = 0, +z to the right): the seat's height and depth, the back angle
+// the tool's classic solver gives for its 17° seat back, the shank angle of the template (34° forward), and the
+// wrists where the tool puts them on the side-stick and throttle, as offsets from each control's base.
+const JET = HFE_ENV.get('fast-jet'), JW = JET.ws;
+const JETPOSE = { seatY: JW.seatH, seatFront: -JW.seatGap, seatRear: -JW.seatGap - JW.seatDepth, dR: rad(11.8), psi: rad(JW.footFwd),
+  hands: { [1]: { o: JW.objects[0], W: [-76, 131, 21], tip: [108, 106, 62] }, [-1]: { o: JW.objects[1], W: [-94, 100, -23], tip: [89, 78, -69] } } };
 function pose(M) {
   const SEL = M.shoulderelbowlength, HL = M.handlength, shoe = 25;
   const hipF = 0.5 * M.buttockdepth, hipU = 0.5 * M.thighclearance;
@@ -1259,23 +1905,21 @@ function pose(M) {
   const H0 = { x: hipF, y: hipU }, S0 = { x: 0.3 * M.chestdepth, y: M.shoulderheightsitting - GHoff }, C0 = { x: 0.25 * M.chestdepth, y: M.cervicaleheightsitting - 15 };
   const eyeF = C0.x + 0.57 * M.headlength, E0 = { x: eyeF, y: M.eyeheightsitting }, headRy = 0.5 * (M.tragiontopofhead + 105);
   const Hc0 = { x: eyeF + 15 - M.headlength / 2, y: M.sittingheight - headRy };
-  const dR = rad(2), seatY = M.poplitealheight + shoe, base = { x: -hipF, y: seatY };
+  const P = JETPOSE, dR = P.dR, seatY = P.seatY, base = { x: P.seatRear, y: seatY };
   const H = add2(base, H0), T = q => add2(H, rot(sub2(q, H0), dR));
   const Sh = T(S0), C = T(C0), phi = dR + rad(5);
   const Hd = (q, ph) => add2(C, rot(sub2(q, C0), dR - ph)), E = Hd(E0, phi);
-  const psi = rad(3), kneeY = seatY + dk, dy = kneeY - H.y;
+  const psi = P.psi, kneeY = seatY + dk, dy = kneeY - H.y;
   const K = { x: H.x + Math.sqrt(Lthigh * Lthigh - dy * dy), y: kneeY };
   const A = { x: K.x + Lshank * Math.sin(psi), y: K.y - Lshank * Math.cos(psi) };
   const legZ = Math.max(0.5 * M.hipbreadthsitting - hipU * 0.92, hipU * 0.7), ghZ = 0.415 * M.biacromialbreadth;
   const arms = {};
   for (const s of [-1, 1]) {
-    const Sv = new V3(Sh.x, Sh.y, s * ghZ), tdir = new V3(K.x - H.x, K.y - H.y, 0).normalize();
-    const Wt = new V3(H.x, H.y, 0).lerp(new V3(K.x, K.y, 0), 0.6); Wt.y += hipU * 0.95 + 22; Wt.z = s * (legZ + 10);
-    const ik = ik2(Sv, Wt, Lu, Lf, new V3(-0.4, -1, 0.55 * s).normalize());
-    const tip = ik.W.clone().addScaledVector(tdir, 0.78 * HL); tip.y -= 14;
-    arms[s] = { S: Sv, E: ik.E, W: ik.W, hand: { tip } };
+    const Sv = new V3(Sh.x, Sh.y, s * ghZ), h = P.hands[s], o = new V3(h.o.x, h.o.base, h.o.z);
+    const Wt = o.clone().add(new V3(...h.W)), ik = ik2(Sv, Wt, Lu, Lf, new V3(-0.4, -1, 0.55 * s).normalize());
+    arms[s] = { S: Sv, E: ik.E, W: ik.W, hand: { tip: o.clone().add(new V3(...h.tip)), tilt: 0 } };
   }
-  return { T, H, H0, Sh, C, C0, Hc0, Hd, phi, dR, S0, base, seatY, hipU, dk, SEL, K, A, legZ, arms, E, shoe, ghZ, floorY: A.y - M.lateralmalleolusheight - shoe };
+  return { T, H, H0, Sh, C, C0, Hc0, Hd, phi, dR, S0, base, seatY, seatFrontX: P.seatFront, hipU, dk, SEL, K, A, legZ, arms, E, shoe, ghZ, floorY: A.y - M.lateralmalleolusheight - shoe };
 }
 
 const M = Object.fromEntries(SUBJ.dims.map((k, i) => [k, SUBJ.v[i]]));
@@ -1292,22 +1936,61 @@ function dress() {
   body.add(BODY.build(M, G, view.mode, mats, { sex: 'male', kit: view.kit }));
 }
 dress();
-// stool, drawn as lines
-const stool = new THREE.Group(), lm = new THREE.LineBasicMaterial({ color: tok('--wire'), transparent: true, opacity: 0.45 });
-const sx = G.H.x + 20, top = G.seatY, r = 210;
-const circle = (y, rr, n = 64) => { const p = []; for (let i = 0; i <= n; i++) { const t = i / n * Math.PI * 2; p.push(new V3(sx + rr * Math.cos(t), y, rr * Math.sin(t))); } return new THREE.Line(new THREE.BufferGeometry().setFromPoints(p), lm); };
-stool.add(circle(top, r), circle(top - 40, r));
-const legs = [];
-for (let i = 0; i < 4; i++) { const t = (i + 0.5) / 4 * Math.PI * 2; legs.push(new V3(sx + (r - 30) * Math.cos(t), top - 40, (r - 30) * Math.sin(t)), new V3(sx + (r + 40) * Math.cos(t), G.floorY, (r + 40) * Math.sin(t))); }
-stool.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(legs), lm));
-model.add(stool);
+// the cockpit: Workspace Visualisation's fast-jet template, drawn from the same data (core/environments.js) with its
+// ejection seat, rudder pedals at the toes, side-stick, throttle and the displays' bezels; as lines (Wire) or surfaces
+const cockpit = new THREE.Group(); model.add(cockpit);
+const Tb = q => add2(G.H, rot(sub2(q, G.H0), G.dR));
+const scrBox = (x, y, z, w, h, tilt, mat) => ({ k: 'box', x, y, z, d: 18, h, w, tilt, mat });
+const PRIMS = [
+  ...JET.roleFixtures,
+  ...HFE_ENV.ejectionSeat({ front: G.seatFrontX, depth: JW.seatDepth, width: JW.seatWidth, y: G.seatY, ang: G.dR, top: 900, headH: M.sittingheight - 0.5 * (M.tragiontopofhead + 105) - 40, at: (x, y) => { const q = Tb({ x, y }); return [q.x, q.y]; } }),
+  ...HFE_ENV.pedals(G.A.x + 0.75 * M.footlength, [-G.legZ, G.legZ]),
+  // side-stick and throttle (generic shapes), the two multifunction displays and the head-up display's combiner
+  ...[JW.objects[0], JW.objects[1]].flatMap((o, i) => [{ k: 'box', x: o.x, y: o.base + 10, z: o.z, d: 120, h: 20, w: 90, mat: 'black' }, { k: 'tube', pts: [[o.x, o.base + 20, o.z], [o.x + (i ? 0 : 8), o.base + (i ? 150 : 190), o.z]], r: i ? 22 : 17, mat: 'black' }]),
+  scrBox(-14, 783, -200, 263, 220, -10, 'cockpit2'), scrBox(-6, 783, -200, 171, 128, -10, 'lcd'), scrBox(-14, 783, 200, 263, 220, -10, 'cockpit2'), scrBox(-6, 783, 200, 171, 128, -10, 'lcd'),
+  { k: 'box', x: 60, y: 1075, z: 0, d: 4, h: 120, w: 154, tilt: 20, mat: 'glass' }
+];
+const ckMats = {}, ckCol = { cockpit: '#8a949e', cockpit2: '#9aa4ad', black: '#3a4148', yellow: '#d9a92a', lcd: '#2c4a40', seat: '#6d7a69', metal: '#a4adb5', glass: '#c9d6e0' };
+const ckMat = n => ckMats[n] || (ckMats[n] = n === 'glass' ? std(ckCol.glass, { transparent: true, opacity: 0.18, depthWrite: false, side: THREE.DoubleSide, roughness: 0.1 }) : std(ckCol[n] || ckCol.cockpit, { side: THREE.DoubleSide }));
+const lineMat = { main: new THREE.LineBasicMaterial({ color: tok('--wire'), transparent: true, opacity: 0.34 }), fine: new THREE.LineBasicMaterial({ color: tok('--wire'), transparent: true, opacity: 0.2 }) };
+// the canopy as lines: its sill edge and a few hoops and meridians over the half ellipsoid
+function domeLines(f) {
+  const out = [], P = (u, t) => { const x = f.x + f.rx * Math.cos(u), k = Math.sin(u); return new V3(x, f.y + f.ry * k * Math.sin(t), f.rz * k * Math.cos(t)); };
+  for (const t of [0, 0.25, 0.5, 0.75, 1].map(v => v * Math.PI)) out.push(Array.from({ length: 49 }, (_, i) => P(i / 48 * Math.PI, t)));
+  return out.map(p => new THREE.Line(new THREE.BufferGeometry().setFromPoints(p), lineMat.fine));
+}
+function drawCockpit() {
+  for (const o of cockpit.children.splice(0)) o.traverse(c => { if (c.geometry) c.geometry.dispose(); });
+  for (const f of PRIMS) {
+    if (view.mode === 'wire' && f.k === 'dome') { domeLines(f).forEach(l => cockpit.add(l)); continue; }
+    if (view.mode === 'wire' && f.k === 'plate') continue;   // the tub walls would hide nothing as lines; their sills show them
+    if (view.mode === 'wire' && f.k === 'tube') {   // a tube as its centre line
+      const P = f.pts.map(p => new V3(...p)), pts = P.length > 2 ? new THREE.CatmullRomCurve3(P, false, 'centripetal').getPoints(6 * P.length) : P;
+      cockpit.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), f.deco ? lineMat.fine : lineMat.main)); continue;
+    }
+    const m = HFE_ENV.object(THREE, f, ckMat);
+    if (view.mode !== 'wire') {
+      // the tub walls face inwards only, so the near wall drops out as the model turns (a cutaway, as in the tool)
+      if (f.k === 'plate') m.material = ckMats['front:' + f.mat] || (ckMats['front:' + f.mat] = std(ckCol[f.mat] || ckCol.cockpit));
+      cockpit.add(m); continue;
+    }
+    m.updateMatrix();
+    m.traverse(c => {
+      if (!c.isMesh) return;
+      const l = new THREE.LineSegments(new THREE.EdgesGeometry(c.geometry, 35), f.deco ? lineMat.fine : lineMat.main);
+      c.updateMatrix(); l.applyMatrix4(c === m ? m.matrix : m.matrix.clone().multiply(c.matrix)); cockpit.add(l);
+      c.geometry.dispose();
+    });
+  }
+}
+drawCockpit();
 const box = new THREE.Box3().setFromObject(model), ctr = box.getCenter(new V3());
 model.position.set(-ctr.x, -G.floorY, -ctr.z);
 const turn = new THREE.Group(); turn.add(model);
 // floor rings
 const floor = new THREE.Group(), fm = new THREE.LineBasicMaterial({ color: tok('--floor') });
-for (const rr of [350, 600, 850]) { const p = []; for (let i = 0; i <= 96; i++) { const t = i / 96 * Math.PI * 2; p.push(new V3(rr * Math.cos(t), 0, rr * Math.sin(t))); } floor.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(p), fm)); }
-const spokes = []; for (let i = 0; i < 12; i++) { const t = i / 12 * Math.PI * 2; spokes.push(new V3(350 * Math.cos(t), 0, 350 * Math.sin(t)), new V3(850 * Math.cos(t), 0, 850 * Math.sin(t))); }
+for (const rr of [600, 950, 1300]) { const p = []; for (let i = 0; i <= 96; i++) { const t = i / 96 * Math.PI * 2; p.push(new V3(rr * Math.cos(t), 0, rr * Math.sin(t))); } floor.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(p), fm)); }
+const spokes = []; for (let i = 0; i < 12; i++) { const t = i / 12 * Math.PI * 2; spokes.push(new V3(600 * Math.cos(t), 0, 600 * Math.sin(t)), new V3(1300 * Math.cos(t), 0, 1300 * Math.sin(t))); }
 floor.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(spokes), fm));
 turn.add(floor);
 
@@ -1316,7 +1999,7 @@ for (const [id, key] of [['kit-seg', 'kit'], ['mode-seg', 'mode']]) {
   seg.addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
     view[key] = b.dataset[key]; seg.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b));
-    dress(); draw();
+    dress(); drawCockpit(); draw();
   });
 }
 const canvas = document.getElementById('c');
@@ -1331,7 +2014,7 @@ const height = box.max.y - G.floorY;
 function size() {
   const w = canvas.clientWidth, h = canvas.clientHeight; if (!w || !h) return;
   renderer.setSize(w, h, false); cam.aspect = w / h;
-  const fitH = height * 1.18, fitW = 1500, vfov = rad(cam.fov);
+  const fitH = height * 1.18, fitW = 2300, vfov = rad(cam.fov);
   const dist = Math.max(fitH / 2 / Math.tan(vfov / 2), fitW / 2 / (Math.tan(vfov / 2) * cam.aspect));
   const ty = height * 0.48;
   cam.position.set(0, ty + dist * 0.22, dist); cam.lookAt(0, ty, 0); cam.updateProjectionMatrix(); draw();

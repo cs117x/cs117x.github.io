@@ -234,7 +234,7 @@ th{color:var(--muted);font-weight:600;position:sticky;top:-10px;background:var(-
     <div class="tp" id="p-tr" role="tabpanel" hidden></div>
     <div class="tp probs" id="p-pr" role="tabpanel" hidden></div>
   </section>
-  <footer class="status"><span id="sb-pos">Ln 1, Col 1</span><span id="sb-n"></span><span id="sb-d"></span><span class="sp"></span><span id="sb-build">Build 8242ac85b15e</span></footer>
+  <footer class="status"><span id="sb-pos">Ln 1, Col 1</span><span id="sb-n"></span><span id="sb-d"></span><span class="sp"></span><span id="sb-build">Build a5cfe43c834c</span></footer>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
@@ -1371,6 +1371,119 @@ const HFE_ENV = (() => {
     width: { key: 'width', label: W, path: ['shell', 'internal', 'width'], min: 1200, max: 20000, step: 10 },
     height: { key: 'height', label: H, path: ['shell', 'internal', 'height'], min: 1500, max: 6000, step: 10 }, ...extra });
 
+  /* ---------------- detailed fast-jet cockpit (generic, indicative) ----------------
+     A single-seat fast-jet cockpit drawn in some detail: tub walls and sills, side consoles with control panels, an
+     instrument panel with knee wells and a centre pedestal, a glareshield with the head-up display's body, the canopy
+     with its windscreen and aft bows and mirrors. It is an original, generic design: the proportions follow public
+     guidance on aircrew station geometry (MIL-STD-1333, MIL-STD-1472) and public photographs of the type in general,
+     and copy no particular aircraft. Lengths in mm in the role frame (the panel's near face at x = 0, the floor at y = 0,
+     +z to the pilot's right). The displays themselves are the workstation's screens (ws.screens), so the HMI Builder's
+     screens show on them; the ejection seat and rudder pedals follow the seat and feet (ejectionSeat, pedals below).
+     Extra fixture kinds used here (drawn by object(), solid unless deco):
+       { k: 'prism', axis: 'x' | 'y' | 'z', pts: [[u, v], ...], a0, a1 }  a polygon extruded along axis from a0 to a1;
+           axis z: (u, v) = (x, y); axis x: (u, v) = (z, y); axis y: (u, v) = (x, z)
+       { k: 'plate', axis: 'x' | 'z', at, face: 1 | -1, pts }   a one-sided wall facing +axis (face 1) or -axis; seen
+           from outside it drops out, so the cockpit reads as a cutaway. Solid as a 30 mm slab behind its face.
+       { k: 'tube', pts: [[x, y, z], ...], r }   a round tube through the points (solid as capsules between them)
+       { k: 'cyl', axis: 'x', x, y, z, len, r }  a cylinder along x (knobs and dials on the panel face)
+       deco: true   drawn only: small details that no check measures against (knobs, switches, bezels' buttons) */
+  const arcPts = (n, f) => Array.from({ length: n + 1 }, (_, i) => f(i / n));
+  const CK = { halfW: 525, sill: 885, sillF: 965, back: -1500, front: 300, conTop: 600, conIn: 295, panTop: 905, panLow: 668,
+    canopy: { x: -650, y: 885, rx: 1100, ry: 520, rz: 540 } };
+  // a point on the canopy (half ellipsoid) at fore-and-aft x and angle t round the section (0 = right sill, pi = left)
+  const canopyAt = (x, t, grow = 0) => { const c = CK.canopy, k = Math.sqrt(Math.max(0, 1 - ((x - c.x) / c.rx) ** 2)); return [x, c.y + (c.ry * k + grow) * Math.sin(t), (c.rz * k + grow) * Math.cos(t)]; };
+  function consolePanel(out, x0, x1, z0, z1, kinds) {
+    // a console control panel: a raised plate with knobs (k), toggle switches (t) and a small readout (d), laid out in
+    // rows across the panel
+    const y = CK.conTop, d = x1 - x0, w = z1 - z0, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+    out.push({ k: 'box', x: cx, y: y + 4, z: cz, d: d - 6, h: 8, w: w - 6, mat: 'cockpit2', deco: true });
+    kinds.forEach((row, i) => {
+      const xr = x1 - (i + 0.5) * d / kinds.length;
+      [...row].forEach((ch, j) => {
+        const zr = z0 + (j + 0.5) * w / row.length;
+        if (ch === 'k') out.push({ k: 'cyl', x: xr, z: zr, y0: y + 8, y1: y + 24, r: 11, mat: 'black', deco: true });
+        else if (ch === 't') out.push({ k: 'cyl', x: xr, z: zr, y0: y + 8, y1: y + 26, r: 3, mat: 'metal', deco: true });
+        else if (ch === 'd') out.push({ k: 'box', x: xr, y: y + 10, z: zr, d: d / kinds.length * 0.6, h: 4, w: w / row.length * 0.8, mat: 'lcd', deco: true });
+      });
+    });
+  }
+  function jetCockpit() {
+    const out = [], { halfW: Wz, sill, sillF, back, front } = CK;
+    // tub walls, the bulkhead behind the seat, and the sills (canopy longerons) along their tops
+    const side = [[back, 0], [front, 0], [front, sillF], [0, sillF], [-380, sill], [back, sill]];
+    out.push({ k: 'plate', axis: 'z', at: -Wz, face: 1, pts: side, mat: 'cockpit', deco: true }, { k: 'plate', axis: 'z', at: Wz, face: -1, pts: side, mat: 'cockpit', deco: true });
+    out.push({ k: 'plate', axis: 'x', at: back, face: 1, pts: [[-Wz, 0], [Wz, 0], [Wz, sill], [-Wz, sill]], mat: 'cockpit', deco: true });
+    for (const s of [-1, 1]) out.push({ k: 'tube', pts: [[back, sill + 10, s * (Wz + 6)], [-380, sill + 10, s * (Wz + 6)], [0, sillF + 10, s * (Wz + 6)], [front, sillF + 10, s * (Wz + 6)]], r: 17, mat: 'cockpit2', deco: true });
+    // side consoles: flat tops at console height, rising at the front into the instrument panel
+    const con = [[-1050, 0], [front, 0], [front, 705], [120, 705], [-110, CK.conTop], [-1050, CK.conTop]];
+    out.push({ k: 'prism', axis: 'z', pts: con, a0: CK.conIn, a1: Wz, mat: 'cockpit' }, { k: 'prism', axis: 'z', pts: con, a0: -Wz, a1: -CK.conIn, mat: 'cockpit' });
+    // console control panels round the side-stick (right) and the throttle (left)
+    consolePanel(out, -1000, -820, 310, 510, ['kdk', 'kk']); consolePanel(out, -810, -620, 310, 510, ['ttttt', 'k k']); consolePanel(out, -610, -430, 310, 510, ['kkk', 'tt t']);
+    consolePanel(out, -400, -130, 410, 510, ['k', 'k', 't']);
+    consolePanel(out, -1000, -820, -510, -310, ['tttt', 'kk']); consolePanel(out, -810, -620, -510, -310, ['kdk', 'kk']); consolePanel(out, -610, -430, -510, -310, ['ttt', 'k']);
+    consolePanel(out, -400, -130, -510, -440, ['k', 't', 'k']);
+    out.push({ k: 'box', x: -265, y: CK.conTop + 2, z: -330, d: 300, h: 4, w: 60, mat: 'black', deco: true });   // throttle quadrant slot
+    // instrument panel: full width above the knee wells, down to the consoles outboard; a narrow pedestal between the
+    // pilot's legs carries the lower panel
+    out.push({ k: 'prism', axis: 'x', a0: -2, a1: front, pts: [[-Wz, CK.panTop], [Wz, CK.panTop], [Wz, CK.conTop], [300, CK.conTop], [300, CK.panLow], [-300, CK.panLow], [-300, CK.conTop], [-Wz, CK.conTop]], mat: 'cockpit' });
+    out.push({ k: 'box', x: 240, y: CK.panLow / 2, z: 0, d: 120, h: CK.panLow, w: 120, mat: 'cockpit' });
+    // glareshield over the panel, and the head-up display's body in it
+    out.push({ k: 'prism', axis: 'z', a0: -420, a1: 420, pts: [[-70, 950], [-60, CK.panTop], [front, CK.panTop], [front, 985], [40, 985]], mat: 'black' });
+    out.push({ k: 'box', x: 130, y: 1000, z: 0, d: 190, h: 70, w: 170, mat: 'black', deco: true });
+    // up-front controls between the displays: a keypad with a scratchpad readout, and a standby instrument below
+    out.push({ k: 'box', x: -8, y: 845, z: 0, d: 12, h: 96, w: 118, mat: 'cockpit2', deco: true }, { k: 'box', x: -15, y: 880, z: 0, d: 4, h: 16, w: 96, mat: 'lcd', deco: true });
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) out.push({ k: 'box', x: -16, y: 856 - r * 22, z: (c - 1) * 30, d: 6, h: 15, w: 22, mat: 'black', deco: true });
+    out.push({ k: 'cyl', axis: 'x', x: -10, y: 742, z: 0, len: 16, r: 44, mat: 'cockpit2', deco: true }, { k: 'cyl', axis: 'x', x: -19, y: 742, z: 0, len: 4, r: 37, mat: 'lcd', deco: true });
+    // outboard of the displays: landing gear lever (left), caution lights and standby gauges (right)
+    out.push({ k: 'box', x: -8, y: 800, z: -430, d: 12, h: 170, w: 120, mat: 'cockpit2', deco: true }, { k: 'box', x: -45, y: 820, z: -430, d: 70, h: 14, w: 14, mat: 'metal', deco: true }, { k: 'cyl', axis: 'x', x: -85, y: 820, z: -430, len: 22, r: 22, mat: 'yellow', deco: true });
+    out.push({ k: 'box', x: -8, y: 830, z: 430, d: 12, h: 110, w: 130, mat: 'cockpit2', deco: true });
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) out.push({ k: 'box', x: -16, y: 862 - r * 30, z: 392 + c * 38, d: 5, h: 20, w: 30, mat: r === 0 && c === 1 ? 'yellow' : 'lcd', deco: true });
+    for (const z of [-470, -390, 390, 470]) out.push({ k: 'cyl', axis: 'x', x: -8, y: 720, z, len: 14, r: 30, mat: 'black', deco: true });
+    // canopy: the transparency, its frame along the sills, the windscreen bow and the aft bow, and three mirrors
+    const c = CK.canopy;
+    out.push({ k: 'dome', x: c.x, y: c.y, z: 0, rx: c.rx, ry: c.ry, rz: c.rz, mat: 'glass' });
+    for (const s of [-1, 1]) out.push({ k: 'tube', pts: arcPts(16, u => canopyAt(-1180 + u * 1370, s > 0 ? 0 : Math.PI, 6)), r: 15, mat: 'cockpit2', deco: true });
+    for (const x of [190, -1180]) out.push({ k: 'tube', pts: arcPts(24, u => canopyAt(x, u * Math.PI, 8)), r: x > 0 ? 20 : 26, mat: 'cockpit2', deco: true });
+    for (const t of [0.35, 0.5, 0.65]) { const p = canopyAt(175, t * Math.PI, -20); out.push({ k: 'box', x: p[0], y: p[1], z: p[2], d: 12, h: 42, w: t === 0.5 ? 150 : 90, yaw: 0, tilt: 0, mat: 'black', deco: true }); }
+    return out;
+  }
+  // the ejection seat, drawn for the seat as set (height, depth, width, back angle): bucket, cushions, headbox with its
+  // headrest, guide rails and catapult behind the back, and the firing handle between the thighs. p: { front (seat front
+  // edge x), depth, width, y (seat top), at(x, y) (a point in the seat's own frame, upright, to the world, turned with the
+  // back), ang (back angle, rad, back from vertical), top (back height above the seat), headH (headrest centre) }.
+  function ejectionSeat(p) {
+    const out = [], cx = p.front - p.depth / 2, deg = p.ang * 180 / Math.PI, A = (x, y) => p.at(x, y);
+    const bx = (x, y, d, h, w, mat, node, o) => { const q = A(x, y); out.push({ k: 'box', x: q[0], y: q[1], z: 0, d, h, w, tilt: deg, mat, node, ...o }); };
+    out.push({ k: 'box', x: cx, y: p.y - 30, z: 0, d: p.depth, h: 60, w: p.width, mat: 'seat', round: 18, node: 'ws.chair.seat' });
+    out.push({ k: 'box', x: cx - 10, y: p.y - 80, z: 0, d: p.depth + 20, h: 40, w: p.width + 36, mat: 'cockpit2', node: 'ws.chair.seat' });
+    for (const s of [-1, 1]) out.push({ k: 'box', x: cx - 10, y: p.y - 20, z: s * (p.width / 2 + 10), d: p.depth + 30, h: 140, w: 16, mat: 'cockpit2', node: 'ws.chair.seat' });
+    out.push({ k: 'box', x: cx - 20, y: (60 + p.y - 100) / 2, z: 0, d: p.depth - 60, h: Math.max(20, p.y - 160), w: p.width - 60, mat: 'cockpit', node: 'ws.chair.base' });
+    // firing handle: a loop at the front of the seat between the thighs, in yellow and black bands
+    const hy = p.y - 70, hx = p.front + 14, R = 40;
+    for (let i = 0; i < 6; i++) out.push({ k: 'tube', pts: arcPts(4, u => { const t = (i + u) / 6 * Math.PI; return [hx, hy + R * Math.sin(t), R * Math.cos(t)]; }), r: 8, mat: i % 2 ? 'black' : 'yellow', node: 'ws.chair.seat' });
+    // back cushion and the back shell, the headbox with its headrest pad and canopy breakers
+    bx(-30, (150 + p.top) / 2, 60, p.top - 150, 460, 'seat', 'ws.chair.back', { round: 18 });
+    bx(-80, (100 + p.top) / 2, 44, p.top - 100, 500, 'cockpit2', 'ws.chair.back');
+    bx(-160, p.top - 40, 200, 300, 380, 'cockpit2', 'ws.chair.head');
+    bx(-40, p.headH, 60, 150, 280, 'seat', 'ws.chair.head', { round: 18 });
+    for (const z of [-110, 110]) { const q = A(-150, p.top + 117); out.push({ k: 'box', x: q[0], y: q[1], z, d: 120, h: 14, w: 26, tilt: deg, mat: 'yellow', node: 'ws.chair.head' }); }
+    // guide rails and the catapult tube behind the back, down to the cockpit floor
+    const lo = A(-210, 40 - p.y), hi = A(-210, p.top + 90);
+    for (const z of [-180, 180]) out.push({ k: 'tube', pts: [[lo[0], lo[1], z], [hi[0], hi[1], z]], r: 20, mat: 'metal', node: 'ws.chair.base' });
+    const c0 = A(-200, 40 - p.y), c1 = A(-200, p.top - 60);
+    out.push({ k: 'tube', pts: [[c0[0], c0[1], 0], [c1[0], c1[1], 0]], r: 42, mat: 'metal', node: 'ws.chair.base' });
+    return out;
+  }
+  // rudder pedals ahead of each foot: a pedal face just beyond the toes, its arm into the footwell, and a heel rest.
+  // toe: the toe's fore-and-aft position; zs: each foot's centre across the cockpit
+  function pedals(toe, zs) {
+    const out = [];
+    for (const z of zs) out.push({ k: 'box', x: toe + 22, y: 110, z, d: 16, h: 170, w: 110, tilt: -18, mat: 'black', node: 'ws.foot' },
+      { k: 'box', x: toe + 100, y: 160, z, d: 150, h: 24, w: 34, mat: 'metal', node: 'ws.foot' });
+    out.push({ k: 'box', x: toe - 200, y: 5, z: 0, d: 220, h: 10, w: Math.abs(zs[1] - zs[0]) + 160, mat: 'cockpit2', node: 'ws.foot' });
+    return out;
+  }
+
   const T = [
     {
       id: 'desk-workstation', name: 'Seated desk workstation', family: 'Office and general', domain: 'office', status: 'available',
@@ -1521,30 +1634,28 @@ const HFE_ENV = (() => {
     },
     {
       id: 'fast-jet', name: 'Fast-jet cockpit', family: 'Air: fixed wing', domain: 'air', status: 'preview',
-      summary: 'A single-seat cockpit with a reclined ejection seat, side-stick and throttle on the side consoles, an instrument panel with multifunction displays, and a canopy. For panel reach, knee clearance to the panel and sightlines to the displays.',
+      summary: 'A single-seat cockpit drawn in detail: an ejection seat, side-stick and throttle on side consoles with their control panels, an instrument panel with two multifunction displays, up-front controls and knee wells, a head-up display on the glareshield, rudder pedals, and the canopy with its bows. For panel reach, knee clearance, sightlines to the displays and over the nose.',
       roles: [{ id: 'pilot', name: 'Pilot', z: 0 }],
-      shell: { kind: 'box', internal: { length: 1050, width: 2400, height: 1150 }, ceiling: false, frontGap: 40 },
-      params: [{ key: 'length', label: 'Cockpit width between sills', path: ['shell', 'internal', 'length'], min: 800, max: 1600, step: 10 }],
+      // the shell is the tub between the sills: its walls are drawn by the cockpit's own plates (walls: false), and
+      // still bound the body for collision
+      shell: { kind: 'box', internal: { length: 1050, width: 2400, height: 1150 }, ceiling: false, walls: false, frontGap: 40 },
       ws: {
-        chair: 'ejection', armrests: false, recline: 17, seatH: 380, seatMin: 300, seatMax: 450, seatDepth: 420, seatWidth: 460, seatGap: 330, footFwd: 34, footrest: 0,
+        chair: 'ejection', armrests: false, recline: 17, seatH: 380, seatMin: 300, seatMax: 450, seatDepth: 420, seatWidth: 460, seatGap: 330, footFwd: 34, footrest: 0, pedals: true,
         deskSize: 'custom', deskWidth: 900, deskDepth: 260, deskH: 900, deskT: 230, legroom: 300, deskStyle: 'panel',
-        screens: { count: 3, layout: 'custom', bottom: -205, tilt: 10, list: [scr(8.4, '4:3', -6, -125, 0, 0), scr(8.4, '4:3', -6, 125, 0, 0), scr(6, '4:3', -6, 0, 0, 160, 12), scr(24, '16:10', 450, 0, 0, 0)] },
+        // two multifunction displays in the panel and the head-up display's combiner on the glareshield (screen 3); the
+        // HMI Builder's flight presets show on them (core/hmi.js)
+        screens: { count: 3, layout: 'custom', bottom: -180, tilt: 10, list: [
+          { ...scr(8.4, '4:3', -14, -200, 0, 0), bezel: 'mfd' }, { ...scr(8.4, '4:3', -14, 200, 0, 0), bezel: 'mfd' },
+          { ...scr(6, '4:3', 60, 0, 0, 312, -20), bezel: 'hud' }, scr(24, '16:10', 450, 0, 0, 0)] },
         objects: [
           { id: 'o1', type: 'stick', x: -230, z: 330, yaw: 0, base: 600, use: 'frequent' },
           { id: 'o2', type: 'throttle', x: -260, z: -330, yaw: 0, base: 600, use: 'frequent' }
         ],
         hands: { L: 'o2', R: 'o1' }
       },
-      roleFixtures: [
-        // side consoles carrying the stick and throttle
-        { k: 'box', x: -330, y: 300, z: 400, d: 700, h: 600, w: 200, mat: 'dark' },
-        { k: 'box', x: -330, y: 300, z: -400, d: 700, h: 600, w: 200, mat: 'dark' },
-        // head-up display combiner and the canopy
-        { k: 'box', x: 70, y: 1080, z: 0, d: 10, h: 180, w: 160, mat: 'glass', tilt: 30 },
-        { k: 'dome', x: -250, y: 1150, z: 0, rx: 1300, ry: 520, rz: 525, mat: 'glass' }
-      ],
+      roleFixtures: jetCockpit(),
       checks: { now: ALL_NOW, planned: ['Design eye point and over-the-nose vision (MIL-STD-1333)', 'Ejection clearance lines for knees and helmet', 'Reach to panel controls with harness locked', 'Stick and throttle motion envelopes'] },
-      sources: ['MIL-STD-1333 (aircrew station geometry) for the planned checks', 'Seat back angle, panel and console positions are indicative'],
+      sources: ['Original generic design, not any aircraft type', 'MIL-STD-1333 (aircrew station geometry) and MIL-STD-1472 for proportions and the planned checks', 'Seat back angle, panel, console, glareshield and canopy positions are indicative'],
       reqs: ['ENV-07', 'ENV-08']
     },
     {
@@ -1745,6 +1856,67 @@ const HFE_ENV = (() => {
     { id: 'atc-tower', name: 'Air traffic control tower cab', family: 'Air: ground', domain: 'air', status: 'planned',
       summary: 'Controller positions in a glazed tower cab: sightlines to the runway thresholds over the consoles, and glare.', checks: { planned: ['Sightlines to the airfield over the consoles', 'Glazing mullion obscuration'] } }
   ];
+  /* ---------------- drawing and solid shape of a fixture ----------------
+     object(THREE, f, mat, opts): a THREE object for fixture f in its parent's frame, using mat(name) for materials
+     (display faces ask for 'display' and their bezels for 'frame'). opts.RoundedBox: the RoundedBoxGeometry class, for
+     boxes with round set. Used by Workspace Visualisation and the landing page, so both draw the same geometry.
+     prismSdf(f): the signed distance (mm, negative inside) of a prism fixture in its own frame, for collision. */
+  const R_ = d => d * Math.PI / 180;
+  function shapeFrom(THREE, pts, flipU) { const s = new THREE.Shape(); pts.forEach(([u, v], i) => (i ? s.lineTo : s.moveTo).call(s, flipU ? -u : u, v)); return s; }
+  function object(THREE, f, mat, opts = {}) {
+    const x = f.x || 0, m0 = mat(f.mat);
+    let m;
+    if (f.k === 'disp') {
+      m = new THREE.Group(); m.position.set(x, f.y, f.z || 0); m.rotation.set(-R_(f.tilt || 0), -Math.PI / 2 + R_(f.yaw || 0), 0, 'YXZ');
+      const fr = new THREE.Mesh(new THREE.BoxGeometry(f.w + 24, f.h + 24, 40), mat('frame')); fr.position.z = -22; m.add(fr);
+      m.add(new THREE.Mesh(new THREE.BoxGeometry(f.w, f.h, 4), mat('display')));
+    } else if (f.k === 'cyl') {
+      if (f.axis === 'z' || f.axis === 'x') { m = new THREE.Mesh(new THREE.CylinderGeometry(f.r, f.r, f.len, 24), m0); if (f.axis === 'z') m.rotation.x = Math.PI / 2; else m.rotation.z = Math.PI / 2; m.position.set(x, f.y, f.z || 0); }
+      else { m = new THREE.Mesh(new THREE.CylinderGeometry(f.r, f.r, f.y1 - f.y0, f.r < 20 ? 16 : 32), m0); m.position.set(x, (f.y0 + f.y1) / 2, f.z || 0); }
+    } else if (f.k === 'dome') {
+      m = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 16, 0, Math.PI * 2, 0, Math.PI / 2), m0); m.scale.set(f.rx, f.ry, f.rz); m.position.set(x, f.y, f.z || 0);
+    } else if (f.k === 'prism') {
+      const ax = f.axis || 'z', g = new THREE.ExtrudeGeometry(shapeFrom(THREE, f.pts, ax === 'x'), { depth: f.a1 - f.a0, bevelEnabled: false });
+      m = new THREE.Mesh(g, m0);
+      if (ax === 'z') m.position.z = f.a0; else if (ax === 'x') { m.rotation.y = Math.PI / 2; m.position.x = f.a0; } else { m.rotation.x = Math.PI / 2; m.position.y = f.a1; }
+    } else if (f.k === 'plate') {
+      m = new THREE.Mesh(new THREE.ShapeGeometry(shapeFrom(THREE, f.pts, f.axis === 'x')), m0);
+      if (f.axis === 'x') { m.rotation.y = Math.PI / 2; m.position.x = f.at; m.scale.z = f.face < 0 ? -1 : 1; }
+      else { m.position.z = f.at; m.scale.z = f.face < 0 ? -1 : 1; }
+    } else if (f.k === 'tube') {
+      const P = f.pts.map(p => new THREE.Vector3(p[0], p[1], p[2]));
+      if (P.length === 2) {
+        const len = P[0].distanceTo(P[1]); m = new THREE.Mesh(new THREE.CylinderGeometry(f.r, f.r, len, 16), m0);
+        m.position.copy(P[0]).add(P[1]).multiplyScalar(0.5); m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), P[1].clone().sub(P[0]).normalize());
+      } else m = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(P, false, 'centripetal'), Math.max(8, 3 * P.length), f.r, 12, false), m0);
+    } else {
+      const geo = f.round && opts.RoundedBox ? new opts.RoundedBox(f.d, f.h, f.w, 3, Math.min(f.round, f.d / 2 - 0.5, f.h / 2 - 0.5, f.w / 2 - 0.5)) : new THREE.BoxGeometry(f.d, f.h, f.w);
+      m = new THREE.Mesh(geo, m0); m.position.set(x, f.y, f.z || 0); m.rotation.set(0, R_(f.yaw || 0), R_(f.tilt || 0), 'YXZ');
+    }
+    return m;
+  }
+  // signed distance to a polygon in 2D (any simple polygon; negative inside)
+  function polySd(P, u, v) {
+    let d = Infinity, s = 1;
+    for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
+      const [ax, ay] = P[j], [bx, by] = P[i], ex = bx - ax, ey = by - ay, wx = u - ax, wy = v - ay;
+      const t = Math.max(0, Math.min(1, (wx * ex + wy * ey) / (ex * ex + ey * ey || 1)));
+      d = Math.min(d, Math.hypot(wx - ex * t, wy - ey * t));
+      if ((ay <= v && v < by && ex * (v - ay) > (u - ax) * ey) || (by <= v && v < ay && ex * (v - ay) < (u - ax) * ey)) s = -s;
+    }
+    return s * d;
+  }
+  // a prism's signed distance at a point of its frame (the frame its fixture is given in)
+  function prismSdf(f) {
+    const ax = f.axis || 'z', h = (f.a1 - f.a0) / 2, c = (f.a0 + f.a1) / 2;
+    return (x, y, z) => {
+      const [u, v, w] = ax === 'z' ? [x, y, z] : ax === 'x' ? [z, y, x] : [x, z, y];
+      const a = polySd(f.pts, u, v), b = Math.abs(w - c) - h;
+      return Math.min(Math.max(a, b), 0) + Math.hypot(Math.max(a, 0), Math.max(b, 0));
+    };
+  }
+  // a plate's solid slab: a prism 30 mm thick behind its face
+  const plateSolid = f => ({ k: 'prism', axis: f.axis, pts: f.pts, a0: f.face < 0 ? f.at : f.at - 30, a1: f.face < 0 ? f.at + 30 : f.at });
   const BY = Object.fromEntries(T.map(e => [e.id, e]));
   const DEFAULT = 'desk-workstation';
   const loadable = e => !!e && e.status !== 'planned';
@@ -1769,13 +1941,13 @@ const HFE_ENV = (() => {
     if (w.hands) w.hands = { L: w.hands.R, R: w.hands.L };
     return w;
   }
-  return { list: T, get, resolve, paramValue, loadable, mirrorWs, DEFAULT };
+  return { list: T, get, resolve, paramValue, loadable, mirrorWs, DEFAULT, object, prismSdf, plateSolid, polySd, ejectionSeat, pedals, jetCockpit, CK };
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = HFE_ENV;
 
 const HFE_CHECKS = [{"id": "viewDist", "group": "Vision", "name": "Viewing distance, eye to screen centre", "unit": "mm"}, {"id": "losCentre", "group": "Vision", "name": "Line of sight to screen centre, below horizontal", "unit": "°"}, {"id": "gazeH", "group": "Vision", "name": "Horizontal gaze angle to screen centre (+ right)", "unit": "°"}, {"id": "topVsEye", "group": "Vision", "name": "Top of screen relative to eye height", "unit": "mm"}, {"id": "losNormal", "group": "Vision", "name": "Line of sight off the screen normal", "unit": "°"}, {"id": "arrayEdge", "group": "Vision", "name": "Outermost screen edge, horizontal angle", "unit": "°"}, {"id": "headIncl", "group": "Head and neck", "name": "Head inclination, forward of upright", "unit": "°"}, {"id": "neckFlex", "group": "Head and neck", "name": "Neck flexion relative to trunk", "unit": "°"}, {"id": "elbow", "group": "Upper limb", "name": "Elbow angle, included", "unit": "°"}, {"id": "shFlex", "group": "Upper limb", "name": "Shoulder flexion", "unit": "°"}, {"id": "shAbd", "group": "Upper limb", "name": "Shoulder abduction", "unit": "°"}, {"id": "wrist", "group": "Upper limb", "name": "Wrist extension, implied (− is flexion)", "unit": "°"}, {"id": "homeVsElbow", "group": "Upper limb", "name": "Home row relative to seated elbow height", "unit": "mm"}, {"id": "reach", "group": "Upper limb", "name": "Reach shortfall to the hand’s device", "unit": "mm"}, {"id": "recline", "group": "Trunk and seat", "name": "Trunk recline, hip–shoulder line from vertical", "unit": "°"}, {"id": "hip", "group": "Trunk and seat", "name": "Trunk–thigh angle", "unit": "°"}, {"id": "seatDepth", "group": "Trunk and seat", "name": "Clearance between seat front and back of knee", "unit": "mm"}, {"id": "seatWidth", "group": "Trunk and seat", "name": "Seat width minus hip breadth", "unit": "mm"}, {"id": "abdomen", "group": "Trunk and seat", "name": "Abdomen to desk edge", "unit": "mm"}, {"id": "armrest", "group": "Trunk and seat", "name": "Armrest height relative to elbow rest height", "unit": "mm"}, {"id": "knee", "group": "Lower limb", "name": "Knee angle, included", "unit": "°"}, {"id": "seatPop", "group": "Lower limb", "name": "Seat height relative to popliteal height + shoe + footrest", "unit": "mm"}, {"id": "thigh", "group": "Lower limb", "name": "Thigh clearance under desk", "unit": "mm"}, {"id": "legroom", "group": "Lower limb", "name": "Knee clearance to legroom limit", "unit": "mm"}, {"id": "seatRange", "group": "Furniture", "name": "Seat height outside the chair’s adjustment range", "unit": "mm"}, {"id": "deskRange", "group": "Furniture", "name": "Desk height outside its adjustment range", "unit": "mm"}, {"id": "headrest", "group": "Furniture", "name": "Headrest centre relative to the back of the head", "unit": "mm"}, {"id": "depthRange", "group": "Furniture", "name": "Seat depth outside the chair’s adjustment range", "unit": "mm"}, {"id": "lumbarRange", "group": "Furniture", "name": "Backrest lumbar support height outside the chair’s range", "unit": "mm"}, {"id": "armRange", "group": "Furniture", "name": "Armrest height outside the chair’s adjustment range", "unit": "mm"}, {"id": "rom", "group": "Joint range of motion", "name": "Smallest margin to a joint’s range-of-motion limit", "unit": "°"}, {"id": "rula", "group": "Posture scores", "name": "RULA grand score (action level 1 at 1–2, 2 at 3–4)", "unit": ""}, {"id": "reba", "group": "Posture scores", "name": "REBA score (negligible or low risk at 1–3, medium at 4–7)", "unit": ""}, {"id": "clearDesk", "group": "Clearance", "name": "Clearance, body to desk", "unit": "mm"}, {"id": "clearScreens", "group": "Clearance", "name": "Clearance, body to screens", "unit": "mm"}, {"id": "clearObjects", "group": "Clearance", "name": "Clearance, body to desk objects", "unit": "mm"}, {"id": "clearChair", "group": "Clearance", "name": "Clearance, body to armrests", "unit": "mm"}, {"id": "clearEnv", "group": "Clearance", "name": "Clearance, body to environment", "unit": "mm"}, {"id": "clearSelf", "group": "Clearance", "name": "Self-contact, body to body", "unit": "mm"}, {"id": "clearExact", "group": "Clearance", "name": "Clearance, body surface to geometry (exact)", "unit": "mm"}];
 const EXAMPLE = "/* Example: an RPAS ground control station operator workstation (indicative, public information only).\n   Parts carry @HFE::WorkspaceLink metadata that ties them to objects in Workspace Visualisation, and\n   verification cases carry @HFE::Evidence metadata that ties them to its checks. */\npackage GcsOperatorStation {\n    private import ScalarValues::*;\n    private import ISQ::*;\n\n    package Definitions {\n        item def Video;\n        item def Command;\n        enum def DisplayRole { enum tactical; enum payload; enum status; enum systems; }\n\n        port def VideoPort { out item frames : Video; }\n        port def HidPort { out item cmd : Command; }\n\n        part def Display {\n            attribute diagonal : LengthValue;\n            attribute role : DisplayRole;\n            port videoIn : ~VideoPort;\n        }\n        part def ConsoleScreen :> Display;\n        part def Keyboard { port usb : HidPort; }\n        part def FlightStick { port usb : HidPort; }\n        part def Throttle { port usb : HidPort; }\n        part def Seat {\n            attribute recline : PlaneAngleValue;\n            attribute armrestHeight : LengthValue;\n        }\n        part def MissionComputer {\n            port videoOut1 : VideoPort;\n            port videoOut2 : VideoPort;\n            port videoOut3 : VideoPort;\n            port videoOut4 : VideoPort;\n            port hidIn : ~HidPort;\n        }\n        part def OperatorConsole {\n            part seat : Seat;\n            part tactical : Display;\n            part upper : Display;\n            part statusLeft : ConsoleScreen;\n            part statusRight : ConsoleScreen;\n            part keyboard : Keyboard;\n            part stick : FlightStick;\n            part throttle : Throttle;\n            part computer : MissionComputer;\n            connect computer.videoOut1 to tactical.videoIn;\n            connect computer.videoOut2 to upper.videoIn;\n            connect computer.videoOut3 to statusLeft.videoIn;\n            connect computer.videoOut4 to statusRight.videoIn;\n            connect stick.usb to computer.hidIn;\n            connect throttle.usb to computer.hidIn;\n            connect keyboard.usb to computer.hidIn;\n        }\n        part def Operator { attribute stature : LengthValue; }\n    }\n\n    package Requirements {\n        private import Definitions::*;\n\n        requirement def <'HF-1'> DisplayViewing {\n            doc /* The operator shall be able to view each primary display from the design eye position without moving the head or trunk. */\n            subject display : Display;\n            attribute minViewingDistance : LengthValue = 500 [mm];\n            attribute maxViewingDistance : LengthValue = 800 [mm];\n            require constraint { viewingDistance >= minViewingDistance and viewingDistance <= maxViewingDistance }\n        }\n\n        requirement <'HF-1.1'> tacticalViewing : DisplayViewing {\n            doc /* The tactical display shall be between 500 mm and 800 mm from the eye of a 5th to 95th percentile operator. */\n        }\n        requirement <'HF-1.2'> displayBelowEye : DisplayViewing {\n            doc /* The top of each primary display shall be at or below horizontal eye height. */\n        }\n        requirement <'HF-2'> controlReach {\n            doc /* The flight stick and throttle shall be within the operator's normal reach with the back against the seat. */\n            subject console : OperatorConsole;\n        }\n        requirement <'HF-3'> postureRisk {\n            doc /* Working posture at the console shall score RULA action level 1 or 2 (grand score 4 or less). */\n        }\n        requirement <'HF-4'> legroom {\n            doc /* The console shall give knee and thigh clearance for the 95th percentile operator. */\n        }\n    }\n\n    part gcs {\n        doc /* Two-seat ground control station in a 20 ft container shelter. */\n        part pilotConsole : Definitions::OperatorConsole {\n            @HFE::WorkspaceLink { env = \"gcs-container\"; role = \"pilot\"; node = \"ws\"; }\n            part :>> tactical {\n                @HFE::WorkspaceLink { env = \"gcs-container\"; role = \"pilot\"; node = \"ws.scr.0\"; }\n                :>> role = Definitions::DisplayRole::tactical;\n            }\n            part :>> upper { @HFE::WorkspaceLink { env = \"gcs-container\"; role = \"pilot\"; node = \"ws.scr.1\"; } }\n            part :>> statusLeft { @HFE::WorkspaceLink { env = \"gcs-container\"; role = \"pilot\"; node = \"ws.scr.2\"; } }\n            part :>> statusRight { @HFE::WorkspaceLink { env = \"gcs-container\"; role = \"pilot\"; node = \"ws.scr.3\"; } }\n            part :>> stick { @HFE::WorkspaceLink { env = \"gcs-container\"; role = \"pilot\"; node = \"ws.obj.o2\"; } }\n            part :>> throttle { @HFE::WorkspaceLink { env = \"gcs-container\"; role = \"pilot\"; node = \"ws.obj.o3\"; } }\n            part :>> keyboard { @HFE::WorkspaceLink { env = \"gcs-container\"; role = \"pilot\"; node = \"ws.obj.o1\"; } }\n            part :>> seat { @HFE::WorkspaceLink { env = \"gcs-container\"; role = \"pilot\"; node = \"ws.chair\"; } }\n        }\n        part sensorConsole : Definitions::OperatorConsole {\n            @HFE::WorkspaceLink { env = \"gcs-container\"; role = \"sensor\"; node = \"ws\"; }\n        }\n        part pilot : Definitions::Operator {\n            @HFE::WorkspaceLink { env = \"gcs-container\"; role = \"pilot\"; node = \"man\"; }\n        }\n\n        satisfy Requirements::tacticalViewing by pilotConsole.tactical;\n        satisfy Requirements::displayBelowEye by pilotConsole.upper;\n        satisfy Requirements::controlReach by pilotConsole;\n        satisfy Requirements::postureRisk by pilotConsole;\n        satisfy Requirements::legroom by pilotConsole;\n    }\n\n    package Verification {\n        private import Requirements::*;\n\n        verification def WorkspaceAssessment {\n            doc /* Assessment in HFE-Lab Workspace Visualisation with the ANSUR II population. */\n        }\n        verification viewingCheck : WorkspaceAssessment {\n            @HFE::Evidence { check = \"viewDist#0\"; env = \"gcs-container\"; role = \"pilot\"; }\n            objective { verify tacticalViewing; }\n        }\n        verification eyeHeightCheck : WorkspaceAssessment {\n            @HFE::Evidence { check = \"topVsEye\"; env = \"gcs-container\"; role = \"pilot\"; }\n            objective { verify displayBelowEye; }\n        }\n        verification reachCheck : WorkspaceAssessment {\n            @HFE::Evidence { check = \"reach\"; env = \"gcs-container\"; role = \"pilot\"; }\n            objective { verify controlReach; }\n        }\n        verification postureCheck : WorkspaceAssessment {\n            @HFE::Evidence { check = \"rula\"; env = \"gcs-container\"; role = \"pilot\"; }\n            objective { verify postureRisk; }\n        }\n        verification legroomCheck : WorkspaceAssessment {\n            @HFE::Evidence { check = \"legroom\"; env = \"gcs-container\"; role = \"pilot\"; }\n            @HFE::Evidence { check = \"thigh\"; env = \"gcs-container\"; role = \"pilot\"; }\n            objective { verify legroom; }\n        }\n    }\n\n    package Behaviour {\n        attribute def PowerOn; attribute def LinkUp; attribute def LinkLost; attribute def Land;\n        state def ConsoleStates {\n            entry; then off;\n            state off;\n            accept PowerOn then standby;\n            state standby;\n            accept LinkUp then mission;\n            state mission;\n            accept LinkLost then lostLink;\n            accept Land then standby;\n            state lostLink;\n            accept LinkUp then mission;\n        }\n    }\n}\n";
-const BUILD = '8242ac85b15e';
+const BUILD = 'a5cfe43c834c';
 const ELK_URL = 'https://cdn.jsdelivr.net/npm/elkjs@0.11.1/lib/elk.bundled.js';
 
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];

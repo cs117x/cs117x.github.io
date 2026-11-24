@@ -15,6 +15,7 @@
   --scene-bg:#f7f8fa; --grid-a:#d8dde3; --grid-b:#e9ecf0;
   --mk:#b7c1ca; --mk-joint:#a3aeb9; --shoe:#3b434c; --chair:#4a545e; --desk:#ddd8cf; --metal:#939da7; --screen:#1e242a; --frame:#2f363d; --kb:#3a424a; --device:#454d56; --ball:#8a2f2f; --paper:#fbfbf8; --panel-glass:#aebccb;
   --zone-n:#2b7a43; --zone-m:#9f6000; --wire:#53708c; --env-wall:#d6dbe0; --env-floor:#d3d8dd; --env-edge:#9aa5b0; --env-door:#c3cad1; --env-console:#d8cfb9; --env-rack:#8f8a7e; --env-glow:#2d5a7a;
+  --ck-1:#59636d; --ck-2:#6f7a85; --ck-black:#23272b; --ck-yellow:#e2b32a; --ck-lcd:#25463a; --ck-seat:#4d5a4a;
   --cube-face:#f1f4f7; --cube-hover:#d5e3f0; --cube-edge:#98a3af; --cube-text:#36424f;
   --overlay:rgba(20,28,36,.36); --float:rgba(255,255,255,.94); --shadow:0 6px 22px rgba(0,0,0,.12);
   --f-sans:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Roboto,Arial,sans-serif;
@@ -29,6 +30,7 @@
   --scene-bg:#393939; --grid-a:#505050; --grid-b:#444444;
   --mk:#a2acb6; --mk-joint:#8a95a0; --shoe:#33373b; --chair:#4c5258; --desk:#5b564e; --metal:#80878e; --screen:#11161c; --frame:#41464c; --kb:#31353a; --device:#3b4045; --ball:#c0504a; --paper:#d2d2d2; --panel-glass:#3a4652;
   --zone-n:#3fd07e; --zone-m:#ffb22e; --wire:#6fa8ff; --env-wall:#16191c; --env-floor:#202428; --env-edge:#4a525a; --env-door:#2a3036; --env-console:#4a463e; --env-rack:#2c2b28; --env-glow:#1d3d57;
+  --ck-1:#3e464e; --ck-2:#535d67; --ck-black:#191c1f; --ck-yellow:#d6a623; --ck-lcd:#1f4a3a; --ck-seat:#3f4a3d;
   --cube-face:#2e2e2e; --cube-hover:#1b3352; --cube-edge:#5c5c5c; --cube-text:#dcdcdc;
   --overlay:rgba(0,0,0,.66); --float:rgba(43,43,43,.94); --shadow:0 6px 24px rgba(0,0,0,.5);
   color-scheme:dark;
@@ -1328,7 +1330,7 @@ const CHAIRS = {
   stool: { label: 'Saddle stool (no backrest)', back: 0, head: false, range: [520, 780], saddle: true },
   // operator seats for the environment library: indicative, not products
   operator: { label: 'Operator seat, reclining, with headrest', group: 'Operator and aircrew seats', back: 820, head: true, range: [420, 540], src: 'Indicative operator seat (environment library)' },
-  ejection: { label: 'Ejection seat (indicative)', group: 'Operator and aircrew seats', back: 900, head: true, range: [300, 450], noArms: true, src: 'Indicative ejection seat (environment library)' },
+  ejection: { label: 'Ejection seat (indicative)', group: 'Operator and aircrew seats', back: 900, head: true, range: [300, 450], noArms: true, ejection: true, src: 'Indicative ejection seat (environment library)' },
   // vehicle seats: fixed to the floor on a pedestal or frame (no castors), indicative, not products
   crew: { label: 'Vehicle crew seat, fixed, with headrest', group: 'Operator and aircrew seats', back: 640, head: true, range: [350, 560], fixed: true, src: 'Indicative vehicle crew seat (environment library)' },
   jockey: { label: 'Jockey (straddle) seat, boat helm', group: 'Operator and aircrew seats', back: 0, head: false, range: [600, 850], saddle: true, fixed: true, noArms: true, src: 'Indicative boat jockey seat (environment library)' },
@@ -1432,6 +1434,119 @@ const HFE_ENV = (() => {
   const room = (L, W, H, extra) => ({ length: { key: 'length', label: L, path: ['shell', 'internal', 'length'], min: 2000, max: 30000, step: 10 },
     width: { key: 'width', label: W, path: ['shell', 'internal', 'width'], min: 1200, max: 20000, step: 10 },
     height: { key: 'height', label: H, path: ['shell', 'internal', 'height'], min: 1500, max: 6000, step: 10 }, ...extra });
+
+  /* ---------------- detailed fast-jet cockpit (generic, indicative) ----------------
+     A single-seat fast-jet cockpit drawn in some detail: tub walls and sills, side consoles with control panels, an
+     instrument panel with knee wells and a centre pedestal, a glareshield with the head-up display's body, the canopy
+     with its windscreen and aft bows and mirrors. It is an original, generic design: the proportions follow public
+     guidance on aircrew station geometry (MIL-STD-1333, MIL-STD-1472) and public photographs of the type in general,
+     and copy no particular aircraft. Lengths in mm in the role frame (the panel's near face at x = 0, the floor at y = 0,
+     +z to the pilot's right). The displays themselves are the workstation's screens (ws.screens), so the HMI Builder's
+     screens show on them; the ejection seat and rudder pedals follow the seat and feet (ejectionSeat, pedals below).
+     Extra fixture kinds used here (drawn by object(), solid unless deco):
+       { k: 'prism', axis: 'x' | 'y' | 'z', pts: [[u, v], ...], a0, a1 }  a polygon extruded along axis from a0 to a1;
+           axis z: (u, v) = (x, y); axis x: (u, v) = (z, y); axis y: (u, v) = (x, z)
+       { k: 'plate', axis: 'x' | 'z', at, face: 1 | -1, pts }   a one-sided wall facing +axis (face 1) or -axis; seen
+           from outside it drops out, so the cockpit reads as a cutaway. Solid as a 30 mm slab behind its face.
+       { k: 'tube', pts: [[x, y, z], ...], r }   a round tube through the points (solid as capsules between them)
+       { k: 'cyl', axis: 'x', x, y, z, len, r }  a cylinder along x (knobs and dials on the panel face)
+       deco: true   drawn only: small details that no check measures against (knobs, switches, bezels' buttons) */
+  const arcPts = (n, f) => Array.from({ length: n + 1 }, (_, i) => f(i / n));
+  const CK = { halfW: 525, sill: 885, sillF: 965, back: -1500, front: 300, conTop: 600, conIn: 295, panTop: 905, panLow: 668,
+    canopy: { x: -650, y: 885, rx: 1100, ry: 520, rz: 540 } };
+  // a point on the canopy (half ellipsoid) at fore-and-aft x and angle t round the section (0 = right sill, pi = left)
+  const canopyAt = (x, t, grow = 0) => { const c = CK.canopy, k = Math.sqrt(Math.max(0, 1 - ((x - c.x) / c.rx) ** 2)); return [x, c.y + (c.ry * k + grow) * Math.sin(t), (c.rz * k + grow) * Math.cos(t)]; };
+  function consolePanel(out, x0, x1, z0, z1, kinds) {
+    // a console control panel: a raised plate with knobs (k), toggle switches (t) and a small readout (d), laid out in
+    // rows across the panel
+    const y = CK.conTop, d = x1 - x0, w = z1 - z0, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+    out.push({ k: 'box', x: cx, y: y + 4, z: cz, d: d - 6, h: 8, w: w - 6, mat: 'cockpit2', deco: true });
+    kinds.forEach((row, i) => {
+      const xr = x1 - (i + 0.5) * d / kinds.length;
+      [...row].forEach((ch, j) => {
+        const zr = z0 + (j + 0.5) * w / row.length;
+        if (ch === 'k') out.push({ k: 'cyl', x: xr, z: zr, y0: y + 8, y1: y + 24, r: 11, mat: 'black', deco: true });
+        else if (ch === 't') out.push({ k: 'cyl', x: xr, z: zr, y0: y + 8, y1: y + 26, r: 3, mat: 'metal', deco: true });
+        else if (ch === 'd') out.push({ k: 'box', x: xr, y: y + 10, z: zr, d: d / kinds.length * 0.6, h: 4, w: w / row.length * 0.8, mat: 'lcd', deco: true });
+      });
+    });
+  }
+  function jetCockpit() {
+    const out = [], { halfW: Wz, sill, sillF, back, front } = CK;
+    // tub walls, the bulkhead behind the seat, and the sills (canopy longerons) along their tops
+    const side = [[back, 0], [front, 0], [front, sillF], [0, sillF], [-380, sill], [back, sill]];
+    out.push({ k: 'plate', axis: 'z', at: -Wz, face: 1, pts: side, mat: 'cockpit', deco: true }, { k: 'plate', axis: 'z', at: Wz, face: -1, pts: side, mat: 'cockpit', deco: true });
+    out.push({ k: 'plate', axis: 'x', at: back, face: 1, pts: [[-Wz, 0], [Wz, 0], [Wz, sill], [-Wz, sill]], mat: 'cockpit', deco: true });
+    for (const s of [-1, 1]) out.push({ k: 'tube', pts: [[back, sill + 10, s * (Wz + 6)], [-380, sill + 10, s * (Wz + 6)], [0, sillF + 10, s * (Wz + 6)], [front, sillF + 10, s * (Wz + 6)]], r: 17, mat: 'cockpit2', deco: true });
+    // side consoles: flat tops at console height, rising at the front into the instrument panel
+    const con = [[-1050, 0], [front, 0], [front, 705], [120, 705], [-110, CK.conTop], [-1050, CK.conTop]];
+    out.push({ k: 'prism', axis: 'z', pts: con, a0: CK.conIn, a1: Wz, mat: 'cockpit' }, { k: 'prism', axis: 'z', pts: con, a0: -Wz, a1: -CK.conIn, mat: 'cockpit' });
+    // console control panels round the side-stick (right) and the throttle (left)
+    consolePanel(out, -1000, -820, 310, 510, ['kdk', 'kk']); consolePanel(out, -810, -620, 310, 510, ['ttttt', 'k k']); consolePanel(out, -610, -430, 310, 510, ['kkk', 'tt t']);
+    consolePanel(out, -400, -130, 410, 510, ['k', 'k', 't']);
+    consolePanel(out, -1000, -820, -510, -310, ['tttt', 'kk']); consolePanel(out, -810, -620, -510, -310, ['kdk', 'kk']); consolePanel(out, -610, -430, -510, -310, ['ttt', 'k']);
+    consolePanel(out, -400, -130, -510, -440, ['k', 't', 'k']);
+    out.push({ k: 'box', x: -265, y: CK.conTop + 2, z: -330, d: 300, h: 4, w: 60, mat: 'black', deco: true });   // throttle quadrant slot
+    // instrument panel: full width above the knee wells, down to the consoles outboard; a narrow pedestal between the
+    // pilot's legs carries the lower panel
+    out.push({ k: 'prism', axis: 'x', a0: -2, a1: front, pts: [[-Wz, CK.panTop], [Wz, CK.panTop], [Wz, CK.conTop], [300, CK.conTop], [300, CK.panLow], [-300, CK.panLow], [-300, CK.conTop], [-Wz, CK.conTop]], mat: 'cockpit' });
+    out.push({ k: 'box', x: 240, y: CK.panLow / 2, z: 0, d: 120, h: CK.panLow, w: 120, mat: 'cockpit' });
+    // glareshield over the panel, and the head-up display's body in it
+    out.push({ k: 'prism', axis: 'z', a0: -420, a1: 420, pts: [[-70, 950], [-60, CK.panTop], [front, CK.panTop], [front, 985], [40, 985]], mat: 'black' });
+    out.push({ k: 'box', x: 130, y: 1000, z: 0, d: 190, h: 70, w: 170, mat: 'black', deco: true });
+    // up-front controls between the displays: a keypad with a scratchpad readout, and a standby instrument below
+    out.push({ k: 'box', x: -8, y: 845, z: 0, d: 12, h: 96, w: 118, mat: 'cockpit2', deco: true }, { k: 'box', x: -15, y: 880, z: 0, d: 4, h: 16, w: 96, mat: 'lcd', deco: true });
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) out.push({ k: 'box', x: -16, y: 856 - r * 22, z: (c - 1) * 30, d: 6, h: 15, w: 22, mat: 'black', deco: true });
+    out.push({ k: 'cyl', axis: 'x', x: -10, y: 742, z: 0, len: 16, r: 44, mat: 'cockpit2', deco: true }, { k: 'cyl', axis: 'x', x: -19, y: 742, z: 0, len: 4, r: 37, mat: 'lcd', deco: true });
+    // outboard of the displays: landing gear lever (left), caution lights and standby gauges (right)
+    out.push({ k: 'box', x: -8, y: 800, z: -430, d: 12, h: 170, w: 120, mat: 'cockpit2', deco: true }, { k: 'box', x: -45, y: 820, z: -430, d: 70, h: 14, w: 14, mat: 'metal', deco: true }, { k: 'cyl', axis: 'x', x: -85, y: 820, z: -430, len: 22, r: 22, mat: 'yellow', deco: true });
+    out.push({ k: 'box', x: -8, y: 830, z: 430, d: 12, h: 110, w: 130, mat: 'cockpit2', deco: true });
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) out.push({ k: 'box', x: -16, y: 862 - r * 30, z: 392 + c * 38, d: 5, h: 20, w: 30, mat: r === 0 && c === 1 ? 'yellow' : 'lcd', deco: true });
+    for (const z of [-470, -390, 390, 470]) out.push({ k: 'cyl', axis: 'x', x: -8, y: 720, z, len: 14, r: 30, mat: 'black', deco: true });
+    // canopy: the transparency, its frame along the sills, the windscreen bow and the aft bow, and three mirrors
+    const c = CK.canopy;
+    out.push({ k: 'dome', x: c.x, y: c.y, z: 0, rx: c.rx, ry: c.ry, rz: c.rz, mat: 'glass' });
+    for (const s of [-1, 1]) out.push({ k: 'tube', pts: arcPts(16, u => canopyAt(-1180 + u * 1370, s > 0 ? 0 : Math.PI, 6)), r: 15, mat: 'cockpit2', deco: true });
+    for (const x of [190, -1180]) out.push({ k: 'tube', pts: arcPts(24, u => canopyAt(x, u * Math.PI, 8)), r: x > 0 ? 20 : 26, mat: 'cockpit2', deco: true });
+    for (const t of [0.35, 0.5, 0.65]) { const p = canopyAt(175, t * Math.PI, -20); out.push({ k: 'box', x: p[0], y: p[1], z: p[2], d: 12, h: 42, w: t === 0.5 ? 150 : 90, yaw: 0, tilt: 0, mat: 'black', deco: true }); }
+    return out;
+  }
+  // the ejection seat, drawn for the seat as set (height, depth, width, back angle): bucket, cushions, headbox with its
+  // headrest, guide rails and catapult behind the back, and the firing handle between the thighs. p: { front (seat front
+  // edge x), depth, width, y (seat top), at(x, y) (a point in the seat's own frame, upright, to the world, turned with the
+  // back), ang (back angle, rad, back from vertical), top (back height above the seat), headH (headrest centre) }.
+  function ejectionSeat(p) {
+    const out = [], cx = p.front - p.depth / 2, deg = p.ang * 180 / Math.PI, A = (x, y) => p.at(x, y);
+    const bx = (x, y, d, h, w, mat, node, o) => { const q = A(x, y); out.push({ k: 'box', x: q[0], y: q[1], z: 0, d, h, w, tilt: deg, mat, node, ...o }); };
+    out.push({ k: 'box', x: cx, y: p.y - 30, z: 0, d: p.depth, h: 60, w: p.width, mat: 'seat', round: 18, node: 'ws.chair.seat' });
+    out.push({ k: 'box', x: cx - 10, y: p.y - 80, z: 0, d: p.depth + 20, h: 40, w: p.width + 36, mat: 'cockpit2', node: 'ws.chair.seat' });
+    for (const s of [-1, 1]) out.push({ k: 'box', x: cx - 10, y: p.y - 20, z: s * (p.width / 2 + 10), d: p.depth + 30, h: 140, w: 16, mat: 'cockpit2', node: 'ws.chair.seat' });
+    out.push({ k: 'box', x: cx - 20, y: (60 + p.y - 100) / 2, z: 0, d: p.depth - 60, h: Math.max(20, p.y - 160), w: p.width - 60, mat: 'cockpit', node: 'ws.chair.base' });
+    // firing handle: a loop at the front of the seat between the thighs, in yellow and black bands
+    const hy = p.y - 70, hx = p.front + 14, R = 40;
+    for (let i = 0; i < 6; i++) out.push({ k: 'tube', pts: arcPts(4, u => { const t = (i + u) / 6 * Math.PI; return [hx, hy + R * Math.sin(t), R * Math.cos(t)]; }), r: 8, mat: i % 2 ? 'black' : 'yellow', node: 'ws.chair.seat' });
+    // back cushion and the back shell, the headbox with its headrest pad and canopy breakers
+    bx(-30, (150 + p.top) / 2, 60, p.top - 150, 460, 'seat', 'ws.chair.back', { round: 18 });
+    bx(-80, (100 + p.top) / 2, 44, p.top - 100, 500, 'cockpit2', 'ws.chair.back');
+    bx(-160, p.top - 40, 200, 300, 380, 'cockpit2', 'ws.chair.head');
+    bx(-40, p.headH, 60, 150, 280, 'seat', 'ws.chair.head', { round: 18 });
+    for (const z of [-110, 110]) { const q = A(-150, p.top + 117); out.push({ k: 'box', x: q[0], y: q[1], z, d: 120, h: 14, w: 26, tilt: deg, mat: 'yellow', node: 'ws.chair.head' }); }
+    // guide rails and the catapult tube behind the back, down to the cockpit floor
+    const lo = A(-210, 40 - p.y), hi = A(-210, p.top + 90);
+    for (const z of [-180, 180]) out.push({ k: 'tube', pts: [[lo[0], lo[1], z], [hi[0], hi[1], z]], r: 20, mat: 'metal', node: 'ws.chair.base' });
+    const c0 = A(-200, 40 - p.y), c1 = A(-200, p.top - 60);
+    out.push({ k: 'tube', pts: [[c0[0], c0[1], 0], [c1[0], c1[1], 0]], r: 42, mat: 'metal', node: 'ws.chair.base' });
+    return out;
+  }
+  // rudder pedals ahead of each foot: a pedal face just beyond the toes, its arm into the footwell, and a heel rest.
+  // toe: the toe's fore-and-aft position; zs: each foot's centre across the cockpit
+  function pedals(toe, zs) {
+    const out = [];
+    for (const z of zs) out.push({ k: 'box', x: toe + 22, y: 110, z, d: 16, h: 170, w: 110, tilt: -18, mat: 'black', node: 'ws.foot' },
+      { k: 'box', x: toe + 100, y: 160, z, d: 150, h: 24, w: 34, mat: 'metal', node: 'ws.foot' });
+    out.push({ k: 'box', x: toe - 200, y: 5, z: 0, d: 220, h: 10, w: Math.abs(zs[1] - zs[0]) + 160, mat: 'cockpit2', node: 'ws.foot' });
+    return out;
+  }
 
   const T = [
     {
@@ -1583,30 +1698,28 @@ const HFE_ENV = (() => {
     },
     {
       id: 'fast-jet', name: 'Fast-jet cockpit', family: 'Air: fixed wing', domain: 'air', status: 'preview',
-      summary: 'A single-seat cockpit with a reclined ejection seat, side-stick and throttle on the side consoles, an instrument panel with multifunction displays, and a canopy. For panel reach, knee clearance to the panel and sightlines to the displays.',
+      summary: 'A single-seat cockpit drawn in detail: an ejection seat, side-stick and throttle on side consoles with their control panels, an instrument panel with two multifunction displays, up-front controls and knee wells, a head-up display on the glareshield, rudder pedals, and the canopy with its bows. For panel reach, knee clearance, sightlines to the displays and over the nose.',
       roles: [{ id: 'pilot', name: 'Pilot', z: 0 }],
-      shell: { kind: 'box', internal: { length: 1050, width: 2400, height: 1150 }, ceiling: false, frontGap: 40 },
-      params: [{ key: 'length', label: 'Cockpit width between sills', path: ['shell', 'internal', 'length'], min: 800, max: 1600, step: 10 }],
+      // the shell is the tub between the sills: its walls are drawn by the cockpit's own plates (walls: false), and
+      // still bound the body for collision
+      shell: { kind: 'box', internal: { length: 1050, width: 2400, height: 1150 }, ceiling: false, walls: false, frontGap: 40 },
       ws: {
-        chair: 'ejection', armrests: false, recline: 17, seatH: 380, seatMin: 300, seatMax: 450, seatDepth: 420, seatWidth: 460, seatGap: 330, footFwd: 34, footrest: 0,
+        chair: 'ejection', armrests: false, recline: 17, seatH: 380, seatMin: 300, seatMax: 450, seatDepth: 420, seatWidth: 460, seatGap: 330, footFwd: 34, footrest: 0, pedals: true,
         deskSize: 'custom', deskWidth: 900, deskDepth: 260, deskH: 900, deskT: 230, legroom: 300, deskStyle: 'panel',
-        screens: { count: 3, layout: 'custom', bottom: -205, tilt: 10, list: [scr(8.4, '4:3', -6, -125, 0, 0), scr(8.4, '4:3', -6, 125, 0, 0), scr(6, '4:3', -6, 0, 0, 160, 12), scr(24, '16:10', 450, 0, 0, 0)] },
+        // two multifunction displays in the panel and the head-up display's combiner on the glareshield (screen 3); the
+        // HMI Builder's flight presets show on them (core/hmi.js)
+        screens: { count: 3, layout: 'custom', bottom: -180, tilt: 10, list: [
+          { ...scr(8.4, '4:3', -14, -200, 0, 0), bezel: 'mfd' }, { ...scr(8.4, '4:3', -14, 200, 0, 0), bezel: 'mfd' },
+          { ...scr(6, '4:3', 60, 0, 0, 312, -20), bezel: 'hud' }, scr(24, '16:10', 450, 0, 0, 0)] },
         objects: [
           { id: 'o1', type: 'stick', x: -230, z: 330, yaw: 0, base: 600, use: 'frequent' },
           { id: 'o2', type: 'throttle', x: -260, z: -330, yaw: 0, base: 600, use: 'frequent' }
         ],
         hands: { L: 'o2', R: 'o1' }
       },
-      roleFixtures: [
-        // side consoles carrying the stick and throttle
-        { k: 'box', x: -330, y: 300, z: 400, d: 700, h: 600, w: 200, mat: 'dark' },
-        { k: 'box', x: -330, y: 300, z: -400, d: 700, h: 600, w: 200, mat: 'dark' },
-        // head-up display combiner and the canopy
-        { k: 'box', x: 70, y: 1080, z: 0, d: 10, h: 180, w: 160, mat: 'glass', tilt: 30 },
-        { k: 'dome', x: -250, y: 1150, z: 0, rx: 1300, ry: 520, rz: 525, mat: 'glass' }
-      ],
+      roleFixtures: jetCockpit(),
       checks: { now: ALL_NOW, planned: ['Design eye point and over-the-nose vision (MIL-STD-1333)', 'Ejection clearance lines for knees and helmet', 'Reach to panel controls with harness locked', 'Stick and throttle motion envelopes'] },
-      sources: ['MIL-STD-1333 (aircrew station geometry) for the planned checks', 'Seat back angle, panel and console positions are indicative'],
+      sources: ['Original generic design, not any aircraft type', 'MIL-STD-1333 (aircrew station geometry) and MIL-STD-1472 for proportions and the planned checks', 'Seat back angle, panel, console, glareshield and canopy positions are indicative'],
       reqs: ['ENV-07', 'ENV-08']
     },
     {
@@ -1807,6 +1920,67 @@ const HFE_ENV = (() => {
     { id: 'atc-tower', name: 'Air traffic control tower cab', family: 'Air: ground', domain: 'air', status: 'planned',
       summary: 'Controller positions in a glazed tower cab: sightlines to the runway thresholds over the consoles, and glare.', checks: { planned: ['Sightlines to the airfield over the consoles', 'Glazing mullion obscuration'] } }
   ];
+  /* ---------------- drawing and solid shape of a fixture ----------------
+     object(THREE, f, mat, opts): a THREE object for fixture f in its parent's frame, using mat(name) for materials
+     (display faces ask for 'display' and their bezels for 'frame'). opts.RoundedBox: the RoundedBoxGeometry class, for
+     boxes with round set. Used by Workspace Visualisation and the landing page, so both draw the same geometry.
+     prismSdf(f): the signed distance (mm, negative inside) of a prism fixture in its own frame, for collision. */
+  const R_ = d => d * Math.PI / 180;
+  function shapeFrom(THREE, pts, flipU) { const s = new THREE.Shape(); pts.forEach(([u, v], i) => (i ? s.lineTo : s.moveTo).call(s, flipU ? -u : u, v)); return s; }
+  function object(THREE, f, mat, opts = {}) {
+    const x = f.x || 0, m0 = mat(f.mat);
+    let m;
+    if (f.k === 'disp') {
+      m = new THREE.Group(); m.position.set(x, f.y, f.z || 0); m.rotation.set(-R_(f.tilt || 0), -Math.PI / 2 + R_(f.yaw || 0), 0, 'YXZ');
+      const fr = new THREE.Mesh(new THREE.BoxGeometry(f.w + 24, f.h + 24, 40), mat('frame')); fr.position.z = -22; m.add(fr);
+      m.add(new THREE.Mesh(new THREE.BoxGeometry(f.w, f.h, 4), mat('display')));
+    } else if (f.k === 'cyl') {
+      if (f.axis === 'z' || f.axis === 'x') { m = new THREE.Mesh(new THREE.CylinderGeometry(f.r, f.r, f.len, 24), m0); if (f.axis === 'z') m.rotation.x = Math.PI / 2; else m.rotation.z = Math.PI / 2; m.position.set(x, f.y, f.z || 0); }
+      else { m = new THREE.Mesh(new THREE.CylinderGeometry(f.r, f.r, f.y1 - f.y0, f.r < 20 ? 16 : 32), m0); m.position.set(x, (f.y0 + f.y1) / 2, f.z || 0); }
+    } else if (f.k === 'dome') {
+      m = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 16, 0, Math.PI * 2, 0, Math.PI / 2), m0); m.scale.set(f.rx, f.ry, f.rz); m.position.set(x, f.y, f.z || 0);
+    } else if (f.k === 'prism') {
+      const ax = f.axis || 'z', g = new THREE.ExtrudeGeometry(shapeFrom(THREE, f.pts, ax === 'x'), { depth: f.a1 - f.a0, bevelEnabled: false });
+      m = new THREE.Mesh(g, m0);
+      if (ax === 'z') m.position.z = f.a0; else if (ax === 'x') { m.rotation.y = Math.PI / 2; m.position.x = f.a0; } else { m.rotation.x = Math.PI / 2; m.position.y = f.a1; }
+    } else if (f.k === 'plate') {
+      m = new THREE.Mesh(new THREE.ShapeGeometry(shapeFrom(THREE, f.pts, f.axis === 'x')), m0);
+      if (f.axis === 'x') { m.rotation.y = Math.PI / 2; m.position.x = f.at; m.scale.z = f.face < 0 ? -1 : 1; }
+      else { m.position.z = f.at; m.scale.z = f.face < 0 ? -1 : 1; }
+    } else if (f.k === 'tube') {
+      const P = f.pts.map(p => new THREE.Vector3(p[0], p[1], p[2]));
+      if (P.length === 2) {
+        const len = P[0].distanceTo(P[1]); m = new THREE.Mesh(new THREE.CylinderGeometry(f.r, f.r, len, 16), m0);
+        m.position.copy(P[0]).add(P[1]).multiplyScalar(0.5); m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), P[1].clone().sub(P[0]).normalize());
+      } else m = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(P, false, 'centripetal'), Math.max(8, 3 * P.length), f.r, 12, false), m0);
+    } else {
+      const geo = f.round && opts.RoundedBox ? new opts.RoundedBox(f.d, f.h, f.w, 3, Math.min(f.round, f.d / 2 - 0.5, f.h / 2 - 0.5, f.w / 2 - 0.5)) : new THREE.BoxGeometry(f.d, f.h, f.w);
+      m = new THREE.Mesh(geo, m0); m.position.set(x, f.y, f.z || 0); m.rotation.set(0, R_(f.yaw || 0), R_(f.tilt || 0), 'YXZ');
+    }
+    return m;
+  }
+  // signed distance to a polygon in 2D (any simple polygon; negative inside)
+  function polySd(P, u, v) {
+    let d = Infinity, s = 1;
+    for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
+      const [ax, ay] = P[j], [bx, by] = P[i], ex = bx - ax, ey = by - ay, wx = u - ax, wy = v - ay;
+      const t = Math.max(0, Math.min(1, (wx * ex + wy * ey) / (ex * ex + ey * ey || 1)));
+      d = Math.min(d, Math.hypot(wx - ex * t, wy - ey * t));
+      if ((ay <= v && v < by && ex * (v - ay) > (u - ax) * ey) || (by <= v && v < ay && ex * (v - ay) < (u - ax) * ey)) s = -s;
+    }
+    return s * d;
+  }
+  // a prism's signed distance at a point of its frame (the frame its fixture is given in)
+  function prismSdf(f) {
+    const ax = f.axis || 'z', h = (f.a1 - f.a0) / 2, c = (f.a0 + f.a1) / 2;
+    return (x, y, z) => {
+      const [u, v, w] = ax === 'z' ? [x, y, z] : ax === 'x' ? [z, y, x] : [x, z, y];
+      const a = polySd(f.pts, u, v), b = Math.abs(w - c) - h;
+      return Math.min(Math.max(a, b), 0) + Math.hypot(Math.max(a, 0), Math.max(b, 0));
+    };
+  }
+  // a plate's solid slab: a prism 30 mm thick behind its face
+  const plateSolid = f => ({ k: 'prism', axis: f.axis, pts: f.pts, a0: f.face < 0 ? f.at : f.at - 30, a1: f.face < 0 ? f.at + 30 : f.at });
   const BY = Object.fromEntries(T.map(e => [e.id, e]));
   const DEFAULT = 'desk-workstation';
   const loadable = e => !!e && e.status !== 'planned';
@@ -1831,7 +2005,7 @@ const HFE_ENV = (() => {
     if (w.hands) w.hands = { L: w.hands.R, R: w.hands.L };
     return w;
   }
-  return { list: T, get, resolve, paramValue, loadable, mirrorWs, DEFAULT };
+  return { list: T, get, resolve, paramValue, loadable, mirrorWs, DEFAULT, object, prismSdf, plateSolid, polySd, ejectionSeat, pedals, jetCockpit, CK };
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = HFE_ENV;
 
@@ -5152,14 +5326,25 @@ function envObstacles(W) {
     if (sh.ceiling !== false) out.push(at([-xF, I.height, -L], [xF, I.height + T, L]));
   }
   const fix = (f, P) => {
+    if (f.deco) return;   // small details (knobs, switches) are drawn only
     const x = f.front != null ? front - f.front : (f.x || 0), id = 'env.fixture';
-    if (f.k === 'disp') {
+    if (f.k === 'prism' || f.k === 'plate') {
+      const pf = f.k === 'plate' ? HFE_ENV.plateSolid(f) : f, sd = HFE_ENV.prismSdf(pf), uv = pf.pts.flat(), r = Math.hypot(Math.max(...uv.map(Math.abs)), (pf.a1 - pf.a0) / 2) + Math.abs((pf.a0 + pf.a1) / 2);
+      out.push(shapeOf(P.clone(), p => sd(p.x, p.y, p.z), r * 1.5, id, X));
+    } else if (f.k === 'tube') {
+      // capsules between the tube's points
+      const Q = f.pts, segs = Q.slice(1).map((b, i) => [Q[i], b]);
+      const cap = (p, a, b) => { const e = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], w = [p.x - a[0], p.y - a[1], p.z - a[2]], L = e[0] * e[0] + e[1] * e[1] + e[2] * e[2] || 1, t = Math.max(0, Math.min(1, (w[0] * e[0] + w[1] * e[1] + w[2] * e[2]) / L));
+        return Math.hypot(w[0] - e[0] * t, w[1] - e[1] * t, w[2] - e[2] * t); };
+      const c = Q.reduce((s, q) => s.map((v, i) => v + q[i] / Q.length), [0, 0, 0]), rr = Math.max(...Q.map(q => Math.hypot(q[0] - c[0], q[1] - c[1], q[2] - c[2]))) + f.r;
+      out.push(shapeOf(P.clone().multiply(M4().makeTranslation(...c)), p => { const g = { x: p.x + c[0], y: p.y + c[1], z: p.z + c[2] }; return Math.min(...segs.map(([a, b]) => cap(g, a, b))) - f.r; }, rr, id, X));
+    } else if (f.k === 'disp') {
       const m = P.clone().multiply(M4().makeTranslation(x, f.y, f.z || 0)).multiply(M4().makeRotationFromEuler(new THREE.Euler(-rad(f.tilt || 0), -Math.PI / 2 + rad(f.yaw || 0), 0, 'YXZ'))).multiply(M4().makeTranslation(0, 0, -20));
       out.push(obbOf(m, [f.w + 24, f.h + 24, 44], id, X));
     } else if (f.k === 'cyl') {
-      const h = f.axis === 'z' ? f.len : f.y1 - f.y0, r = f.r;
-      let m = P.clone().multiply(M4().makeTranslation(x, f.axis === 'z' ? f.y : (f.y0 + f.y1) / 2, f.z || 0));
-      if (f.axis === 'z') m = m.multiply(M4().makeRotationX(Math.PI / 2));
+      const along = f.axis === 'z' || f.axis === 'x', h = along ? f.len : f.y1 - f.y0, r = f.r;
+      let m = P.clone().multiply(M4().makeTranslation(x, along ? f.y : (f.y0 + f.y1) / 2, f.z || 0));
+      if (f.axis === 'z') m = m.multiply(M4().makeRotationX(Math.PI / 2)); else if (f.axis === 'x') m = m.multiply(M4().makeRotationZ(Math.PI / 2));
       out.push(shapeOf(m, p => { const dr = Math.hypot(p.x, p.z) - r, dy = Math.abs(p.y) - h / 2; return dr > 0 || dy > 0 ? Math.hypot(Math.max(dr, 0), Math.max(dy, 0)) : Math.max(dr, dy); }, Math.hypot(r, h / 2), id, X));
     } else if (f.k === 'dome') {
       // a canopy: the upper half of an ellipsoid as a shell, open below, that the body sits inside; outside it and above
@@ -5575,7 +5760,11 @@ function makeMats() {
     envWall2: std('--env-wall', { roughness: 0.9 }), envConsole: std('--env-console', { roughness: 0.7 }), envRack: std('--env-rack', { roughness: 0.6 }),
     envDisplay: std('--screen', { roughness: 0.25, emissive: col('--env-glow'), emissiveIntensity: 0.35 }),
     envGlass: std('--panel-glass', { transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide, roughness: 0.1 }),
-    envEdge: new THREE.LineBasicMaterial({ color: col('--env-edge') })
+    envEdge: new THREE.LineBasicMaterial({ color: col('--env-edge') }),
+    // cockpit fittings (core/environments.js jetCockpit, ejectionSeat): panel greys, black, warning yellow, readouts, seat cushions
+    ck1: std('--ck-1', { roughness: 0.8 }), ck2: std('--ck-2', { roughness: 0.7 }), ckBlack: std('--ck-black', { roughness: 0.6 }), ckYellow: std('--ck-yellow', { roughness: 0.5 }),
+    ckLcd: std('--ck-lcd', { roughness: 0.3, emissive: col('--ck-lcd'), emissiveIntensity: 0.6 }), ckSeat: std('--ck-seat', { roughness: 0.9 }),
+    hudGlass: std('--panel-glass', { transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide, roughness: 0.05, emissive: col('--ok'), emissiveIntensity: 0.15 })
   };
   ['ok', 'warn', 'bad', 'info'].forEach(s => MATS['arc_' + s] = new THREE.LineBasicMaterial({ color: col(s === 'info' ? '--dim' : '--' + s), depthTest: false, transparent: true }));
   scene.background = col('--scene-bg');
@@ -6827,6 +7016,35 @@ function buildScreen(g, s, deskY, node) {
   const segs = s.R > 0 ? 48 : 1;
   const face = new THREE.Mesh(bend(new THREE.PlaneGeometry(s.w, s.h, segs, 1), s.R), MATS.screen); face.position.z = 0.6; grp.add(face);
   if (node) { face.userData.hmiNode = node; face.userData.hmiAspect = s.w / s.h; HMI3D.dress(face); }
+  const bz = s.src && s.src.bezel;
+  if (bz === 'mfd') {
+    // a multifunction display set in the panel: a deep bezel with five option select buttons along each edge and
+    // rocker switches at the corners (generic; drawn only)
+    const m = 46, W2 = s.w / 2 + m, H2 = s.h / 2 + m;
+    grp.add(box(2 * W2, 2 * H2, 20, MATS.ck2, 0, 0, -12));
+    for (const sy of [-1, 1]) grp.add(box(2 * W2, m, 10, MATS.ck2, 0, sy * (H2 - m / 2), -3));
+    for (const sx of [-1, 1]) grp.add(box(m, 2 * H2, 10, MATS.ck2, sx * (W2 - m / 2), 0, -3));
+    for (let k = 0; k < 5; k++) {
+      const u = (k - 2) / 4.6;
+      grp.add(box(26, 18, 8, MATS.ckBlack, u * s.w, H2 - m / 2, 3)); grp.add(box(26, 18, 8, MATS.ckBlack, u * s.w, -H2 + m / 2, 3));
+      grp.add(box(18, 22, 8, MATS.ckBlack, W2 - m / 2, u * s.h * 0.95, 3)); grp.add(box(18, 22, 8, MATS.ckBlack, -W2 + m / 2, u * s.h * 0.95, 3));
+    }
+    for (const sx of [-1, 1]) for (const sy of [-1, 1]) grp.add(box(14, 30, 8, MATS.metal, sx * (W2 - m / 2), sy * (H2 - m / 2), 3));
+    g.add(grp); return grp;
+  }
+  if (bz === 'hud') {
+    // a head-up display's combiner: a glass plate in a thin frame on two posts down into the display's body on the
+    // glareshield. Its symbology (an HMI Builder screen) shows as light on the glass: black is clear.
+    if (face.material !== MATS.screen) face.material = HMI3D.onGlass(face.material); else face.material = MATS.hudGlass;
+    const W2 = s.w / 2 + 16, H2 = s.h / 2 + 14;
+    grp.add(box(2 * W2, 2 * H2, 3, MATS.hudGlass, 0, 0, -1));
+    for (const sx of [-1, 1]) {
+      grp.add(box(8, 2 * H2 + 8, 10, MATS.ckBlack, sx * (W2 + 4), 0, -1));
+      grp.add(box(14, 70, 14, MATS.ckBlack, sx * (W2 + 4), -H2 - 35, -4));
+    }
+    grp.add(box(2 * W2 + 16, 8, 10, MATS.ckBlack, 0, H2 + 4, -1));
+    g.add(grp); return grp;
+  }
   const shell = new THREE.BoxGeometry(s.w + 2 * bez, s.h + 2 * bez + chin, dep, segs, 1, 1);
   shell.translate(0, -chin / 2, -dep / 2);
   grp.add(new THREE.Mesh(bend(shell, s.R), MATS.frame));
@@ -6922,7 +7140,7 @@ function buildWorkstation(M, G, W) {
     g.add(box(40, top.cy - W.deskH, 60, MATS.metal, px, (top.cy + W.deskH) / 2, 0));
     g.add(box(230, 10, 260, MATS.metal, px + 20, W.deskH + 5, 0));
     list.forEach(s => g.add(box(Math.max(px - s.cx, 20), 30, 40, MATS.metal, (px + s.cx) / 2, s.cy, 0)));
-  } else list.forEach(s => { if (!(s.src && s.src.mount)) buildStand(g, s, W.deskH); });
+  } else list.forEach(s => { if (!(s.src && (s.src.mount || s.src.bezel))) buildStand(g, s, W.deskH); });   // mounted or panel displays and a HUD need no stand
   node('ws.scr.stands');
   tagNew(g, 'SCREENS');
   // objects
@@ -6937,6 +7155,16 @@ function buildWorkstation(M, G, W) {
     // product model: seat front edge at the seat front, seat top at the seat height (gas lift stretched to suit)
     const grp = new THREE.Group(); mdl.forEach(o => grp.add(o)); grp.position.set(G.seatFrontX, 0, 0); g.add(grp); node('ws.chair');
     if (W.footrest > 0) { g.add(box(360, W.footrest, 460, MATS.metal, G.A.x + 40, W.footrest / 2, 0, 0)); node('ws.foot'); }
+    tagNew(g, 'CHAIR'); return;
+  }
+  // rudder pedals ahead of the feet (a cockpit's ws.pedals), at the toes as solved: real pedals adjust fore and aft
+  const pedalsOn = W.pedals && !offSeat(W);
+  const addPrims = list => list.forEach(f => { const m = HFE_ENV.object(THREE, f, envMat, { RoundedBox: RoundedBoxGeometry }); m.userData.node = f.node; g.add(m); });
+  if (pedalsOn) { addPrims(HFE_ENV.pedals(G.A.x + 0.75 * M.footlength, [-G.legZ, G.legZ])); i0 = g.children.length; }
+  if (CH.ejection) {
+    // an ejection seat (core/environments.js ejectionSeat) for the seat as set: the back and headbox turn with the recline
+    const dB = Math.max(G.dR, 0), Tb = q => add2(G.H, rot(sub2(q, G.H0), dB));
+    addPrims(HFE_ENV.ejectionSeat({ front: G.seatFrontX, depth: W.seatDepth, width: W.seatWidth, y: G.seatY, ang: dB, top: CH.back, headH: W.headH, at: (x, y) => { const q = Tb({ x, y }); return [q.x, q.y]; } }));
     tagNew(g, 'CHAIR'); return;
   }
   mark();
@@ -7778,7 +8006,7 @@ let toastT; function toast(m) { $('#toast').textContent = m; clearTimeout(toastT
 /* ---------------- evidence: project files and output stamps (PRJ-01, PRJ-03, VAL-02, VAL-03, VAL-07) ----------------
    core/evidence.js does the hashing, migration and comparison; this gathers the tool's state for it. Every output
    (checks CSV, population CSVs, placement map CSV, image, drawing) carries the same stamp. */
-const TOOL = { name: 'HFE Lab Workspace Visualisation', build: '2bf5f4e091be' };
+const TOOL = { name: 'HFE Lab Workspace Visualisation', build: '7dd8a9d549b7' };
 const VALIDATION = 'Not validated (posture from geometric rules, not a validated posture-prediction model; limits as stated under Checked against)';
 const solverName = W => bodySeated(W) ? 'Whole body with joint limits (beta)' : 'Classic seated';
 function subjectText() {
@@ -11877,6 +12105,7 @@ async function onCsv(e) {
 function mergeWs(w) {
   const ws = structuredClone(WS_DEFAULT); if (!w) return ws;
   for (const k of Object.keys(ws)) if (!['screens', 'objects', 'hands'].includes(k) && w[k] != null) ws[k] = w[k];
+  if (w.pedals) ws.pedals = true;   // rudder pedals (a cockpit template): only set where on, so other setups are unchanged
   if (w.screens) { Object.assign(ws.screens, { ...w.screens, list: ws.screens.list.map((d, i) => ({ ...d, ...((w.screens.list || [])[i] || {}) })) }); }
   else {
     if (w.monSize) ws.screens.list[0].size = +w.monSize; if (w.monDist != null) ws.screens.dist = w.monDist;
@@ -12050,6 +12279,11 @@ function bindEnv() {
 // Shell, fixtures and the other roles' consoles. Built after the workstation so the consoles can be copied from it.
 // Everything is placed in the shell frame (see core/environments.js); the group is then moved, and mirrored for a mirrored
 // role, so that the assessed seat sits at the world origin.
+// materials for the environment's fixtures by name (core/environments.js object())
+function envMat(name) {
+  return { console: MATS.envConsole, rack: MATS.envRack, dark: MATS.frame, metal: MATS.metal, glass: MATS.envGlass, wall: MATS.envWall2, frame: MATS.frame, display: MATS.envDisplay,
+    cockpit: MATS.ck1, cockpit2: MATS.ck2, black: MATS.ckBlack, yellow: MATS.ckYellow, lcd: MATS.ckLcd, seat: MATS.ckSeat }[name] || MATS.envConsole;
+}
 function envFront(sh) {
   const I = sh.internal;
   if (sh.kind === 'tube') { const R = I.diameter / 2, dy = (sh.frontAt || 1200) - I.axis; return Math.sqrt(Math.max(R * R - dy * dy, 0)); }
@@ -12075,6 +12309,9 @@ function buildEnv(G, W) {
     plane(2 * half, L, MATS.envFloor, 0, -1, 0, 0, -Math.PI / 2, 'env.shell.floor');
     const ring = z => { const p = []; for (let i = 0; i <= 72; i++) { const t = i / 72 * Math.PI * 2; p.push(new V3(R * Math.cos(t), I.axis + R * Math.sin(t), z)); } return p; };
     for (const z of [-L / 2, L / 2]) g.add(tag(new THREE.Line(new THREE.BufferGeometry().setFromPoints(ring(z)), MATS.envEdge), 'env.shell.walls'));
+  } else if (sh.walls === false) {
+    // the fixtures draw the walls (a cockpit's tub): only the floor here
+    plane(I.width, I.length, MATS.envFloor, 0, -1, 0, 0, -Math.PI / 2, 'env.shell.floor');
   } else {
     const xF = I.width / 2, xR = -I.width / 2, z0 = -I.length / 2, z1 = I.length / 2;
     // glass: walls that are glazed (a windscreen, wheelhouse windows), drawn see-through
@@ -12094,21 +12331,8 @@ function buildEnv(G, W) {
     }
   }
   // fixtures: racks, pedestals, video walls, pipes, canopy. Shared ones in the shell frame, role ones at every seat.
-  const FM = { console: MATS.envConsole, rack: MATS.envRack, dark: MATS.frame, metal: MATS.metal, glass: MATS.envGlass, wall: MATS.envWall2 };
   const addFix = (f, par, node) => {
-    const x = f.front != null ? front - f.front : (f.x || 0), mat = FM[f.mat] || MATS.envConsole;
-    let m;
-    if (f.k === 'disp') {
-      m = new THREE.Group(); m.position.set(x, f.y, f.z || 0); m.rotation.set(-rad(f.tilt || 0), -Math.PI / 2 + rad(f.yaw || 0), 0, 'YXZ');
-      m.add(box(f.w + 24, f.h + 24, 40, MATS.frame, 0, 0, -22)); m.add(box(f.w, f.h, 4, MATS.envDisplay, 0, 0, 0));
-    } else if (f.k === 'cyl') {
-      if (f.axis === 'z') { m = new THREE.Mesh(new THREE.CylinderGeometry(f.r, f.r, f.len, 24), mat); m.rotation.x = Math.PI / 2; m.position.set(x, f.y, f.z || 0); }
-      else { m = new THREE.Mesh(new THREE.CylinderGeometry(f.r, f.r, f.y1 - f.y0, 32), mat); m.position.set(x, (f.y0 + f.y1) / 2, f.z || 0); }
-    } else if (f.k === 'dome') {
-      m = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 16, 0, Math.PI * 2, 0, Math.PI / 2), mat); m.scale.set(f.rx, f.ry, f.rz); m.position.set(x, f.y, f.z || 0);
-    } else {
-      m = box(f.d, f.h, f.w, mat, x, f.y, f.z || 0); m.rotation.set(0, rad(f.yaw || 0), rad(f.tilt || 0), 'YXZ');
-    }
+    const m = HFE_ENV.object(THREE, f.front != null ? { ...f, x: front - f.front } : f, envMat, { RoundedBox: RoundedBoxGeometry });
     par.add(tag(m, node)); m.traverse(o => { if (o !== m) o.userData.layer = 'ENV'; });
   };
   (E.fixtures || []).forEach(f => addFix(f, g, 'env.fixtures'));
@@ -12620,6 +12844,14 @@ const HMI3D = (() => {
     face.material = slot(x, face.userData.hmiAspect || 4 / 3).mat; face.userData.hmiKey = HFE_HMI.displayKey(x);
   }
   // the console copies at the other seats are mirror images: their screens get the mirrored texture so text reads
+  // a screen shown as light on glass (a head-up display's combiner): the HMI's black is clear
+  const glass = new Map();
+  function onGlass(m) {
+    if (!m || !m.map) return m;
+    let a = glass.get(m);
+    if (!a) { a = new THREE.MeshBasicMaterial({ map: m.map, toneMapped: false, side: THREE.DoubleSide, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }); glass.set(m, a); }
+    return a;
+  }
   function dressCopies(root) {
     if (!doc) return;
     root.updateWorldMatrix(true, true);
@@ -12633,12 +12865,12 @@ const HMI3D = (() => {
     const keep = vars || (old && same ? old.vars : null);
     if (keep) for (const v of doc.vars) if (v.name in keep && typeof keep[v.name] === typeof state.vars[v.name]) state.vars[v.name] = keep[v.name];
     for (const t of tex.values()) { t.texture.dispose(); t.flipTex.dispose(); t.mat.dispose(); t.flip.dispose(); }
-    tex.clear(); update();
+    tex.clear(); glass.clear(); update();
     const n3 = doc.displays.filter(x => (!x.env || x.env === S.env.id) && (!x.role || x.role === S.env.role)).length;
     if (how && how !== 'live') toast(n3 ? `HMI “${doc.name}” on ${n3} screen${n3 > 1 ? 's' : ''}. Click a screen to press it.` : `HMI “${doc.name}” loaded; none of its displays is in this environment and seat.`);
     return true;
   }
-  function clear() { doc = null; state = null; for (const t of tex.values()) { t.texture.dispose(); t.flipTex.dispose(); t.mat.dispose(); t.flip.dispose(); } tex.clear(); update(); toast('HMI cleared from the screens'); }
+  function clear() { doc = null; state = null; for (const t of tex.values()) { t.texture.dispose(); t.flipTex.dispose(); t.mat.dispose(); t.flip.dispose(); } tex.clear(); glass.clear(); update(); toast('HMI cleared from the screens'); }
   // the displays of this scene, for the Builder: physical size and viewing distance of each screen
   function displays() {
     const L = window.__last; if (!L || !L.G || !L.G.scr) return [];
@@ -12703,7 +12935,7 @@ const HMI3D = (() => {
     if (chan) chan.postMessage({ type: 'hmi-ping-builder' });
   }
   const labelFor = node => { const x = entry(node); return x ? ` · HMI: ${HFE_HMI.screenOf(doc, x.screen).name}` : ''; };
-  return { dress, dressCopies, set, clear, changed, publish, boot, labelFor, displays, press, get doc() { return doc; }, get state() { return state; } };
+  return { dress, dressCopies, onGlass, set, clear, changed, publish, boot, labelFor, displays, press, get doc() { return doc; }, get state() { return state; } };
 })();
 
 /* ---------------- boot ---------------- */
